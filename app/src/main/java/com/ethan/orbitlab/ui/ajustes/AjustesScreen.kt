@@ -46,13 +46,23 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ethan.orbitlab.ui.theme.OrbitTokens
+import com.ethan.orbitlab.updates.OrbitUpdatesUiState
 
 @Composable
-fun AjustesScreen() {
+fun AjustesScreen(
+    updates: OrbitUpdatesUiState = OrbitUpdatesUiState(loading = false),
+) {
     // Interruptores com estado de verdade (por enquanto só locais, sem persistir).
     var notificacoes by remember { mutableStateOf(true) }
     var vibracao by remember { mutableStateOf(true) }
     var modoEscuro by remember { mutableStateOf(true) }
+
+    val canalLabel = when (updates.canal) {
+        "beta" -> "Canal de testes (Orbit β)"
+        "stable" -> "Canal estável"
+        else -> "Canal lab (dev)"
+    }
+    val versaoLabel = "v${updates.currentVersion} (${updates.currentVersionCode})"
 
     // Fundo com brilho no topo-direita
     Box(
@@ -107,6 +117,21 @@ fun AjustesScreen() {
             LinhaAjuste(Icons.Rounded.Language, OrbitTokens.accent, "Idioma", trailing = "Português")
         }
 
+        // Grupo: Atualizações (mesmo canal do orbit-releases)
+        SecaoAjustes("Atualizações") {
+            LinhaAjuste(
+                Icons.Rounded.Info,
+                if (updates.canalBeta) OrbitTokens.gold else OrbitTokens.accent,
+                canalLabel,
+                subtitulo = if (updates.updateAvailable && updates.latestVersion != null) {
+                    "Nova: v${updates.latestVersion}"
+                } else {
+                    "Versão instalada $versaoLabel"
+                },
+                clicavel = false,
+            )
+        }
+
         // Grupo: Privacidade
         SecaoAjustes("Privacidade") {
             LinhaAjuste(Icons.Rounded.Description, OrbitTokens.textMid, "Política de Privacidade")
@@ -118,7 +143,7 @@ fun AjustesScreen() {
 
         // Grupo: Sobre (dourado = a luz)
         SecaoAjustes("Sobre") {
-            LinhaAjuste(Icons.Rounded.Info, OrbitTokens.gold, "Versão", trailing = "1.0.0 (beta)", clicavel = false)
+            LinhaAjuste(Icons.Rounded.Info, OrbitTokens.gold, "Versão", trailing = versaoLabel, clicavel = false)
             Divisoria()
             LinhaAjuste(Icons.Rounded.Star, OrbitTokens.gold, "Avaliar o app")
         }
@@ -154,10 +179,11 @@ private fun ContaCard() {
             .padding(20.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        val infiniteTransition = rememberInfiniteTransition()
+        val infiniteTransition = rememberInfiniteTransition(label = "anel")
         val pulseRing by infiniteTransition.animateFloat(
             initialValue = 0.1f, targetValue = 1f,
-            animationSpec = infiniteRepeatable(tween(1500), RepeatMode.Reverse)
+            animationSpec = infiniteRepeatable(tween(1500), RepeatMode.Reverse),
+            label = "anelPulse",
         )
         // Avatar com anel de gamificação animado
         Box(

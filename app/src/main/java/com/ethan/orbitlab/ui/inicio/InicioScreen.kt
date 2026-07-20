@@ -21,18 +21,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ethan.orbitlab.ui.theme.OrbitTokens
+import com.ethan.orbitlab.ui.updates.UpdateBanner
+import com.ethan.orbitlab.updates.OrbitUpdatesUiState
 
 @Composable
 fun InicioScreen(
     onAbrirNovidades: () -> Unit = {},
-    temNovidade: Boolean = true
+    temNovidade: Boolean = false,
+    updates: OrbitUpdatesUiState = OrbitUpdatesUiState(loading = false),
+    onAtualizar: () -> Unit = {},
 ) {
     Box(modifier = Modifier.fillMaxSize().background(Color.Transparent)) {
         
@@ -69,6 +72,18 @@ fun InicioScreen(
             verticalArrangement = Arrangement.spacedBy(36.dp)
         ) {
             HeaderSeccao(onAbrirNovidades, temNovidade)
+
+            val showUpdate = updates.updateAvailable && !updates.apkUrl.isNullOrBlank()
+            if (showUpdate) {
+                UpdateBanner(
+                    version = updates.latestVersion,
+                    mandatory = updates.mandatory,
+                    downloading = updates.downloading,
+                    progress = updates.downloadProgress,
+                    onUpdate = onAtualizar,
+                )
+            }
+
             GamificacaoSeccao()
             DestaqueAcaoSeccao()
             RotinaPreviewSeccao()

@@ -60,6 +60,9 @@ import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
 
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ethan.orbitlab.data.ChatRepository
 import com.ethan.orbitlab.ui.ajustes.AjustesScreen
 import com.ethan.orbitlab.ui.chat.ChatScreen
@@ -68,6 +71,7 @@ import com.ethan.orbitlab.ui.inicio.InicioScreen
 import com.ethan.orbitlab.ui.novidades.NovidadesScreen
 import com.ethan.orbitlab.ui.perfil.PerfilScreen
 import com.ethan.orbitlab.ui.theme.OrbitTokens
+import com.ethan.orbitlab.updates.OrbitUpdatesViewModel
 
 /**
  * OrbitShell — a espinha do app: barra de baixo fixa + telas trocando por cima dela.
@@ -84,13 +88,22 @@ private enum class OrbitTab(
 }
 
 @Composable
-fun OrbitShell() {
+fun OrbitShell(
+    updatesVm: OrbitUpdatesViewModel = viewModel(),
+) {
     var abaAtual by remember { mutableStateOf(OrbitTab.INICIO) }
     var menuAberto by remember { mutableStateOf(false) }
     var chatAberto by remember { mutableStateOf(false) }
     var conversaAtivaId by remember { mutableStateOf<String?>(null) }
     var novidadesAberto by remember { mutableStateOf(false) }
-    var temNovidade by remember { mutableStateOf(true) }
+    val updates by updatesVm.state.collectAsState()
+
+    // Ao ver a aba Início, marca o mural/atualização como visto (tira o badge).
+    LaunchedEffect(abaAtual, updates.hasUnseen) {
+        if (abaAtual == OrbitTab.INICIO && updates.hasUnseen) {
+            updatesVm.markSeen()
+        }
+    }
 
     // Intercepta o botão 'Voltar' nativo do Android
     BackHandler(enabled = menuAberto || chatAberto || novidadesAberto) {
@@ -108,8 +121,10 @@ fun OrbitShell() {
                 Crossfade(targetState = abaAtual, animationSpec = tween(220), label = "aba") { aba ->
                     when (aba) {
                         OrbitTab.INICIO -> InicioScreen(
-                            onAbrirNovidades = { novidadesAberto = true; temNovidade = false },
-                            temNovidade = temNovidade
+                            onAbrirNovidades = { novidadesAberto = true },
+                            temNovidade = updates.hasUnseen || updates.updateAvailable,
+                            updates = updates,
+                            onAtualizar = { updatesVm.baixarEInstalar() },
                         )
                         OrbitTab.CONVERSAS -> ConversasScreen(
                             onOpenChat = { id ->
@@ -118,7 +133,7 @@ fun OrbitShell() {
                             }
                         )
                         OrbitTab.PERFIL -> PerfilScreen()
-                        OrbitTab.AJUSTES -> AjustesScreen()
+                        OrbitTab.AJUSTES -> AjustesScreen(updates = updates)
                     }
                 }
             }
