@@ -1,9 +1,10 @@
-# OrbitLab
+# Orbit (lab nativo)
 
-Laboratório Android nativo (Kotlin + Jetpack Compose) do ecossistema Luna/Orbit.
+Laboratório Android nativo (Kotlin + Jetpack Compose) do **Orbit**.
+O app chama-se **Orbit** (igual ao de produção); este repo/pasta (`OrbitLab`) é só o lab Compose.
 
 - **Destino:** substituir o app Expo (`orbit-mobile`) no mesmo auto-update (`orbit-releases`).
-- **Dev local:** flavor `lab` → package `com.ethan.orbitlab` (não colide com o Orbit instalado).
+- **Dev local:** flavor `lab` → package `com.ethan.orbitlab` (não colide com o Orbit Expo instalado).
 - **Produção (quando for a hora):** flavors `beta` / `stable` → mesmos packages do Orbit.
 
 ## Abrir no Android Studio

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Flavor lab: mesmo nome de produto; package diferente evita colidir com o Expo. -->
+    <string name="app_name">Orbit</string>
+</resources>

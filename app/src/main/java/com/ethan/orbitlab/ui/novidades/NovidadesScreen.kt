@@ -46,7 +46,7 @@ data class VersaoNota(
     val atual: Boolean = false
 )
 
-// Demo: as próprias atualizações que a gente foi fazendo no OrbitLab.
+// Demo: as próprias atualizações que a gente foi fazendo no Orbit.
 private val notasDemo = listOf(
     VersaoNota(
         versao = "0.4.0", data = "19 jul", titulo = "Ajustes chegou", atual = true,
@@ -141,7 +141,7 @@ private fun NovidadesHeader(onBack: () -> Unit) {
         Spacer(Modifier.width(10.dp))
         Column {
             Text("Novidades", color = OrbitTokens.textHigh, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-            Text("O que mudou no OrbitLab", color = OrbitTokens.textLow, fontSize = 12.sp)
+            Text("O que mudou no Orbit", color = OrbitTokens.textLow, fontSize = 12.sp)
         }
     }
 }

@@ -153,7 +153,7 @@ fun AjustesScreen(
 
         // Rodapé
         Text(
-            "Feito com 🌙 · OrbitLab",
+            "Feito com 🌙 · Orbit",
             color = OrbitTokens.textLow,
             fontSize = 12.sp,
             modifier = Modifier.fillMaxWidth().padding(top = 4.dp),

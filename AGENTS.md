@@ -1,14 +1,15 @@
-# OrbitLab — diretrizes
+# OrbitLab — diretrizes (repo do lab)
 
-> Laboratório Android **nativo** (Kotlin + Jetpack Compose). Não é o app de produção *ainda*.
+> Laboratório Android **nativo** (Kotlin + Jetpack Compose) do produto **Orbit**.
+> O nome do app (launcher, UI) é **Orbit** — «OrbitLab» é só a pasta/repo do lab.
 > Destino: **substituir** o [`orbit-mobile/`](../orbit-mobile/AGENTS.md) (Expo) no mesmo canal de
 > auto-update. Escreva tudo em **pt-BR**.
 
 ## O que é
 
-App de experimentação de UI/shell Orbit, para validar ecrãs e navegação em Compose **sem** tocar
-no `android/` versionado do Expo — até o Lab herdar o `applicationId` de produção e passar a ser
-o APK publicado em `orbit-releases`.
+App de experimentação de UI/shell **Orbit**, para validar ecrãs e navegação em Compose **sem**
+tocar no `android/` versionado do Expo — até herdar o `applicationId` de produção e ser o APK
+publicado em `orbit-releases`.
 
 | | |
 |---|---|
