@@ -1,7 +1,67 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
 }
+
+fun loadSecret(name: String, envKey: String? = null): String {
+    val local = Properties()
+    val localFile = rootProject.file("local.properties")
+    if (localFile.exists()) {
+        localFile.inputStream().use { local.load(it) }
+    }
+    local.getProperty(name)?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
+
+    val envFile = rootProject.file("../core/src/luna-core/.env")
+    if (envFile.exists() && envKey != null) {
+        envFile.readLines().forEach { line ->
+            val t = line.trim()
+            if (t.startsWith("#") || !t.contains("=")) return@forEach
+            val key = t.substringBefore("=").trim()
+            val value = t.substringAfter("=").trim().trim('"')
+            if (key == envKey && value.isNotEmpty()) return value
+        }
+    }
+    return ""
+}
+
+val openRouterKey = loadSecret("openrouter.api.key", "OPENROUTER_API_KEY")
+val openRouterChatModel = loadSecret("openrouter.model.chat", "P0_MODEL_MENOR")
+    .ifBlank { "deepseek/deepseek-v4-flash" }
+val openRouterVisionModel = loadSecret("openrouter.model.vision", "OPENROUTER_VISION_MODEL")
+    .ifBlank { "qwen/qwen3.5-flash-02-23" }
+val openRouterVideoModel = loadSecret("openrouter.model.video", "OPENROUTER_VIDEO_MODEL")
+    .ifBlank { openRouterVisionModel }
+val openRouterSttModel = loadSecret("openrouter.model.stt", "LUNA_STT_MODEL")
+    .ifBlank { "openai/whisper-large-v3" }
+
+fun loadLunaApiUrl(): String {
+    val local = Properties()
+    val localFile = rootProject.file("local.properties")
+    if (localFile.exists()) {
+        localFile.inputStream().use { local.load(it) }
+    }
+    local.getProperty("luna.api.url")?.trim()?.takeIf { it.isNotEmpty() }?.let {
+        return it.trimEnd('/')
+    }
+
+    val mobileEnv = rootProject.file("../orbit-mobile/.env")
+    if (mobileEnv.exists()) {
+        mobileEnv.readLines().forEach { line ->
+            val t = line.trim()
+            if (t.startsWith("#") || !t.contains("=")) return@forEach
+            val key = t.substringBefore("=").trim()
+            val value = t.substringAfter("=").trim().trim('"')
+            if (key == "EXPO_PUBLIC_LUNA_API_URL" && value.isNotEmpty()) {
+                return value.trimEnd('/')
+            }
+        }
+    }
+    return "https://luna-core-production-330b.up.railway.app"
+}
+
+val lunaApiUrl = loadLunaApiUrl()
 
 android {
     namespace = "com.ethan.orbitlab"
@@ -15,11 +75,38 @@ android {
         applicationId = "com.ethan.orbitlab"
         minSdk = 24
         targetSdk = 36
-        // Sequência do orbit-mobile (78+) — flavors stable/beta herdam isto.
-        versionCode = 79
-        versionName = "2.25.0"
+        versionCode = 3
+        versionName = "0.5.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Chave só via local.properties / luna-core .env — nunca commitada.
+        buildConfigField("String", "OPENROUTER_API_KEY", "\"${openRouterKey.replace("\"", "\\\"")}\"")
+        buildConfigField("String", "OPENROUTER_MODEL_CHAT", "\"$openRouterChatModel\"")
+        buildConfigField("String", "OPENROUTER_MODEL_VISION", "\"$openRouterVisionModel\"")
+        buildConfigField("String", "OPENROUTER_MODEL_VIDEO", "\"$openRouterVideoModel\"")
+        buildConfigField("String", "OPENROUTER_MODEL_STT", "\"$openRouterSttModel\"")
+        buildConfigField("String", "LUNA_API_URL", "\"${lunaApiUrl.replace("\"", "\\\"")}\"")
+    }
+
+    signingConfigs {
+        create("debugKey") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
+    // Canal lab = o auto-update do OrbitLab. O CI sobe a versão com -PlabVersionCode / -PlabVersionName.
+    flavorDimensions += "canal"
+    productFlavors {
+        create("lab") {
+            dimension = "canal"
+            applicationId = "com.ethan.orbitlab"
+            versionCode = (findProperty("labVersionCode") as String?)?.toIntOrNull() ?: 4
+            versionName = (findProperty("labVersionName") as String?) ?: "0.5.0"
+        }
     }
 
     signingConfigs {
@@ -88,9 +175,22 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
-    implementation(libs.androidx.lifecycle.runtime.compose)
-    implementation(libs.androidx.lifecycle.viewmodel.compose)
-    implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.coil.compose)
+    implementation(libs.coil.video)
+    implementation(libs.media3.exoplayer)
+    implementation(libs.media3.ui)
+
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.auth)
+    implementation(libs.firebase.firestore)
+    implementation(libs.firebase.storage)
+    implementation(libs.androidx.credentials)
+    implementation(libs.androidx.credentials.play.services.auth)
+    implementation(libs.googleid)
+    implementation(libs.kotlinx.coroutines.play.services)
+    implementation(libs.okhttp)
+    implementation(libs.okhttp.sse)
+
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)

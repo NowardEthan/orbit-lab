@@ -40,8 +40,7 @@ Ainda **não** publique o Lab no `orbit-releases` até a paridade mínima — ve
 app/src/main/java/com/ethan/orbitlab/
   MainActivity.kt
   shell/          # shell + navegação
-  ui/             # ecrãs (início, chat, conversas, …)
-  updates/        # auto-update (manifesto + install)
+  ui/             # telas (início, chat, conversas, …)
   data/           # repositórios
   demo/           # dados de demonstração
   ui/theme/       # tokens / tema Compose

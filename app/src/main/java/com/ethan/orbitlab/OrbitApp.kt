@@ -1,0 +1,54 @@
+package com.ethan.orbitlab
+
+import android.app.Application
+import coil.ImageLoader
+import coil.ImageLoaderFactory
+import coil.decode.VideoFrameDecoder
+import coil.disk.DiskCache
+import coil.memory.MemoryCache
+import coil.request.CachePolicy
+import com.ethan.orbitlab.data.AuthRepository
+import com.ethan.orbitlab.data.ChatRepository
+import com.ethan.orbitlab.data.PrefsRepository
+import com.ethan.orbitlab.data.UserProfileRepository
+import com.ethan.orbitlab.data.updates.UpdatesRepository
+import com.ethan.orbitlab.data.firebase.FirebaseBootstrap
+
+class OrbitApp : Application(), ImageLoaderFactory {
+    override fun onCreate() {
+        super.onCreate()
+        PrefsRepository.init(this)
+        FirebaseBootstrap.init(this)
+        AuthRepository.init(this)
+        ChatRepository.bindApp(this)
+        ChatRepository.init()
+        UserProfileRepository.init()
+        UpdatesRepository.init(this)
+    }
+
+    override fun newImageLoader(): ImageLoader {
+        val maxHeap = Runtime.getRuntime().maxMemory()
+        val memoryBytes = (maxHeap * 0.15)
+            .toLong()
+            .coerceIn(8L * 1024 * 1024, 25L * 1024 * 1024)
+            .toInt()
+        return ImageLoader.Builder(this)
+            .components { add(VideoFrameDecoder.Factory()) }
+            .memoryCache {
+                MemoryCache.Builder(this)
+                    .maxSizeBytes(memoryBytes)
+                    .build()
+            }
+            .diskCache {
+                DiskCache.Builder()
+                    .directory(cacheDir.resolve("coil_cache"))
+                    .maxSizeBytes(40L * 1024 * 1024)
+                    .build()
+            }
+            .respectCacheHeaders(false)
+            .memoryCachePolicy(CachePolicy.ENABLED)
+            .diskCachePolicy(CachePolicy.ENABLED)
+            .crossfade(false)
+            .build()
+    }
+}

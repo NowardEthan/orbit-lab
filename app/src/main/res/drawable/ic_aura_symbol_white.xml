@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Símbolo Aura branco — fundos escuros. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="64dp"
+    android:height="64dp"
+    android:viewportWidth="1024"
+    android:viewportHeight="1024">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M512.252,162 L850.669,862 L659.302,862 L639.662,818.187 L679.95,765.813 L592.324,716.46 L512.252,534.662 L365.201,862 L173.331,861.496 Z" />
+</vector>

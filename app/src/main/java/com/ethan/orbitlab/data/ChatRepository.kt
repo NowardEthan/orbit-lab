@@ -1,101 +1,440 @@
 package com.ethan.orbitlab.data
 
+import android.app.Application
+import com.ethan.orbitlab.data.firebase.ChatMediaUpload
+import com.ethan.orbitlab.data.firebase.ConversaMeta
+import com.ethan.orbitlab.data.firebase.FirestoreChat
+import com.ethan.orbitlab.data.firebase.toConversa
+import com.ethan.orbitlab.ui.chat.ComposerAttachment
+import com.ethan.orbitlab.ui.chat.LunaActionRun
+import com.ethan.orbitlab.ui.chat.ThreadReference
+import com.google.firebase.firestore.ListenerRegistration
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 data class Mensagem(
     val id: String = UUID.randomUUID().toString(),
     val texto: String,
     val isLuna: Boolean,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    /** Raciocínio interno — só Luna; UI quieta acima da resposta. */
+    val reasoning: String? = null,
+    /** Duração aproximada do raciocínio (ex.: "3s") pra meta no rótulo. */
+    val reasoningDuracao: String? = null,
+    /** Timeline de ações da Luna (tools e/ou pesquisa profunda). */
+    val actionRun: LunaActionRun? = null,
+    /** Anexos (imagens / arquivos) — tipicamente do usuário. */
+    val attachments: List<ComposerAttachment> = emptyList(),
+    /** Referência contextual (mensagem / imagem citada). */
+    val reference: ThreadReference? = null,
 )
 
 data class Conversa(
     val id: String = UUID.randomUUID().toString(),
     val titulo: String,
     val mensagens: List<Mensagem> = emptyList(),
-    val ultimaAtualizacao: Long = System.currentTimeMillis()
+    val ultimaAtualizacao: Long = System.currentTimeMillis(),
+    /** Preview já limpo (sem markdown) — evita regex na composition. */
+    val preview: String = limparPreviewMensagem(mensagens.lastOrNull()?.texto),
+    /** Hora curta pré-formatada (ex.: "14:32"). */
+    val horaFormatada: String = formatarHoraCurta(ultimaAtualizacao),
+    /** Contagem Firestore (quando mensagens ainda não foram carregadas). */
+    val messageCount: Int = mensagens.size,
 ) {
-    val preview: String
-        get() = mensagens.lastOrNull()?.texto ?: "Nenhuma mensagem ainda."
-        
-    val tempoFormatado: String
-        get() {
-            val format = SimpleDateFormat("HH:mm", Locale.getDefault())
-            return "Hoje, ${format.format(Date(ultimaAtualizacao))}"
-        }
+    /** Rótulo de agrupamento: Hoje / Ontem / dia da semana / data. */
+    val grupoDia: String
+        get() = rotuloGrupoDia(ultimaAtualizacao)
 }
 
+private val localeBr = Locale("pt", "BR")
+private val horaFmt = ThreadLocal.withInitial {
+    SimpleDateFormat("HH:mm", localeBr)
+}
+
+fun formatarHoraCurta(timestamp: Long): String =
+    horaFmt.get()!!.format(Date(timestamp))
+
+/** Preview sem ruído de markdown (fences, headings). */
+fun limparPreviewMensagem(fonte: String?): String {
+    if (fonte.isNullOrBlank()) return "Nenhuma mensagem ainda."
+    return fonte
+        .lineSequence()
+        .map { it.trim() }
+        .filter { it.isNotEmpty() && !it.startsWith("```") && !it.startsWith("#") }
+        .joinToString(" ")
+        .replace(Regex("""\*\*|`|>\s*"""), "")
+        .take(120)
+        .ifBlank { "Nenhuma mensagem ainda." }
+}
+
+fun rotuloGrupoDia(timestamp: Long, agora: Long = System.currentTimeMillis()): String {
+    val calAgora = Calendar.getInstance().apply { timeInMillis = agora }
+    val calAlvo = Calendar.getInstance().apply { timeInMillis = timestamp }
+
+    fun mesmoDia(a: Calendar, b: Calendar): Boolean =
+        a.get(Calendar.YEAR) == b.get(Calendar.YEAR) &&
+            a.get(Calendar.DAY_OF_YEAR) == b.get(Calendar.DAY_OF_YEAR)
+
+    if (mesmoDia(calAgora, calAlvo)) return "Hoje"
+
+    val ontem = Calendar.getInstance().apply {
+        timeInMillis = agora
+        add(Calendar.DAY_OF_YEAR, -1)
+    }
+    if (mesmoDia(ontem, calAlvo)) return "Ontem"
+
+    val inicioSemana = Calendar.getInstance().apply {
+        timeInMillis = agora
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+        add(Calendar.DAY_OF_YEAR, -6)
+    }
+    if (timestamp >= inicioSemana.timeInMillis) {
+        val dia = SimpleDateFormat("EEEE", localeBr).format(Date(timestamp))
+        return dia.replaceFirstChar { if (it.isLowerCase()) it.titlecase(localeBr) else it.toString() }
+    }
+
+    return SimpleDateFormat("d MMM", localeBr).format(Date(timestamp))
+}
+
+/**
+ * Chat sincronizado com Firestore + Storage (mesmo projeto do orbit-mobile).
+ * Sem seed demo local — lista e mídia vêm da nuvem quando logado.
+ */
 object ChatRepository {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var app: Application? = null
+
     private val _conversas = MutableStateFlow<List<Conversa>>(emptyList())
     val conversas: StateFlow<List<Conversa>> = _conversas.asStateFlow()
 
-    init {
-        // Popula com alguns mocks iniciais
-        _conversas.value = listOf(
-            Conversa(
-                titulo = "O que é IA Generativa?",
-                mensagens = listOf(
-                    Mensagem(texto = "Olá! Como posso te ajudar hoje?", isLuna = true, timestamp = System.currentTimeMillis() - 100000),
-                    Mensagem(texto = "Quero revisar IA Generativa.", isLuna = false, timestamp = System.currentTimeMillis() - 80000),
-                    Mensagem(texto = "Entendi, então a rede neural aprende os padrões e repete de maneira criativa. Vamos testar um quiz?", isLuna = true, timestamp = System.currentTimeMillis() - 60000)
-                ),
-                ultimaAtualizacao = System.currentTimeMillis() - 60000
-            ),
-            Conversa(
-                titulo = "Revisão de Metas",
-                mensagens = listOf(
-                    Mensagem(texto = "Você completou 3 blocos de foco profundo hoje. Excelente consistência!", isLuna = true)
-                ),
-                ultimaAtualizacao = System.currentTimeMillis() - 86400000
-            )
+    private var conversationsReg: ListenerRegistration? = null
+    private val messageRegs = ConcurrentHashMap<String, ListenerRegistration>()
+    private val metaById = ConcurrentHashMap<String, ConversaMeta>()
+    private var currentUid: String? = null
+
+    fun init() {
+        // Observa uid — liga/desliga sync
+        scope.launch {
+            AuthRepository.uidFlow().collect { uid ->
+                detachAll()
+                currentUid = uid
+                if (uid == null) {
+                    _conversas.value = emptyList()
+                } else {
+                    attachConversations(uid)
+                }
+            }
+        }
+    }
+
+    /** Escopo de app — sobrevive à tela (não usa rememberCoroutineScope). */
+    fun launch(block: suspend CoroutineScope.() -> Unit) {
+        scope.launch(block = block)
+    }
+
+    /** Contexto da Application — necessário pro upload de content://. */
+    fun bindApp(application: Application) {
+        app = application
+    }
+
+    fun appContext(): android.content.Context? = app?.applicationContext
+
+    private fun attachConversations(uid: String) {
+        conversationsReg = FirestoreChat.subscribeConversations(
+            uid = uid,
+            onChange = { metas ->
+                metaById.clear()
+                metas.forEach { metaById[it.id] = it }
+                _conversas.update { prev ->
+                    val prevMsgs = prev.associate { it.id to it.mensagens }
+                    metas.map { meta ->
+                        val msgs = prevMsgs[meta.id]
+                            ?: meta.legacyMessages.takeIf { it.isNotEmpty() }
+                            ?: emptyList()
+                        meta.toConversa(msgs)
+                    }
+                }
+                // Reanexa listeners de mensagens já abertos
+                messageRegs.keys.toList().forEach { id ->
+                    if (metas.none { it.id == id }) {
+                        messageRegs.remove(id)?.remove()
+                    } else {
+                        reattachMessages(uid, id)
+                    }
+                }
+            },
+            onError = { /* offline / regras — lista fica como está */ },
         )
     }
 
+    private fun ensureMessagesListener(conversationId: String) {
+        val uid = currentUid ?: return
+        if (messageRegs.containsKey(conversationId)) return
+        reattachMessages(uid, conversationId)
+    }
+
+    private fun reattachMessages(uid: String, conversationId: String) {
+        messageRegs.remove(conversationId)?.remove()
+        val meta = metaById[conversationId]
+        val reg = FirestoreChat.subscribeMessages(
+            uid = uid,
+            conversationId = conversationId,
+            deletedIds = meta?.deletedMessageIds.orEmpty(),
+            legacy = meta?.legacyMessages.orEmpty(),
+            onChange = { msgs ->
+                _conversas.update { lista ->
+                    lista.map { conv ->
+                        if (conv.id != conversationId) conv
+                        else conv.copy(
+                            mensagens = msgs,
+                            preview = limparPreviewMensagem(
+                                msgs.lastOrNull()?.texto
+                                    ?: meta?.preview,
+                            ),
+                            ultimaAtualizacao = msgs.lastOrNull()?.timestamp
+                                ?: conv.ultimaAtualizacao,
+                            horaFormatada = formatarHoraCurta(
+                                msgs.lastOrNull()?.timestamp ?: conv.ultimaAtualizacao,
+                            ),
+                        )
+                    }
+                }
+            },
+        )
+        messageRegs[conversationId] = reg
+    }
+
+    private fun detachAll() {
+        conversationsReg?.remove()
+        conversationsReg = null
+        messageRegs.values.forEach { it.remove() }
+        messageRegs.clear()
+        metaById.clear()
+    }
+
     fun criarConversa(): String {
-        val nova = Conversa(titulo = "Nova Conversa")
-        _conversas.update { listOf(nova) + it }
-        return nova.id
+        val id = UUID.randomUUID().toString()
+        val nova = Conversa(id = id, titulo = "Nova conversa")
+        _conversas.update { listOf(nova) + it.filterNot { c -> c.id == id } }
+        val uid = currentUid
+        if (uid != null) {
+            scope.launch {
+                runCatching { FirestoreChat.ensureConversation(uid, id) }
+            }
+        }
+        return id
     }
 
     fun getConversa(id: String): Conversa? {
         return _conversas.value.find { it.id == id }
     }
-    
+
+    /** Observa só a conversa [id] — liga listener de mensagens sob demanda. */
+    fun observarConversa(id: String): Flow<Conversa?> {
+        ensureMessagesListener(id)
+        return conversas
+            .map { lista -> lista.find { it.id == id } }
+            .distinctUntilChanged()
+    }
+
     fun deletarConversas(ids: List<String>) {
-        _conversas.update { lista ->
-            lista.filterNot { it.id in ids }
+        if (ids.isEmpty()) return
+        _conversas.update { lista -> lista.filterNot { it.id in ids } }
+        ids.forEach { messageRegs.remove(it)?.remove() }
+        val uid = currentUid ?: return
+        scope.launch {
+            ids.forEach { id ->
+                runCatching { FirestoreChat.softDeleteConversation(uid, id) }
+            }
         }
     }
 
-    fun enviarMensagem(conversaId: String, texto: String, isLuna: Boolean = false) {
-        _conversas.update { lista ->
-            lista.map { conv ->
-                if (conv.id == conversaId) {
-                    // Atualiza o título se for a primeira mensagem do usuário
-                    val novoTitulo = if (!isLuna && conv.mensagens.isEmpty()) {
-                        texto.take(20) + if (texto.length > 20) "..." else ""
-                    } else if (!isLuna && conv.titulo == "Nova Conversa") {
-                        texto.take(20) + if (texto.length > 20) "..." else ""
-                    } else {
-                        conv.titulo
-                    }
-                    
-                    conv.copy(
-                        titulo = novoTitulo,
-                        mensagens = conv.mensagens + Mensagem(texto = texto, isLuna = isLuna),
-                        ultimaAtualizacao = System.currentTimeMillis()
-                    )
-                } else {
-                    conv
+    /** Soft-delete de todas as conversas na nuvem + limpa lista local. */
+    fun apagarTodosOsDados() {
+        val ids = _conversas.value.map { it.id }
+        val uid = currentUid
+        _conversas.value = emptyList()
+        messageRegs.values.forEach { it.remove() }
+        messageRegs.clear()
+        if (uid != null && ids.isNotEmpty()) {
+            scope.launch {
+                ids.forEach { id ->
+                    runCatching { FirestoreChat.softDeleteConversation(uid, id) }
                 }
             }
         }
+    }
+
+    fun enviarMensagem(
+        conversaId: String,
+        texto: String,
+        isLuna: Boolean = false,
+        reasoning: String? = null,
+        reasoningDuracao: String? = null,
+        actionRun: LunaActionRun? = null,
+        attachments: List<ComposerAttachment> = emptyList(),
+        reference: ThreadReference? = null,
+        /** Id fixo (Railway/idempotência) — se omitido, gera UUID. */
+        messageId: String? = null,
+        /** false = só UI local (servidor já persiste o mesmo id). */
+        persistirNuvem: Boolean = true,
+    ): String {
+        val id = messageId?.takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString()
+        val agora = System.currentTimeMillis()
+        val localAttachments = if (isLuna) emptyList() else attachments
+        val localRef = if (isLuna) null else reference
+
+        // Optimista na UI — upsert pelo id (evita duplicar quando o Firestore já syncou)
+        _conversas.update { lista ->
+            val idx = lista.indexOfFirst { it.id == conversaId }
+            if (idx < 0) return@update lista
+            val conv = lista[idx]
+            val tituloBase = when {
+                !isLuna && texto.isNotBlank() -> texto
+                !isLuna && attachments.isNotEmpty() -> attachments.first().name
+                !isLuna && reference != null -> "Sobre referência"
+                else -> null
+            }
+            val novoTitulo = if (tituloBase != null && (
+                    conv.mensagens.isEmpty() ||
+                        conv.titulo.equals("Nova conversa", ignoreCase = true)
+                    )
+            ) {
+                tituloBase.take(20) + if (tituloBase.length > 20) "…" else ""
+            } else {
+                conv.titulo
+            }
+            val timestamp = if (isLuna) {
+                val userId = userMessageIdForLuna(id)
+                val userTs = userId?.let { uid -> conv.mensagens.find { it.id == uid }?.timestamp }
+                maxOf(agora, (userTs ?: agora) + 1L)
+            } else {
+                agora
+            }
+            val nova = Mensagem(
+                id = id,
+                texto = texto,
+                isLuna = isLuna,
+                timestamp = timestamp,
+                reasoning = if (isLuna) reasoning else null,
+                reasoningDuracao = if (isLuna) reasoningDuracao else null,
+                actionRun = if (isLuna) actionRun else null,
+                attachments = localAttachments,
+                reference = localRef,
+            )
+            val jaExiste = conv.mensagens.any { it.id == id }
+            val novasMensagens = ordenarMensagensChat(
+                if (jaExiste) {
+                    conv.mensagens.map { if (it.id == id) {
+                        // Preserva timestamp/anexos locais se o patch vier sem
+                        it.copy(
+                            texto = texto.ifBlank { it.texto },
+                            reasoning = nova.reasoning ?: it.reasoning,
+                            reasoningDuracao = nova.reasoningDuracao ?: it.reasoningDuracao,
+                            actionRun = nova.actionRun ?: it.actionRun,
+                            attachments = localAttachments.ifEmpty { it.attachments },
+                            reference = localRef ?: it.reference,
+                        )
+                    } else it }
+                } else {
+                    conv.mensagens + nova
+                },
+            )
+            val previewFonte = when {
+                texto.isNotBlank() -> texto
+                attachments.isNotEmpty() ->
+                    if (attachments.size == 1) attachments.first().name
+                    else "${attachments.size} anexos · ${attachments.first().name}"
+                else -> novasMensagens.lastOrNull()?.texto
+            }
+            val atualizada = conv.copy(
+                titulo = novoTitulo,
+                mensagens = novasMensagens,
+                ultimaAtualizacao = agora,
+                preview = limparPreviewMensagem(previewFonte),
+                horaFormatada = formatarHoraCurta(agora),
+            )
+            ArrayList<Conversa>(lista.size).also { out ->
+                for (i in lista.indices) {
+                    out.add(if (i == idx) atualizada else lista[i])
+                }
+            }
+        }
+
+        ensureMessagesListener(conversaId)
+
+        if (!persistirNuvem) return id
+
+        val uid = currentUid ?: return id
+        val titleHint = _conversas.value.find { it.id == conversaId }?.titulo
+        scope.launch {
+            runCatching {
+                if (isLuna) {
+                    FirestoreChat.writeLunaMessage(
+                        uid = uid,
+                        conversationId = conversaId,
+                        messageId = id,
+                        text = texto,
+                        reasoning = reasoning,
+                        actionRun = actionRun,
+                    )
+                } else {
+                    val ctx = app?.applicationContext
+                    val uploaded = if (ctx != null && localAttachments.isNotEmpty()) {
+                        ChatMediaUpload.uploadAttachments(
+                            context = ctx,
+                            uid = uid,
+                            conversationId = conversaId,
+                            messageId = id,
+                            attachments = localAttachments,
+                        )
+                    } else {
+                        localAttachments
+                    }
+                    // Atualiza URIs remotas na bolha local
+                    if (uploaded !== localAttachments) {
+                        _conversas.update { lista ->
+                            lista.map { conv ->
+                                if (conv.id != conversaId) conv
+                                else conv.copy(
+                                    mensagens = conv.mensagens.map { msg ->
+                                        if (msg.id != id) msg
+                                        else msg.copy(attachments = uploaded)
+                                    },
+                                )
+                            }
+                        }
+                    }
+                    FirestoreChat.writeUserMessage(
+                        uid = uid,
+                        conversationId = conversaId,
+                        messageId = id,
+                        text = texto,
+                        attachments = uploaded,
+                        reference = localRef,
+                        titleHint = titleHint,
+                    )
+                }
+            }
+        }
+        return id
     }
 }

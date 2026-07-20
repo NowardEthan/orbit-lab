@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Foreground do launcher — símbolo Orbit centrado pelo bbox real.
+  Paths em coords 1024: bbox ≈ (161,153)–(947,754), centro (554,454).
+  Safe zone ~72dp; scale 0.078 ≈ 61dp (um pouco menor que o máximo).
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:translateX="10.79"
+        android:translateY="18.59"
+        android:scaleX="0.078"
+        android:scaleY="0.078">
+        <path
+            android:fillColor="#F8F7F4"
+            android:pathData="M161,564 C207,683 373,754 562,746 C641,743 711,725 770,694 L722,646 L789,614 L797,661 C865,624 918,579 947,534 C981,458 968,394 909,355 C875,333 840,327 807,332 C853,362 861,408 838,457 C794,551 675,621 531,647 C378,675 235,642 161,564 Z" />
+        <path
+            android:fillColor="#F8F7F4"
+            android:pathData="M274,596 C238,526 227,439 251,356 C289,226 402,153 527,160 C679,169 790,277 809,429 L810,452 C665,557 480,616 274,596 Z" />
+        <path
+            android:fillColor="#4D6FF7"
+            android:pathData="M742,646 L789,623 L794,661 L761,680 Z" />
+    </group>
+</vector>
