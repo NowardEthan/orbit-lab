@@ -1,28 +1,28 @@
 {
   "app": "orbit-lab",
   "manifestVersion": 1,
-  "latestVersion": "0.0.4",
-  "latestVersionCode": 6,
+  "latestVersion": "0.0.5",
+  "latestVersionCode": 7,
   "publishedAt": "2026-07-20",
-  "apkUrl": "https://github.com/NowardEthan/orbit-releases/releases/download/lab/orbit-0.0.4.apk",
+  "apkUrl": "https://github.com/NowardEthan/orbit-releases/releases/download/lab-0.0.5/orbit.apk",
   "minSupportedVersion": "0.1.0",
   "mandatory": false,
   "news": [
+    {
+      "id": "lab-0.0.5-2026-07-20",
+      "date": "2026-07-20",
+      "version": "0.0.5",
+      "tag": "novidade",
+      "title": "Release lab-0.0.5",
+      "body": "Nova release versionada no GitHub (download mais fiável no telemóvel). Ícone brand kit."
+    },
     {
       "id": "lab-0.0.4-2026-07-20",
       "date": "2026-07-20",
       "version": "0.0.4",
       "tag": "novidade",
       "title": "Ícone Orbit (brand kit)",
-      "body": "Launcher com o símbolo oficial (planeta + anel, Aura Blue) — não o ícone antigo do mobile."
-    },
-    {
-      "id": "lab-0.0.3-2026-07-20",
-      "date": "2026-07-20",
-      "version": "0.0.3",
-      "tag": "correcao",
-      "title": "APK versionado",
-      "body": "Link orbit-0.0.3.apk para evitar cache."
+      "body": "Símbolo oficial planeta + anel com Aura Blue."
     }
   ]
 }
