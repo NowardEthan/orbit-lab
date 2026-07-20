@@ -33,14 +33,17 @@ Com uma build antiga instalada:
 1. Abre o app → banner na Início  
 2. Atualiza → nova versão
 
-APK actual (sempre o versionado no manifesto):  
-https://github.com/NowardEthan/orbit-releases/releases/download/lab/orbit-0.0.4.apk
+APK actual (release versionada):  
+https://github.com/NowardEthan/orbit-releases/releases/download/lab-0.0.5/orbit.apk
+
+Página da release:  
+https://github.com/NowardEthan/orbit-releases/releases/tag/lab-0.0.5
 
 Manifesto:  
 https://raw.githubusercontent.com/NowardEthan/orbit-releases/main/updates-lab.json
 
-> Não uses `orbit-0.1.0.apk` (build antigo). Prefere o link `orbit-X.Y.Z.apk`
-> do manifesto — o nome `orbit.apk` pode ficar em cache no browser.
+> Usa a tag `lab-X.Y.Z` (não a flutuante `lab`). No telemóvel, se o browser
+> não iniciar o download, abre a página da release e toca em `orbit.apk`.
 
 ## Sem o secret
 
