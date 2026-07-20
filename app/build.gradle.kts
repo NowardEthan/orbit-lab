@@ -37,9 +37,9 @@ android {
         create("lab") {
             dimension = "canal"
             applicationId = "com.ethan.orbitlab"
-            // Versão baixa de propósito: o updates-lab.json sobe à frente para testar o update.
-            versionCode = 1
-            versionName = "0.1.0"
+            // Base local = 0.1.0. CI sobe com -PlabVersionCode / -PlabVersionName.
+            versionCode = (findProperty("labVersionCode") as String?)?.toIntOrNull() ?: 1
+            versionName = (findProperty("labVersionName") as String?) ?: "0.1.0"
             buildConfigField("String", "ORBIT_CHANNEL", "\"lab\"")
         }
         create("stable") {

@@ -15,7 +15,7 @@ import java.net.URL
  * Canal pelo **build** (`BuildConfig.ORBIT_CHANNEL`):
  * - `stable` → updates.json (produção Orbit)
  * - `beta` → updates-beta.json (Orbit β)
- * - `lab` → updates-lab.json (só o package com.ethan.orbitlab — teste Lab→Lab)
+ * - `lab` → updates-lab.json **neste repo** (orbit-lab) — CI/Actions; teste Lab→Lab
  *
  * API do GitHub primeiro (fresca); `raw` de reserva (sem rate-limit de 60/h).
  */
@@ -26,13 +26,13 @@ object ManifestFetcher {
     private const val API_BETA =
         "https://api.github.com/repos/NowardEthan/orbit-releases/contents/updates-beta.json"
     private const val API_LAB =
-        "https://api.github.com/repos/NowardEthan/orbit-releases/contents/updates-lab.json"
+        "https://api.github.com/repos/NowardEthan/orbit-lab/contents/updates-lab.json"
     private const val RAW_STABLE =
         "https://raw.githubusercontent.com/NowardEthan/orbit-releases/main/updates.json"
     private const val RAW_BETA =
         "https://raw.githubusercontent.com/NowardEthan/orbit-releases/main/updates-beta.json"
     private const val RAW_LAB =
-        "https://raw.githubusercontent.com/NowardEthan/orbit-releases/main/updates-lab.json"
+        "https://raw.githubusercontent.com/NowardEthan/orbit-lab/main/updates-lab.json"
 
     private const val PREFS = "orbit.updates"
     private const val CACHE_KEY_STABLE = "manifest.v1"

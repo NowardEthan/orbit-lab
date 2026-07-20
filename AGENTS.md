@@ -31,7 +31,7 @@ publicado em `orbit-releases`.
 
 | Flavor | applicationId | Manifesto | Uso |
 |--------|---------------|-----------|-----|
-| `lab` (default no dia a dia) | `com.ethan.orbitlab` | `updates-lab.json` | Dev + testar auto-update Lab→Lab |
+| `lab` (default no dia a dia) | `com.ethan.orbitlab` | `orbit-lab/updates-lab.json` | Dev + CI/Actions |
 | `beta` | `com.luna.orbitmobile.beta` | `updates-beta.json` | Substituir o Orbit β |
 | `stable` | `com.luna.orbitmobile` | `updates.json` | Substituir o Orbit estável |
 

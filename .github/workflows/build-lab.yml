@@ -1,0 +1,152 @@
+name: Build & Release Lab
+
+# Builda o APK Compose (flavor lab) e, opcionalmente, publica na tag `lab`
+# + actualiza updates-lab.json. Não precisa do notebook.
+#
+# Como correr: Actions → Build & Release Lab → Run workflow
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_name:
+        description: "versionName (ex. 0.3.0)"
+        required: true
+        default: "0.3.0"
+      version_code:
+        description: "versionCode (maior que o instalado)"
+        required: true
+        default: "3"
+      news_title:
+        description: "Título no mural de novidades"
+        required: false
+        default: "Nova build do Lab"
+      news_body:
+        description: "Texto da novidade"
+        required: false
+        default: "Build gerada pelo GitHub Actions."
+      publish:
+        description: "Publicar release (tag lab) e updates-lab.json"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Aceitar licenças SDK
+        run: yes | sdkmanager --licenses >/dev/null || true
+
+      - name: Build APK labRelease
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:assembleLabRelease --no-daemon \
+            -PlabVersionCode=${{ inputs.version_code }} \
+            -PlabVersionName=${{ inputs.version_name }}
+
+      - name: Preparar artefactos
+        id: apk
+        run: |
+          SRC="app/build/outputs/apk/lab/release/app-lab-release.apk"
+          test -f "$SRC"
+          mkdir -p dist
+          cp -f "$SRC" dist/orbit.apk
+          cp -f "$SRC" "dist/orbit-${{ inputs.version_name }}.apk"
+          echo "path=dist/orbit.apk" >> "$GITHUB_OUTPUT"
+          ls -lh dist/
+
+      - name: Upload artefact (sempre)
+        uses: actions/upload-artifact@v4
+        with:
+          name: orbit-lab-${{ inputs.version_name }}
+          path: |
+            dist/orbit.apk
+            dist/orbit-${{ inputs.version_name }}.apk
+          if-no-files-found: error
+
+      - name: Actualizar updates-lab.json
+        if: ${{ inputs.publish }}
+        env:
+          VER: ${{ inputs.version_name }}
+          CODE: ${{ inputs.version_code }}
+          TITLE: ${{ inputs.news_title }}
+          BODY: ${{ inputs.news_body }}
+        run: |
+          python3 <<'PY'
+          import json, os
+          from datetime import date
+          ver = os.environ["VER"]
+          code = int(os.environ["CODE"])
+          title = os.environ["TITLE"]
+          body = os.environ["BODY"]
+          today = date.today().isoformat()
+          path = "updates-lab.json"
+          with open(path, encoding="utf-8") as f:
+              data = json.load(f)
+          data["latestVersion"] = ver
+          data["latestVersionCode"] = code
+          data["publishedAt"] = today
+          data["apkUrl"] = "https://github.com/NowardEthan/orbit-lab/releases/download/lab/orbit.apk"
+          news = {
+              "id": f"lab-{ver}-{today}",
+              "date": today,
+              "version": ver,
+              "tag": "novidade",
+              "title": title,
+              "body": body,
+          }
+          data["news"] = [news] + [n for n in data.get("news", []) if n.get("version") != ver][:19]
+          with open(path, "w", encoding="utf-8") as f:
+              json.dump(data, f, ensure_ascii=False, indent=2)
+              f.write("\n")
+          print(json.dumps(data, ensure_ascii=False, indent=2))
+          PY
+
+      - name: Publicar release tag lab
+        if: ${{ inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Tag fixa `lab` (igual ao canal beta do orbit-releases): recria o asset.
+          if gh release view lab >/dev/null 2>&1; then
+            gh release upload lab dist/orbit.apk --clobber
+            gh release edit lab --title "lab ${{ inputs.version_name }}" \
+              --notes "Orbit Compose ${{ inputs.version_name }} (code ${{ inputs.version_code }}). Build Actions."
+          else
+            gh release create lab dist/orbit.apk --prerelease \
+              --title "lab ${{ inputs.version_name }}" \
+              --notes "Orbit Compose ${{ inputs.version_name }} (code ${{ inputs.version_code }}). Build Actions."
+          fi
+
+      - name: Commit updates-lab.json → main
+        if: ${{ inputs.publish }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          # Garante que o manifesto fica no main (o app lê raw/.../main/updates-lab.json)
+          git stash push -m "lab-manifest" -- updates-lab.json || true
+          git checkout main
+          git pull origin main
+          git stash pop || true
+          git add updates-lab.json
+          if git diff --staged --quiet; then
+            echo "Sem alterações no manifesto."
+          else
+            git commit -m "release: lab ${{ inputs.version_name }} (code ${{ inputs.version_code }})"
+            git push origin main
+          fi

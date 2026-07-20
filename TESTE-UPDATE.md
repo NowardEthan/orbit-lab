@@ -1,37 +1,38 @@
-# Testar o auto-update do Lab
+# Testar / lançar o Lab sem notebook
 
-Canal isolado: flavor **`lab`** → `updates-lab.json` → release tag **`lab`**.
-Não mexe no Orbit Expo.
+## Fluxo recomendado: GitHub Actions
 
-| | Versão | Code | Onde |
-|---|--------|------|------|
-| Instalar primeiro (antiga) | 0.1.0 | 1 | [orbit-0.1.0.apk](https://github.com/NowardEthan/orbit-releases/releases/download/lab/orbit-0.1.0.apk) |
-| Update (nova) | 0.2.0 | 2 | [orbit.apk](https://github.com/NowardEthan/orbit-releases/releases/download/lab/orbit.apk) (via banner) |
+1. Abre https://github.com/NowardEthan/orbit-lab/actions  
+2. **Build & Release Lab** → **Run workflow**
+3. Preenche:
+   - `version_name`: ex. `0.3.0`
+   - `version_code`: ex. `3` (tem de ser **maior** que o instalado)
+   - `publish`: ✅
+4. Espera o job verde
+5. No telemóvel (com a build antiga instalada) → Início → banner → atualizar
 
-Manifesto já no `main`:  
-https://raw.githubusercontent.com/NowardEthan/orbit-releases/main/updates-lab.json
+O workflow:
+- Builda o APK (`assembleLabRelease`)
+- Publica em https://github.com/NowardEthan/orbit-lab/releases/tag/lab (`orbit.apk`)
+- Actualiza `updates-lab.json` no **main** (o app lê daqui)
 
-## Só com o telemóvel (sem notebook)
+## Só com o telemóvel (já há builds)
 
-1. No telemóvel, abre o link da **0.1.0** e instala o APK  
-   (permite «fontes desconhecidas» / instalar apps do Chrome se pedir)
-2. Abre o app **Orbit** (`com.ethan.orbitlab`) — em Ajustes deve dizer `v0.1.0 (1)` e canal lab
-3. Na **Início** → banner «Nova versão disponível»
-4. Toca → baixa → confirma instalação
-5. Ajustes → `v0.2.0 (2)` ✅
+| | Versão | Link |
+|---|--------|------|
+| Antiga | 0.1.0 | [orbit-0.1.0.apk](https://github.com/NowardEthan/orbit-releases/releases/download/lab/orbit-0.1.0.apk) (legado) ou artefactos Actions |
+| Nova | via banner | [orbit.apk](https://github.com/NowardEthan/orbit-lab/releases/download/lab/orbit.apk) |
 
-## Com notebook (Android Studio)
+Manifesto:  
+https://raw.githubusercontent.com/NowardEthan/orbit-lab/main/updates-lab.json
+
+1. Instala a 0.1.0  
+2. Abre o app → banner  
+3. Atualiza → nova versão
+
+## Local (quando a rede aguentar)
 
 ```bash
-cd OrbitLab
-# labDebug já está em 0.1.0 — Run no telemóvel
-# Ou: adb install -r  (depois de baixar orbit-0.1.0.apk)
+./gradlew :app:assembleLabRelease -PlabVersionCode=3 -PlabVersionName=0.3.0
+# ou: ./scripts/build-apk.sh --lab
 ```
-
-Depois segue o mesmo: abrir app → banner → atualizar.
-
-## Se o banner não aparecer
-
-- Internet a bloquear GitHub
-- Já estás em code ≥ 2
-- Ajustes não diz «Canal lab (dev)»
