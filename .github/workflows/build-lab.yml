@@ -141,16 +141,19 @@ jobs:
             exit 1
           fi
 
-          # APK na tag fixa `lab`
+          # APK na tag fixa `lab` — ficheiro versionado (evita cache) + orbit.apk
+          VER="${{ inputs.version_name }}"
           if gh release view lab --repo NowardEthan/orbit-releases >/dev/null 2>&1; then
-            gh release upload lab dist/orbit.apk --repo NowardEthan/orbit-releases --clobber
+            gh release upload lab "dist/orbit-${VER}.apk" dist/orbit.apk \
+              --repo NowardEthan/orbit-releases --clobber
             gh release edit lab --repo NowardEthan/orbit-releases \
-              --title "lab ${{ inputs.version_name }}" \
-              --notes "Orbit Compose ${{ inputs.version_name }} (code ${{ inputs.version_code }})."
+              --title "lab ${VER}" \
+              --notes "Orbit Compose ${VER} (code ${{ inputs.version_code }}). APK: orbit-${VER}.apk"
           else
-            gh release create lab dist/orbit.apk --repo NowardEthan/orbit-releases --prerelease \
-              --title "lab ${{ inputs.version_name }}" \
-              --notes "Orbit Compose ${{ inputs.version_name }} (code ${{ inputs.version_code }})."
+            gh release create lab "dist/orbit-${VER}.apk" dist/orbit.apk \
+              --repo NowardEthan/orbit-releases --prerelease \
+              --title "lab ${VER}" \
+              --notes "Orbit Compose ${VER} (code ${{ inputs.version_code }}). APK: orbit-${VER}.apk"
           fi
 
           # Manifesto no main (o app lê raw/.../main/updates-lab.json)
