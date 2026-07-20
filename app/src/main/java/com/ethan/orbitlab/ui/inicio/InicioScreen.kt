@@ -36,6 +36,7 @@ fun InicioScreen(
     temNovidade: Boolean = false,
     updates: OrbitUpdatesUiState = OrbitUpdatesUiState(loading = false),
     onAtualizar: () -> Unit = {},
+    onAbrirRotina: () -> Unit = {},
 ) {
     Box(modifier = Modifier.fillMaxSize().background(Color.Transparent)) {
         
@@ -86,7 +87,7 @@ fun InicioScreen(
 
             GamificacaoSeccao()
             DestaqueAcaoSeccao()
-            RotinaPreviewSeccao()
+            RotinaPreviewSeccao(onAbrirRotina = onAbrirRotina)
         }
     }
 }
@@ -242,7 +243,7 @@ private fun DestaqueAcaoSeccao() {
 }
 
 @Composable
-private fun RotinaPreviewSeccao() {
+private fun RotinaPreviewSeccao(onAbrirRotina: () -> Unit) {
     Column(Modifier.fillMaxWidth()) {
         Row(
             Modifier.fillMaxWidth(), 
@@ -250,29 +251,34 @@ private fun RotinaPreviewSeccao() {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text("Sua Rotina Hoje", color = OrbitTokens.textHigh, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-            Text("Ver calendário", color = OrbitTokens.accentText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Text(
+                "Abrir rotina",
+                color = OrbitTokens.accentText,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.clickable(onClick = onAbrirRotina),
+            )
         }
         Spacer(Modifier.height(16.dp))
         
-        // Mock de bloco "Agora"
+        // Preview — toque abre a rotina completa
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(20.dp))
                 .background(OrbitTokens.surface)
                 .border(1.dp, OrbitTokens.borderSoft, RoundedCornerShape(20.dp))
+                .clickable(onClick = onAbrirRotina)
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Indicador de cor do bloco
             Box(Modifier.width(4.dp).height(36.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFF6AA0FF)))
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                Text("Trabalho Profundo", color = OrbitTokens.textHigh, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Text("Trabalho", color = OrbitTokens.textHigh, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(2.dp))
-                Text("09:00 - 12:00 • 2/4 Pomodoros", color = OrbitTokens.textMid, fontSize = 13.sp)
+                Text("09:00 - 17:00 · toque para abrir", color = OrbitTokens.textMid, fontSize = 13.sp)
             }
-            // Ação rápida no bloco (ex: iniciar timer)
             Box(
                 Modifier.size(40.dp).clip(CircleShape).background(OrbitTokens.surfaceRaised),
                 contentAlignment = Alignment.Center

@@ -53,10 +53,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material.icons.rounded.ChatBubble
 import androidx.compose.material.icons.rounded.Email
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Today
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
 
@@ -70,6 +72,7 @@ import com.ethan.orbitlab.ui.conversas.ConversasScreen
 import com.ethan.orbitlab.ui.inicio.InicioScreen
 import com.ethan.orbitlab.ui.novidades.NovidadesScreen
 import com.ethan.orbitlab.ui.perfil.PerfilScreen
+import com.ethan.orbitlab.ui.rotina.RotinaScreen
 import com.ethan.orbitlab.ui.theme.OrbitTokens
 import com.ethan.orbitlab.updates.OrbitUpdatesViewModel
 
@@ -96,6 +99,7 @@ fun OrbitShell(
     var chatAberto by remember { mutableStateOf(false) }
     var conversaAtivaId by remember { mutableStateOf<String?>(null) }
     var novidadesAberto by remember { mutableStateOf(false) }
+    var rotinaAberta by remember { mutableStateOf(false) }
     val updates by updatesVm.state.collectAsState()
 
     // Ao ver a aba Início, marca o mural/atualização como visto (tira o badge).
@@ -106,11 +110,12 @@ fun OrbitShell(
     }
 
     // Intercepta o botão 'Voltar' nativo do Android
-    BackHandler(enabled = menuAberto || chatAberto || novidadesAberto) {
+    BackHandler(enabled = menuAberto || chatAberto || novidadesAberto || rotinaAberta) {
         when {
             menuAberto -> menuAberto = false
             chatAberto -> chatAberto = false
             novidadesAberto -> novidadesAberto = false
+            rotinaAberta -> rotinaAberta = false
         }
     }
 
@@ -125,6 +130,7 @@ fun OrbitShell(
                             temNovidade = updates.hasUnseen || updates.updateAvailable,
                             updates = updates,
                             onAtualizar = { updatesVm.baixarEInstalar() },
+                            onAbrirRotina = { rotinaAberta = true },
                         )
                         OrbitTab.CONVERSAS -> ConversasScreen(
                             onOpenChat = { id ->
@@ -173,7 +179,20 @@ fun OrbitShell(
                     .border(1.dp, OrbitTokens.borderSoft, RoundedCornerShape(20.dp))
                     .padding(8.dp)
             ) {
-                // Única opção atual: Nova Conversa
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .clickable {
+                            menuAberto = false
+                            rotinaAberta = true
+                        }
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Rounded.Today, contentDescription = null, tint = OrbitTokens.gold, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Text("Rotina", color = OrbitTokens.textHigh, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                }
                 Row(
                     modifier = Modifier
                         .clip(RoundedCornerShape(16.dp))
@@ -217,6 +236,16 @@ fun OrbitShell(
                 updates = updates,
                 onRefresh = { updatesVm.refresh(force = true) },
             )
+        }
+
+        // Rotina Overlay (menu [+] ou Início)
+        AnimatedVisibility(
+            visible = rotinaAberta,
+            enter = scaleIn(animationSpec = tween(150), initialScale = 0.9f) + fadeIn(tween(150)),
+            exit = scaleOut(animationSpec = tween(150), targetScale = 0.9f) + fadeOut(tween(150)),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            RotinaScreen(onFechar = { rotinaAberta = false })
         }
     }
 }

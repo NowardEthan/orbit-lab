@@ -56,9 +56,17 @@ Passo a passo: [`RELEASING.md`](RELEASING.md). Script: `./scripts/build-apk.sh [
 ```
 app/src/main/java/com/ethan/orbitlab/
   shell/     # OrbitShell + navegação
-  ui/        # ecrãs
-  data/      # repositórios
+  ui/        # ecrãs (inclui ui/rotina/)
+  data/      # repositórios (chat + rotina in-memory)
+  domain/    # lógica pura (rotina: agora, vigência)
   demo/      # fixtures de demo
   updates/   # manifesto + download/install
   ui/theme/  # tokens Compose
 ```
+
+## Rotina (MVP local)
+
+Tela completa em `ui/rotina/` — chips Normal/alternativas, cartão Agora, dias,
+lista com buracos, detalhe Hoje/Fixas. Dados em `RotinaRepository` (memória).
+
+Ainda stub: alarme nativo, painel Agora, chat Luna do bloco, Firestore.
