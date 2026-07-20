@@ -1,0 +1,34 @@
+ORBIT — PACOTE DA MARCA
+
+Símbolo aprovado: planeta e faixa orbital unificados, com uma pequena assinatura em Aura Blue.
+
+CORES
+Orbit Ink: #111318
+Orbit Night: #0D0F13
+Orbit Graphite: #191C22
+Orbit Warm White: #F8F7F4
+Aura Blue: #4D6FF7
+
+VERSÃO PRINCIPAL
+Símbolo branco-quente com detalhe Aura Blue sobre fundo escuro.
+
+VERSÃO SECUNDÁRIA
+Símbolo preto com detalhe Aura Blue sobre fundo claro.
+
+ARQUIVOS
+- SVG: vetores escaláveis para interfaces, edição e impressão.
+- PNG transparente: uso geral, apresentações e sobreposição em fundos.
+- PNG com fundo: versões prontas em fundo claro e escuro.
+- App icon: versões quadradas prontas para mobile e desktop.
+- WebP: versão transparente e leve para web e aplicativos.
+- ICO: ícone multirresolução para Windows e executáveis.
+- PDF/EPS: formatos vetoriais para gráfica e impressão.
+
+RECOMENDAÇÕES
+- Preserve espaço livre ao redor do símbolo equivalente a pelo menos 18% de sua largura.
+- Não transforme a faixa orbital em um O perfeitamente circular.
+- Não aumente o detalhe azul nem o converta em uma seta evidente.
+- Em fundos escuros, prefira a versão branca com a assinatura azul.
+- Em fundos claros, prefira a versão preta com a assinatura azul.
+- Em aplicações monocromáticas, use os arquivos white ou black-monochrome.
+- Para tamanhos muito pequenos, use os app icons prontos e confira a leitura da assinatura azul.

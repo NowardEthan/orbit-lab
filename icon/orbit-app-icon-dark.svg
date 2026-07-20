@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-label="Orbit app icon dark">
+  <rect width="1024" height="1024" rx="220" fill="#0D0F13"/>
+  <g transform="translate(83 175) scale(.75)">
+    <path d="M161 564 C207 683 373 754 562 746 C641 743 711 725 770 694 L722 646 L789 614 L797 661 C865 624 918 579 947 534 C981 458 968 394 909 355 C875 333 840 327 807 332 C853 362 861 408 838 457 C794 551 675 621 531 647 C378 675 235 642 161 564 Z" fill="#F8F7F4"/>
+    <path d="M274 596 C238 526 227 439 251 356 C289 226 402 153 527 160 C679 169 790 277 809 429 L810 452 C665 557 480 616 274 596 Z" fill="#F8F7F4"/>
+    <path d="M742 646 L789 623 L794 661 L761 680 Z" fill="#4D6FF7"/>
+  </g>
+</svg>

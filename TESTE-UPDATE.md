@@ -34,7 +34,7 @@ Com uma build antiga instalada:
 2. Atualiza → nova versão
 
 APK actual (sempre o versionado no manifesto):  
-https://github.com/NowardEthan/orbit-releases/releases/download/lab/orbit-0.0.3.apk
+https://github.com/NowardEthan/orbit-releases/releases/download/lab/orbit-0.0.4.apk
 
 Manifesto:  
 https://raw.githubusercontent.com/NowardEthan/orbit-releases/main/updates-lab.json
