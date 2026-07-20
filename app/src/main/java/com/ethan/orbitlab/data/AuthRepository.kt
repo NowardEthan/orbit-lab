@@ -146,7 +146,21 @@ object AuthRepository {
                 Result.failure(IllegalArgumentException("Resposta do Google inesperada."))
             }
         } catch (e: GetCredentialCancellationException) {
-            Result.failure(IllegalArgumentException("Login cancelado."))
+            // Muitas vezes NÃO é o utilizador a cancelar — é package/SHA-1 em falta
+            // no cliente Android OAuth (com.ethan.orbitlab). Ver AGENTS.md.
+            val detail = e.message?.takeIf { it.isNotBlank() }
+            Result.failure(
+                IllegalArgumentException(
+                    if (detail != null) {
+                        "Login Google cancelado ($detail). Se não cancelaste, falta " +
+                            "registar o package com.ethan.orbitlab + SHA-1 do debug.keystore " +
+                            "no Firebase / Google Cloud."
+                    } else {
+                        "Login Google cancelado. Se não cancelaste, falta registar " +
+                            "com.ethan.orbitlab + SHA-1 no Firebase / Google Cloud."
+                    },
+                ),
+            )
         } catch (e: GetCredentialException) {
             Result.failure(
                 IllegalArgumentException(
