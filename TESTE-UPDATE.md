@@ -1,76 +1,37 @@
-# Testar o auto-update do Lab (no notebook)
+# Testar o auto-update do Lab
 
-O flavor **`lab`** (`com.ethan.orbitlab`) lê **`updates-lab.json`** — não mexe no
-Orbit Expo (estável/β). Versão instalada de teste: **0.1.0 (code 1)**. Manifesto
-aponta para **0.2.0 (code 2)**.
+Canal isolado: flavor **`lab`** → `updates-lab.json` → release tag **`lab`**.
+Não mexe no Orbit Expo.
 
-## Passo a passo
+| | Versão | Code | Onde |
+|---|--------|------|------|
+| Instalar primeiro (antiga) | 0.1.0 | 1 | [orbit-0.1.0.apk](https://github.com/NowardEthan/orbit-releases/releases/download/lab/orbit-0.1.0.apk) |
+| Update (nova) | 0.2.0 | 2 | [orbit.apk](https://github.com/NowardEthan/orbit-releases/releases/download/lab/orbit.apk) (via banner) |
 
-### 1. Instalar a versão «antiga» (0.1.0)
+Manifesto já no `main`:  
+https://raw.githubusercontent.com/NowardEthan/orbit-releases/main/updates-lab.json
 
-No Android Studio: flavor **`labDebug`** → Run no telemóvel.
+## Só com o telemóvel (sem notebook)
 
-Ou:
+1. No telemóvel, abre o link da **0.1.0** e instala o APK  
+   (permite «fontes desconhecidas» / instalar apps do Chrome se pedir)
+2. Abre o app **Orbit** (`com.ethan.orbitlab`) — em Ajustes deve dizer `v0.1.0 (1)` e canal lab
+3. Na **Início** → banner «Nova versão disponível»
+4. Toca → baixa → confirma instalação
+5. Ajustes → `v0.2.0 (2)` ✅
+
+## Com notebook (Android Studio)
 
 ```bash
 cd OrbitLab
-./scripts/build-apk.sh --lab --debug
-adb install -r dist/orbit.apk
+# labDebug já está em 0.1.0 — Run no telemóvel
+# Ou: adb install -r  (depois de baixar orbit-0.1.0.apk)
 ```
 
-Confirma em Ajustes: canal lab, versão `v0.1.0 (1)`.
-
-### 2. Gerar a versão «nova» (0.2.0)
-
-Em `app/build.gradle.kts`, no flavor `lab`:
-
-```kotlin
-versionCode = 2
-versionName = "0.2.0"
-```
-
-Depois:
-
-```bash
-./scripts/build-apk.sh --lab
-# → dist/orbit.apk  (package com.ethan.orbitlab, code 2)
-```
-
-### 3. Publicar o APK no GitHub (tag `lab`)
-
-No repo **orbit-releases** (com `gh` autenticado):
-
-```bash
-# Criar a release pré uma vez (se ainda não existir):
-gh release create lab ./dist/orbit.apk --repo NowardEthan/orbit-releases \
-  --prerelease --title "lab 0.2.0" --notes "Primeiro APK Compose para testar update"
-
-# Nas próximas: só substituir o asset
-gh release upload lab ./dist/orbit.apk --repo NowardEthan/orbit-releases --clobber
-```
-
-O `updates-lab.json` já aponta para:
-`…/releases/download/lab/orbit.apk`
-
-Se mudares versão/code no manifesto, faz commit+push do JSON **depois** do upload.
-
-### 4. Abrir o Lab e atualizar
-
-1. Abre o app (ainda 0.1.0)
-2. Na **Início** deve aparecer o banner «Nova versão disponível»
-3. Toca → baixa → o Android pede para instalar
-4. Na 1ª vez: permite «instalar apps desconhecidas» para o Orbit
-5. Confirma em Ajustes: `v0.2.0 (2)`
+Depois segue o mesmo: abrir app → banner → atualizar.
 
 ## Se o banner não aparecer
 
-- Sem internet / VPN a bloquear GitHub
-- Manifesto ainda não no `main` do orbit-releases (o app lê `main`)
-- `versionCode` instalado ≥ `latestVersionCode` do JSON
-- Ajustes → Atualizações: confirma «Canal lab (dev)»
-
-## Importante
-
-- **`updates-lab.json`** = só o package do lab. Não substitui o Expo.
-- Quando fores **substituir** o Orbit de verdade, usas flavors `beta`/`stable` +
-  `updates-beta.json` / `updates.json` (sem este ficheiro).
+- Internet a bloquear GitHub
+- Já estás em code ≥ 2
+- Ajustes não diz «Canal lab (dev)»
