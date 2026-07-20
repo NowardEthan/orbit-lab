@@ -99,7 +99,7 @@ jobs:
               "latestVersion": ver,
               "latestVersionCode": code,
               "publishedAt": today,
-              "apkUrl": "https://github.com/NowardEthan/orbit-releases/releases/download/lab/orbit.apk",
+              "apkUrl": f"https://github.com/NowardEthan/orbit-releases/releases/download/lab/orbit-{ver}.apk",
               "minSupportedVersion": "0.1.0",
               "mandatory": False,
               "news": [

@@ -28,16 +28,19 @@ O workflow:
 
 ## 3. No telemóvel
 
-Com a **0.1.0** instalada:
+Com uma build antiga instalada:
 
 1. Abre o app → banner na Início  
 2. Atualiza → nova versão
 
-APK base (0.1.0):  
-https://github.com/NowardEthan/orbit-releases/releases/download/lab/orbit-0.1.0.apk
+APK actual (sempre o versionado no manifesto):  
+https://github.com/NowardEthan/orbit-releases/releases/download/lab/orbit-0.0.3.apk
 
 Manifesto:  
 https://raw.githubusercontent.com/NowardEthan/orbit-releases/main/updates-lab.json
+
+> Não uses `orbit-0.1.0.apk` (build antigo). Prefere o link `orbit-X.Y.Z.apk`
+> do manifesto — o nome `orbit.apk` pode ficar em cache no browser.
 
 ## Sem o secret
 
