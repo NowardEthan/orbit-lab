@@ -89,9 +89,33 @@ android {
         buildConfigField("String", "LUNA_API_URL", "\"${lunaApiUrl.replace("\"", "\\\"")}\"")
     }
 
+    signingConfigs {
+        create("debugKey") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
+    // Canal lab = o auto-update do OrbitLab. O CI sobe a versão com -PlabVersionCode / -PlabVersionName.
+    flavorDimensions += "canal"
+    productFlavors {
+        create("lab") {
+            dimension = "canal"
+            applicationId = "com.ethan.orbitlab"
+            versionCode = (findProperty("labVersionCode") as String?)?.toIntOrNull() ?: 4
+            versionName = (findProperty("labVersionName") as String?) ?: "0.5.0"
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("debugKey")
+        }
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("debugKey")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
