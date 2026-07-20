@@ -45,10 +45,12 @@ Mesmo contrato do orbit-mobile — **não** há `updates-lab.json`. O Lab lê o 
 - UI: banner na Início (`UpdateBanner`) + secção em Ajustes
 - Comparação por `versionCode` (string só como reserva)
 - Download + `FileProvider` + intent de instalação (`REQUEST_INSTALL_PACKAGES`)
-- **Testar Lab→Lab:** [`TESTE-UPDATE.md`](TESTE-UPDATE.md) (`updates-lab.json`, flavor lab code 1→2)
+- **Lançar / testar sem notebook:** GitHub Actions → **Build & Release Lab**  
+  (ver [`TESTE-UPDATE.md`](TESTE-UPDATE.md))
+- **Testar Lab→Lab:** flavor lab + `updates-lab.json` neste repo
 
 Quando o Lab estiver pronto para **substituir** o Expo: build `beta`/`stable` → `orbit.apk`
-nos canais oficiais (não uses o `updates-lab.json` para isso).
+nos canais oficiais do `orbit-releases`.
 
 ## Estrutura
 
