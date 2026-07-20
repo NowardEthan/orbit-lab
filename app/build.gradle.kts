@@ -15,8 +15,7 @@ android {
         applicationId = "com.ethan.orbitlab"
         minSdk = 24
         targetSdk = 36
-        // Continua a sequência do orbit-mobile (78) — quando o Lab substituir o Expo,
-        // o versionCode tem de ser estritamente maior que o instalado.
+        // Sequência do orbit-mobile (78+) — flavors stable/beta herdam isto.
         versionCode = 79
         versionName = "2.25.0"
 
@@ -32,13 +31,15 @@ android {
         }
     }
 
-    // Canais: lab (dev local), stable e beta (mesmos pacotes do Orbit de produção).
-    // O Lab local não colide com o Orbit instalado; stable/beta preparam a substituição.
+    // Canais: lab (dev + auto-update próprio), stable e beta (packages de produção).
     flavorDimensions += "canal"
     productFlavors {
         create("lab") {
             dimension = "canal"
             applicationId = "com.ethan.orbitlab"
+            // Versão baixa de propósito: o updates-lab.json sobe à frente para testar o update.
+            versionCode = 1
+            versionName = "0.1.0"
             buildConfigField("String", "ORBIT_CHANNEL", "\"lab\"")
         }
         create("stable") {

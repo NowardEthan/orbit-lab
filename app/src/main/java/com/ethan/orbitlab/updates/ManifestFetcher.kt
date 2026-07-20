@@ -13,8 +13,9 @@ import java.net.URL
  * Lê o manifesto público do orbit-releases.
  *
  * Canal pelo **build** (`BuildConfig.ORBIT_CHANNEL`):
- * - `stable` → updates.json
- * - `beta` / `lab` → updates-beta.json (lab testa o mesmo canal que vai herdar)
+ * - `stable` → updates.json (produção Orbit)
+ * - `beta` → updates-beta.json (Orbit β)
+ * - `lab` → updates-lab.json (só o package com.ethan.orbitlab — teste Lab→Lab)
  *
  * API do GitHub primeiro (fresca); `raw` de reserva (sem rate-limit de 60/h).
  */
@@ -24,51 +25,53 @@ object ManifestFetcher {
         "https://api.github.com/repos/NowardEthan/orbit-releases/contents/updates.json"
     private const val API_BETA =
         "https://api.github.com/repos/NowardEthan/orbit-releases/contents/updates-beta.json"
+    private const val API_LAB =
+        "https://api.github.com/repos/NowardEthan/orbit-releases/contents/updates-lab.json"
     private const val RAW_STABLE =
         "https://raw.githubusercontent.com/NowardEthan/orbit-releases/main/updates.json"
     private const val RAW_BETA =
         "https://raw.githubusercontent.com/NowardEthan/orbit-releases/main/updates-beta.json"
+    private const val RAW_LAB =
+        "https://raw.githubusercontent.com/NowardEthan/orbit-releases/main/updates-lab.json"
 
     private const val PREFS = "orbit.updates"
     private const val CACHE_KEY_STABLE = "manifest.v1"
     private const val CACHE_KEY_BETA = "manifest.beta.v1"
+    private const val CACHE_KEY_LAB = "manifest.lab.v1"
     private const val USER_AGENT = "Orbit-Lab"
 
     private val validTags = setOf("novidade", "correcao", "aviso")
 
     fun canalDoBuild(): String = BuildConfig.ORBIT_CHANNEL
 
-    fun isCanalBeta(): Boolean {
-        val canal = canalDoBuild()
-        return canal == "beta" || canal == "lab"
-    }
+    fun isCanalBeta(): Boolean = canalDoBuild() == "beta"
+
+    fun isCanalLab(): Boolean = canalDoBuild() == "lab"
 
     fun currentAppVersion(): String = BuildConfig.VERSION_NAME
 
     fun currentVersionCode(): Int = BuildConfig.VERSION_CODE
 
     fun fetchManifest(context: Context): OrbitManifest {
-        val beta = isCanalBeta()
+        val canal = canalDoBuild()
+        val (api, raw) = urlsDoCanal(canal)
         val json = try {
-            httpGetJson(
-                url = if (beta) API_BETA else API_STABLE,
-                accept = "application/vnd.github.raw",
-            )
+            httpGetJson(url = api, accept = "application/vnd.github.raw")
         } catch (_: Exception) {
-            httpGetJson(url = if (beta) RAW_BETA else RAW_STABLE)
+            httpGetJson(url = raw)
         }
 
         val manifest = coerceManifest(json)
             ?: throw IllegalStateException("Manifesto de updates inválido.")
-        writeCache(context, beta, manifest)
+        writeCache(context, canal, manifest)
         return manifest
     }
 
     fun readCachedManifest(context: Context): OrbitManifest? {
         return try {
-            val beta = isCanalBeta()
+            val canal = canalDoBuild()
             val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .getString(if (beta) CACHE_KEY_BETA else CACHE_KEY_STABLE, null)
+                .getString(cacheKey(canal), null)
                 ?: return null
             coerceManifest(JSONObject(raw))
         } catch (_: Exception) {
@@ -76,12 +79,23 @@ object ManifestFetcher {
         }
     }
 
-    private fun writeCache(context: Context, beta: Boolean, manifest: OrbitManifest) {
+    private fun urlsDoCanal(canal: String): Pair<String, String> = when (canal) {
+        "lab" -> API_LAB to RAW_LAB
+        "beta" -> API_BETA to RAW_BETA
+        else -> API_STABLE to RAW_STABLE
+    }
+
+    private fun cacheKey(canal: String): String = when (canal) {
+        "lab" -> CACHE_KEY_LAB
+        "beta" -> CACHE_KEY_BETA
+        else -> CACHE_KEY_STABLE
+    }
+
+    private fun writeCache(context: Context, canal: String, manifest: OrbitManifest) {
         try {
-            val key = if (beta) CACHE_KEY_BETA else CACHE_KEY_STABLE
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .edit()
-                .putString(key, toJson(manifest).toString())
+                .putString(cacheKey(canal), toJson(manifest).toString())
                 .apply()
         } catch (_: Exception) {
             // Cache é best-effort.
@@ -158,11 +172,14 @@ object ManifestFetcher {
                 JSONObject()
                     .put("id", item.id)
                     .put("date", item.date)
-                    .put("tag", when (item.tag) {
-                        OrbitNewsTag.NOVIDADE -> "novidade"
-                        OrbitNewsTag.CORRECAO -> "correcao"
-                        OrbitNewsTag.AVISO -> "aviso"
-                    })
+                    .put(
+                        "tag",
+                        when (item.tag) {
+                            OrbitNewsTag.NOVIDADE -> "novidade"
+                            OrbitNewsTag.CORRECAO -> "correcao"
+                            OrbitNewsTag.AVISO -> "aviso"
+                        },
+                    )
                     .put("title", item.title)
                     .put("body", item.body)
                     .put("version", item.version),

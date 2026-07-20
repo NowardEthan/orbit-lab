@@ -79,9 +79,9 @@ fun BlocoDetalheSheet(
             Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
+                .fillMaxSize(0.92f)
                 .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
                 .background(OrbitTokens.ink1)
-                .clickable(enabled = false) {}
                 .statusBarsPadding()
                 .navigationBarsPadding()
                 .padding(bottom = 16.dp),
@@ -112,7 +112,7 @@ fun BlocoDetalheSheet(
 
             Column(
                 Modifier
-                    .weight(1f, fill = false)
+                    .weight(1f)
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(20.dp),
