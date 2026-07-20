@@ -212,7 +212,11 @@ fun OrbitShell(
             exit = scaleOut(animationSpec = tween(150), targetScale = 0.9f) + fadeOut(tween(150)),
             modifier = Modifier.fillMaxSize()
         ) {
-            NovidadesScreen(onBack = { novidadesAberto = false })
+            NovidadesScreen(
+                onBack = { novidadesAberto = false },
+                updates = updates,
+                onRefresh = { updatesVm.refresh(force = true) },
+            )
         }
     }
 }

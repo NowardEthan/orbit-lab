@@ -23,8 +23,16 @@ O Lab já traz o cliente de atualizações (mesmo manifesto do mobile):
 - Banner na Início quando há versão nova
 - Ajustes mostram canal + versão instalada
 
-Ainda **não** publique o Lab no `orbit-releases` até a paridade mínima — o fluxo de release continua
-documentado em `orbit-mobile/AGENTS.md` e `orbit-releases/AGENTS.md`.
+Ainda **não** publique o Lab no `orbit-releases` até a paridade mínima — ver
+[`RELEASING.md`](RELEASING.md) quando for a hora.
+
+## Build APK
+
+```bash
+./scripts/build-apk.sh --lab      # package lab (dev)
+./scripts/build-apk.sh --beta     # substitui Orbit β
+./scripts/build-apk.sh --stable   # substitui Orbit estável
+```
 
 ## Estrutura rápida
 

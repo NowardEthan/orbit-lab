@@ -49,6 +49,8 @@ Mesmo contrato do orbit-mobile — **não** há `updates-lab.json`. O Lab lê o 
 Quando o Lab estiver pronto: build do flavor `beta`/`stable` → publicar o APK como `orbit.apk` no
 `orbit-releases` (mesmo fluxo do mobile). Quem tem o Orbit atualiza e recebe o Compose.
 
+Passo a passo: [`RELEASING.md`](RELEASING.md). Script: `./scripts/build-apk.sh [--lab|--beta|--stable]`.
+
 ## Estrutura
 
 ```

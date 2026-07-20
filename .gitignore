@@ -14,5 +14,6 @@ local.properties
 *.aab
 *.ap_
 archives/
+dist/
 .env
 .env.local
