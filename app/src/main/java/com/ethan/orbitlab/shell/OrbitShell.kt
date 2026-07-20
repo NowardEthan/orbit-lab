@@ -53,7 +53,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.material.icons.rounded.ChatBubble
 import androidx.compose.material.icons.rounded.Email
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Person
@@ -167,12 +166,11 @@ fun OrbitShell() {
     }
 
     // Intercepta o botão 'Voltar' nativo do Android
-    BackHandler(enabled = menuAberto || chatAberto || novidadesAberto || rotinaAberta) {
+    BackHandler(enabled = menuAberto || chatAberto || novidadesAberto) {
         when {
             menuAberto -> menuAberto = false
             chatAberto -> chatAberto = false
             novidadesAberto -> novidadesAberto = false
-            rotinaAberta -> rotinaAberta = false
         }
     }
 

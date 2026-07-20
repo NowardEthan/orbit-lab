@@ -56,7 +56,7 @@ import com.ethan.orbitlab.ui.theme.OrbitTokens
 import com.ethan.orbitlab.ui.theme.orbitEnter
 import com.ethan.orbitlab.ui.theme.orbitPressable
 
-private data class TagUi(val rotulo: String, val cor: Color)
+// ---- Modelo do changelog ----
 
 enum class TipoMudanca(
     val rotulo: String,
@@ -240,16 +240,6 @@ fun NovidadesScreen(onBack: () -> Unit) {
                     }
                 }
             }
-
-            Text(
-                "Orbit v${updates.currentVersion}",
-                color = OrbitTokens.textLow,
-                fontSize = 12.sp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp),
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-            )
         }
     }
 }
@@ -578,29 +568,5 @@ private fun AssinaturaAzul(modifier: Modifier = Modifier) {
 @Preview(showBackground = true, backgroundColor = 0xFF0E1014, widthDp = 380, heightDp = 980)
 @Composable
 fun NovidadesScreenPreview() {
-    NovidadesScreen(
-        onBack = {},
-        updates = OrbitUpdatesUiState(
-            loading = false,
-            currentVersion = "2.25.0",
-            news = listOf(
-                OrbitNewsItem(
-                    id = "demo-1",
-                    date = "2026-07-20",
-                    tag = OrbitNewsTag.NOVIDADE,
-                    title = "Auto-update nativo",
-                    body = "O Orbit Compose já lê o mesmo manifesto do canal de produção.",
-                    version = "2.25.0",
-                ),
-                OrbitNewsItem(
-                    id = "demo-2",
-                    date = "2026-07-16",
-                    tag = OrbitNewsTag.CORRECAO,
-                    title = "Ajustes de estabilidade",
-                    body = "Correções do capítulo anterior.",
-                    version = "2.24.4",
-                ),
-            ),
-        ),
-    )
+    NovidadesScreen(onBack = {})
 }

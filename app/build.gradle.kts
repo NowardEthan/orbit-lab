@@ -109,39 +109,6 @@ android {
         }
     }
 
-    signingConfigs {
-        create("debugKey") {
-            storeFile = file("debug.keystore")
-            storePassword = "android"
-            keyAlias = "androiddebugkey"
-            keyPassword = "android"
-        }
-    }
-
-    // Canais: lab (dev + auto-update próprio), stable e beta (packages de produção).
-    flavorDimensions += "canal"
-    productFlavors {
-        create("lab") {
-            dimension = "canal"
-            applicationId = "com.ethan.orbitlab"
-            // Base local = 0.1.0. CI sobe com -PlabVersionCode / -PlabVersionName.
-            versionCode = (findProperty("labVersionCode") as String?)?.toIntOrNull() ?: 1
-            versionName = (findProperty("labVersionName") as String?) ?: "0.1.0"
-            buildConfigField("String", "ORBIT_CHANNEL", "\"lab\"")
-        }
-        create("stable") {
-            dimension = "canal"
-            applicationId = "com.luna.orbitmobile"
-            buildConfigField("String", "ORBIT_CHANNEL", "\"stable\"")
-        }
-        create("beta") {
-            dimension = "canal"
-            applicationId = "com.luna.orbitmobile.beta"
-            versionNameSuffix = "-beta"
-            buildConfigField("String", "ORBIT_CHANNEL", "\"beta\"")
-        }
-    }
-
     buildTypes {
         debug {
             signingConfig = signingConfigs.getByName("debugKey")
