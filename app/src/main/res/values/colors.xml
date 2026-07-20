@@ -7,4 +7,8 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <!-- Brand kit Orbit — launcher -->
+    <color name="ic_launcher_background">#FF0A0B0F</color>
+    <color name="orbit_aura_blue">#FF4D6FF7</color>
+    <color name="orbit_warm_white">#FFF8F7F4</color>
 </resources>

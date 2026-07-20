@@ -20,7 +20,7 @@ Laboratório Android nativo (Kotlin + Jetpack Compose) do ecossistema Luna/Orbit
 app/src/main/java/com/ethan/orbitlab/
   MainActivity.kt
   shell/          # shell + navegação
-  ui/             # ecrãs (início, chat, conversas, …)
+  ui/             # telas (início, chat, conversas, …)
   data/           # repositórios
   demo/           # dados de demonstração
   ui/theme/       # tokens / tema Compose

@@ -2,20 +2,17 @@ package com.ethan.orbitlab.shell
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.Crossfade
-import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -25,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -38,17 +36,19 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -57,21 +57,27 @@ import androidx.compose.material.icons.rounded.Email
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
 
+import com.ethan.orbitlab.data.AuthRepository
 import com.ethan.orbitlab.data.ChatRepository
+import com.ethan.orbitlab.data.updates.UpdatesRepository
 import com.ethan.orbitlab.ui.ajustes.AjustesScreen
+import com.ethan.orbitlab.ui.auth.LoginScreen
 import com.ethan.orbitlab.ui.chat.ChatScreen
 import com.ethan.orbitlab.ui.conversas.ConversasScreen
 import com.ethan.orbitlab.ui.inicio.InicioScreen
 import com.ethan.orbitlab.ui.novidades.NovidadesScreen
 import com.ethan.orbitlab.ui.perfil.PerfilScreen
+import com.ethan.orbitlab.ui.theme.OrbitMetrics
+import com.ethan.orbitlab.ui.theme.OrbitMotion
 import com.ethan.orbitlab.ui.theme.OrbitTokens
+import com.ethan.orbitlab.ui.theme.orbitPressable
+import com.ethan.orbitlab.ui.theme.orbitTabReveal
 
 /**
- * OrbitShell — a espinha do app: barra de baixo fixa + telas trocando por cima dela.
- * O estado ATIVO da aba se marca pela COR acesa (branco vs cinza) + o ícone crescendo um pouco.
+ * OrbitShell — barra + telas.
+ * Abas: uma árvore + micro-reveal; overlays: fade/slide curto.
  */
 private enum class OrbitTab(
     val label: String,
@@ -85,12 +91,79 @@ private enum class OrbitTab(
 
 @Composable
 fun OrbitShell() {
+    val authReady by AuthRepository.authReady.collectAsState()
+    val session by AuthRepository.session.collectAsState()
+
+    if (!authReady) {
+        Box(
+            Modifier.fillMaxSize().background(OrbitTokens.ink1),
+            contentAlignment = Alignment.Center,
+        ) {
+            // Splash curto enquanto o Firebase Auth restaura a sessão
+        }
+        return
+    }
+
+    if (session == null) {
+        LoginScreen(onAutenticado = {})
+        return
+    }
+
     var abaAtual by remember { mutableStateOf(OrbitTab.INICIO) }
     var menuAberto by remember { mutableStateOf(false) }
     var chatAberto by remember { mutableStateOf(false) }
     var conversaAtivaId by remember { mutableStateOf<String?>(null) }
     var novidadesAberto by remember { mutableStateOf(false) }
-    var temNovidade by remember { mutableStateOf(true) }
+    val manifest by UpdatesRepository.manifest.collectAsState()
+    val seenSignature by UpdatesRepository.seenSignature.collectAsState()
+    val seenLoaded by UpdatesRepository.seenLoaded.collectAsState()
+    val temNovidade = remember(manifest, seenSignature, seenLoaded) {
+        if (!seenLoaded) return@remember false
+        val topNews = manifest?.news?.firstOrNull()?.id.orEmpty()
+        val sig = manifest?.let { "${it.latestVersion}::$topNews" }
+        sig != null && sig != seenSignature
+    }
+    val abaStateHolder = rememberSaveableStateHolder()
+
+    val onAbrirNovidades = remember {
+        {
+            novidadesAberto = true
+            UpdatesRepository.markSeen()
+        }
+    }
+    val onOpenChat = remember {
+        { id: String ->
+            conversaAtivaId = id
+            chatAberto = true
+        }
+    }
+    val onAbrirAjustes = remember { { abaAtual = OrbitTab.AJUSTES } }
+    val onAbrirPerfil = remember { { abaAtual = OrbitTab.PERFIL } }
+    val onConversarComLuna = remember {
+        {
+            conversaAtivaId = ChatRepository.conversas.value.firstOrNull()?.id
+                ?: ChatRepository.criarConversa()
+            chatAberto = true
+        }
+    }
+    val onAba = remember {
+        { tab: OrbitTab ->
+            abaAtual = tab
+            menuAberto = false
+        }
+    }
+    val onMais = remember { { menuAberto = !menuAberto } }
+    val onFecharMenu = remember { { menuAberto = false } }
+    val onFecharChat = remember { { chatAberto = false } }
+    val onFecharNovidades = remember { { novidadesAberto = false } }
+    val onNovaConversa = remember {
+        {
+            menuAberto = false
+            val newId = ChatRepository.criarConversa()
+            conversaAtivaId = newId
+            chatAberto = true
+        }
+    }
 
     // Intercepta o botão 'Voltar' nativo do Android
     BackHandler(enabled = menuAberto || chatAberto || novidadesAberto) {
@@ -103,101 +176,116 @@ fun OrbitShell() {
 
     Box(Modifier.fillMaxSize().background(OrbitTokens.ink1)) {
         Column(Modifier.fillMaxSize()) {
-            // A ÁREA DE CONTEÚDO
-            Box(Modifier.weight(1f).fillMaxWidth().statusBarsPadding()) {
-                Crossfade(targetState = abaAtual, animationSpec = tween(220), label = "aba") { aba ->
-                    when (aba) {
-                        OrbitTab.INICIO -> InicioScreen(
-                            onAbrirNovidades = { novidadesAberto = true; temNovidade = false },
-                            temNovidade = temNovidade
-                        )
-                        OrbitTab.CONVERSAS -> ConversasScreen(
-                            onOpenChat = { id ->
-                                conversaAtivaId = id
-                                chatAberto = true
-                            }
-                        )
-                        OrbitTab.PERFIL -> PerfilScreen()
-                        OrbitTab.AJUSTES -> AjustesScreen()
+            // Uma aba por vez; sob chat/novidades não compomos a aba (estado no SaveableStateHolder)
+            Box(
+                Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .orbitTabReveal(abaAtual.name),
+            ) {
+                if (!chatAberto && !novidadesAberto) {
+                    abaStateHolder.SaveableStateProvider(abaAtual.name) {
+                        when (abaAtual) {
+                            OrbitTab.INICIO -> InicioScreen(
+                                onAbrirNovidades = onAbrirNovidades,
+                                temNovidade = temNovidade,
+                                onAbrirConversa = onOpenChat,
+                                onNovaConversa = onNovaConversa,
+                                idleAtivo = true,
+                                onMarkNovidadesVistas = { UpdatesRepository.markSeen() },
+                            )
+                            OrbitTab.CONVERSAS -> ConversasScreen(onOpenChat = onOpenChat)
+                            OrbitTab.PERFIL -> PerfilScreen(
+                                onConversarComLuna = onConversarComLuna,
+                                onAbrirConversa = onOpenChat,
+                            )
+                            OrbitTab.AJUSTES -> AjustesScreen(onAbrirPerfil = onAbrirPerfil)
+                        }
                     }
                 }
             }
             OrbitBottomBar(
                 atual = abaAtual,
-                onAba = { abaAtual = it; menuAberto = false },
+                onAba = onAba,
                 menuAberto = menuAberto,
-                onMais = { menuAberto = !menuAberto }
+                onMais = onMais,
             )
         }
-        
-        // Fundo escurecido que fecha o menu ao tocar fora
+
         AnimatedVisibility(
             visible = menuAberto,
-            enter = fadeIn(tween(150)),
-            exit = fadeOut(tween(150))
+            enter = OrbitMotion.scrimEnter(),
+            exit = OrbitMotion.scrimExit(),
         ) {
             Box(
                 Modifier
                     .fillMaxSize()
                     .background(Color.Black.copy(alpha = 0.65f))
-                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { menuAberto = false }
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() },
+                        onClick = onFecharMenu,
+                    ),
             )
         }
-        
-        // Mini-menu Flutuante
+
         AnimatedVisibility(
             visible = menuAberto,
-            enter = scaleIn(animationSpec = tween(150), initialScale = 0.8f, transformOrigin = TransformOrigin(0.5f, 1f)) + fadeIn(tween(150)),
-            exit = scaleOut(animationSpec = tween(100), targetScale = 0.8f, transformOrigin = TransformOrigin(0.5f, 1f)) + fadeOut(tween(100)),
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 110.dp)
+            enter = OrbitMotion.popupEnter(),
+            exit = OrbitMotion.popupExit(),
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 110.dp),
         ) {
             Column(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(20.dp))
+                    .clip(RoundedCornerShape(OrbitMetrics.radiusCard))
                     .background(OrbitTokens.surfaceRaised.copy(alpha = 0.95f))
-                    .border(1.dp, OrbitTokens.borderSoft, RoundedCornerShape(20.dp))
-                    .padding(8.dp)
+                    .border(1.dp, OrbitTokens.borderSoft, RoundedCornerShape(OrbitMetrics.radiusCard))
+                    .padding(8.dp),
             ) {
-                // Única opção atual: Nova Conversa
                 Row(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(16.dp))
-                        .clickable { 
-                            menuAberto = false
-                            val newId = ChatRepository.criarConversa()
-                            conversaAtivaId = newId
-                            chatAberto = true
-                        }
+                        .clip(RoundedCornerShape(OrbitMetrics.radiusPill))
+                        .orbitPressable(onClick = onNovaConversa)
                         .padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(Icons.Rounded.ChatBubble, contentDescription = null, tint = OrbitTokens.accentText, modifier = Modifier.size(20.dp))
+                    Icon(
+                        Icons.Rounded.ChatBubble,
+                        contentDescription = null,
+                        tint = OrbitTokens.accentText,
+                        modifier = Modifier.size(20.dp),
+                    )
                     Spacer(Modifier.width(12.dp))
-                    Text("Nova Conversa", color = OrbitTokens.textHigh, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        "Nova conversa",
+                        color = OrbitTokens.textHigh,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
                 }
             }
         }
-        
-        // Chat Overlay
+
+        // Chat / Novidades — só fade (sem scale full-screen)
         AnimatedVisibility(
             visible = chatAberto && conversaAtivaId != null,
-            enter = scaleIn(animationSpec = tween(150), initialScale = 0.9f) + fadeIn(tween(150)),
-            exit = scaleOut(animationSpec = tween(150), targetScale = 0.9f) + fadeOut(tween(150)),
-            modifier = Modifier.fillMaxSize()
+            enter = OrbitMotion.overlayEnter(),
+            exit = OrbitMotion.overlayExit(),
+            modifier = Modifier.fillMaxSize(),
         ) {
             conversaAtivaId?.let { id ->
-                ChatScreen(conversaId = id, onBack = { chatAberto = false })
+                ChatScreen(conversaId = id, onBack = onFecharChat)
             }
         }
 
-        // Novidades Overlay (abre pelo sino da Início)
         AnimatedVisibility(
             visible = novidadesAberto,
-            enter = scaleIn(animationSpec = tween(150), initialScale = 0.9f) + fadeIn(tween(150)),
-            exit = scaleOut(animationSpec = tween(150), targetScale = 0.9f) + fadeOut(tween(150)),
-            modifier = Modifier.fillMaxSize()
+            enter = OrbitMotion.overlayEnter(),
+            exit = OrbitMotion.overlayExit(),
+            modifier = Modifier.fillMaxSize(),
         ) {
-            NovidadesScreen(onBack = { novidadesAberto = false })
+            NovidadesScreen(onBack = onFecharNovidades)
         }
     }
 }
@@ -206,45 +294,24 @@ fun OrbitShell() {
 private fun OrbitBottomBar(atual: OrbitTab, onAba: (OrbitTab) -> Unit, menuAberto: Boolean, onMais: () -> Unit) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-        color = OrbitTokens.surfaceRaised.copy(alpha = 0.98f),
+        shape = RoundedCornerShape(topStart = OrbitMetrics.radiusCard, topEnd = OrbitMetrics.radiusCard),
+        color = OrbitTokens.surfaceRaised,
         border = BorderStroke(1.dp, OrbitTokens.borderSoft),
-        shadowElevation = 24.dp,
+        shadowElevation = 8.dp,
     ) {
         Row(
             Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .padding(horizontal = 8.dp)
-                .height(64.dp),
+                .padding(horizontal = 4.dp)
+                .height(OrbitMetrics.navHeight),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             TabItem(OrbitTab.INICIO, atual, onAba, Modifier.weight(1f))
             TabItem(OrbitTab.CONVERSAS, atual, onAba, Modifier.weight(1f))
 
-            // Espaço fixo no centro para o botão mágico
             Box(Modifier.width(72.dp), contentAlignment = Alignment.Center) {
-                val interacao = remember { MutableInteractionSource() }
-                val pressionado by interacao.collectIsPressedAsState()
-                val escala by animateFloatAsState(if (pressionado) 0.85f else 1f, animationSpec = tween(120), label = "fab")
-                Box(
-                    Modifier
-                        .scale(escala)
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .background(Brush.linearGradient(colors = listOf(OrbitTokens.violet, OrbitTokens.gold)))
-                        .clickable(interactionSource = interacao, indication = null) { onMais() },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Add, 
-                        contentDescription = "Abrir", 
-                        tint = Color.White, 
-                        modifier = Modifier
-                            .size(28.dp)
-                            .graphicsLayer { rotationZ = if (menuAberto) 45f else 0f } // Gira para formar um X
-                    )
-                }
+                FabMais(menuAberto = menuAberto, onMais = onMais)
             }
 
             TabItem(OrbitTab.PERFIL, atual, onAba, Modifier.weight(1f))
@@ -254,34 +321,100 @@ private fun OrbitBottomBar(atual: OrbitTab, onAba: (OrbitTab) -> Unit, menuAbert
 }
 
 @Composable
-private fun TabItem(tab: OrbitTab, atual: OrbitTab, onAba: (OrbitTab) -> Unit, modifier: Modifier = Modifier) {
-    val ativa = tab == atual
-    // O estado ativo acende a cor
-    val cor by animateColorAsState(
-        if (ativa) OrbitTokens.textHigh else OrbitTokens.textLow,
-        animationSpec = tween(200),
-        label = "cor",
-    )
-    // Sensação de clique macio
+private fun FabMais(menuAberto: Boolean, onMais: () -> Unit) {
     val interacao = remember { MutableInteractionSource() }
     val pressionado by interacao.collectIsPressedAsState()
-    val escalaClique by animateFloatAsState(if (pressionado) 0.86f else 1f, animationSpec = tween(120), label = "press")
-
-    // O ícone cresce um pouquinho quando a aba está ativa
-    val escalaIcone by animateFloatAsState(if (ativa) 1.15f else 1f, animationSpec = tween(200), label = "iconScale")
+    val escala by animateFloatAsState(
+        targetValue = if (pressionado) OrbitMotion.pressScale else 1f,
+        animationSpec = OrbitMotion.springPress,
+        label = "fabPress",
+    )
+    val rotacao by animateFloatAsState(
+        targetValue = if (menuAberto) 45f else 0f,
+        animationSpec = OrbitMotion.springPress,
+        label = "fabRot",
+    )
 
     Box(
-        modifier = modifier.fillMaxHeight(),
-        contentAlignment = Alignment.Center
+        Modifier
+            .size(48.dp)
+            .graphicsLayer {
+                scaleX = escala
+                scaleY = escala
+            }
+            .clickable(
+                interactionSource = interacao,
+                indication = null,
+                role = Role.Button,
+                onClick = onMais,
+            ),
+        contentAlignment = Alignment.Center,
     ) {
         Box(
             Modifier
-                .width(64.dp)
-                .fillMaxHeight()
-                .clip(RoundedCornerShape(20.dp))
-                .clickable(interactionSource = interacao, indication = null) { onAba(tab) }
-                .scale(escalaClique),
-            contentAlignment = Alignment.Center
+                .size(48.dp)
+                .clip(CircleShape)
+                .background(Color(0xFFF2F4F8)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Add,
+                contentDescription = if (menuAberto) "Fechar" else "Abrir",
+                tint = OrbitTokens.ink0,
+                modifier = Modifier
+                    .size(28.dp)
+                    .graphicsLayer { rotationZ = rotacao },
+            )
+        }
+        // Assinatura Aura Blue no canto (mockup)
+        Canvas(
+            Modifier
+                .align(Alignment.BottomEnd)
+                .offset(x = 2.dp, y = 2.dp)
+                .size(12.dp),
+        ) {
+            val path = Path().apply {
+                moveTo(size.width, size.height)
+                lineTo(size.width, size.height * 0.15f)
+                lineTo(size.width * 0.15f, size.height)
+                close()
+            }
+            drawPath(path, color = OrbitTokens.accent)
+        }
+    }
+}
+
+@Composable
+private fun TabItem(tab: OrbitTab, atual: OrbitTab, onAba: (OrbitTab) -> Unit, modifier: Modifier = Modifier) {
+    val ativa = tab == atual
+    val cor = if (ativa) OrbitTokens.textHigh else OrbitTokens.textLow
+    val indicadorLargura by animateDpAsState(
+        targetValue = if (ativa) 12.dp else 0.dp,
+        animationSpec = tween(OrbitMotion.msFast),
+        label = "indicador",
+    )
+    val interacao = remember { MutableInteractionSource() }
+    val pressionado by interacao.collectIsPressedAsState()
+    val escalaIcone by animateFloatAsState(
+        targetValue = if (pressionado) OrbitMotion.pressScale else 1f,
+        animationSpec = OrbitMotion.springPress,
+        label = "tabPress",
+    )
+
+    Box(
+        modifier = modifier
+            .fillMaxHeight()
+            .clickable(
+                interactionSource = interacao,
+                indication = null,
+                role = Role.Tab,
+                onClick = { onAba(tab) },
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
         ) {
             Icon(
                 imageVector = tab.icone,
@@ -289,7 +422,18 @@ private fun TabItem(tab: OrbitTab, atual: OrbitTab, onAba: (OrbitTab) -> Unit, m
                 tint = cor,
                 modifier = Modifier
                     .size(26.dp)
-                    .scale(escalaIcone),
+                    .graphicsLayer {
+                        scaleX = escalaIcone
+                        scaleY = escalaIcone
+                    },
+            )
+            Spacer(Modifier.height(4.dp))
+            Box(
+                Modifier
+                    .width(indicadorLargura)
+                    .height(2.dp)
+                    .clip(RoundedCornerShape(1.dp))
+                    .background(if (ativa) OrbitTokens.accent else Color.Transparent),
             )
         }
     }

@@ -1,0 +1,231 @@
+package com.ethan.orbitlab.data
+
+import android.app.Activity
+import android.content.Context
+import com.ethan.orbitlab.data.firebase.FirebaseBootstrap
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.auth.GoogleAuthProvider
+import com.google.firebase.auth.UserProfileChangeRequest
+import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
+import androidx.credentials.CredentialManager
+import androidx.credentials.CustomCredential
+import androidx.credentials.GetCredentialRequest
+import androidx.credentials.exceptions.GetCredentialCancellationException
+import androidx.credentials.exceptions.GetCredentialException
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.tasks.await
+
+enum class AuthProvider {
+    AURA,
+    GOOGLE,
+}
+
+data class AuthSession(
+    val uid: String,
+    val email: String,
+    val displayName: String,
+    val provider: AuthProvider,
+)
+
+/**
+ * Auth real via Firebase (projeto luna-8787d).
+ * Conta Aura = email/senha; Google = Credential Manager → Firebase.
+ * Sem anônimo / visitante.
+ */
+object AuthRepository {
+    private val auth: FirebaseAuth get() = FirebaseAuth.getInstance()
+    private val db: FirebaseFirestore get() = FirebaseFirestore.getInstance()
+
+    private val _session = MutableStateFlow<AuthSession?>(null)
+    val session: StateFlow<AuthSession?> = _session.asStateFlow()
+
+    private val _authReady = MutableStateFlow(false)
+    val authReady: StateFlow<Boolean> = _authReady.asStateFlow()
+
+    fun init(@Suppress("UNUSED_PARAMETER") context: Context) {
+        // Listener único — restaura sessão persistida pelo Firebase Auth
+        auth.addAuthStateListener { firebaseAuth ->
+            _session.value = firebaseAuth.currentUser?.toSession()
+            _authReady.value = true
+        }
+    }
+
+    fun validateEmail(email: String): String? {
+        val t = email.trim()
+        if (t.isEmpty()) return "Informe o email."
+        if (!android.util.Patterns.EMAIL_ADDRESS.matcher(t).matches()) {
+            return "Email inválido."
+        }
+        return null
+    }
+
+    fun validatePassword(password: String, criarConta: Boolean): String? {
+        if (password.isEmpty()) return "Informe a senha."
+        if (password.length < 6) return "Mínimo 6 caracteres."
+        if (criarConta && password.length < 8) {
+            return "Pra criar conta, use pelo menos 8 caracteres."
+        }
+        return null
+    }
+
+    suspend fun entrarComAura(email: String, password: String): Result<AuthSession> {
+        validateEmail(email)?.let { return Result.failure(IllegalArgumentException(it)) }
+        validatePassword(password, criarConta = false)?.let {
+            return Result.failure(IllegalArgumentException(it))
+        }
+        return try {
+            val result = auth.signInWithEmailAndPassword(email.trim(), password).await()
+            val user = result.user
+                ?: return Result.failure(IllegalStateException("Login sem usuário."))
+            ensureUserProfile(user)
+            Result.success(user.toSession())
+        } catch (e: Exception) {
+            Result.failure(IllegalArgumentException(mapAuthError(e)))
+        }
+    }
+
+    suspend fun criarContaAura(
+        nome: String,
+        email: String,
+        password: String,
+    ): Result<AuthSession> {
+        val n = nome.trim()
+        if (n.length < 2) {
+            return Result.failure(IllegalArgumentException("Informe como podemos te chamar."))
+        }
+        validateEmail(email)?.let { return Result.failure(IllegalArgumentException(it)) }
+        validatePassword(password, criarConta = true)?.let {
+            return Result.failure(IllegalArgumentException(it))
+        }
+        return try {
+            val result = auth.createUserWithEmailAndPassword(email.trim(), password).await()
+            val user = result.user
+                ?: return Result.failure(IllegalStateException("Conta criada sem usuário."))
+            user.updateProfile(
+                UserProfileChangeRequest.Builder().setDisplayName(n).build(),
+            ).await()
+            ensureUserProfile(user)
+            Result.success(user.toSession())
+        } catch (e: Exception) {
+            Result.failure(IllegalArgumentException(mapAuthError(e)))
+        }
+    }
+
+    suspend fun entrarComGoogle(activity: Activity): Result<AuthSession> {
+        return try {
+            val credentialManager = CredentialManager.create(activity)
+            // Botão explícito → Sign in with Google (não One Tap / GetGoogleIdOption)
+            val googleOption = GetSignInWithGoogleOption.Builder(FirebaseBootstrap.WEB_CLIENT_ID)
+                .build()
+            val request = GetCredentialRequest.Builder()
+                .addCredentialOption(googleOption)
+                .build()
+            val response = credentialManager.getCredential(activity, request)
+            val cred = response.credential
+            if (cred is CustomCredential &&
+                cred.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
+            ) {
+                val googleId = GoogleIdTokenCredential.createFrom(cred.data)
+                val firebaseCred = GoogleAuthProvider.getCredential(googleId.idToken, null)
+                val result = auth.signInWithCredential(firebaseCred).await()
+                val user = result.user
+                    ?: return Result.failure(IllegalStateException("Google sem usuário."))
+                ensureUserProfile(user)
+                Result.success(user.toSession())
+            } else {
+                Result.failure(IllegalArgumentException("Resposta do Google inesperada."))
+            }
+        } catch (e: GetCredentialCancellationException) {
+            Result.failure(IllegalArgumentException("Login cancelado."))
+        } catch (e: GetCredentialException) {
+            Result.failure(
+                IllegalArgumentException(
+                    "Google Sign-In falhou. ${e.message ?: "Tenta de novo em alguns minutos " +
+                        "(OAuth do Firebase pode demorar a propagar)."}",
+                ),
+            )
+        } catch (e: Exception) {
+            Result.failure(IllegalArgumentException(mapAuthError(e)))
+        }
+    }
+
+    suspend fun getIdToken(): String? {
+        return auth.currentUser?.getIdToken(false)?.await()?.token
+    }
+
+    suspend fun sair() {
+        auth.signOut()
+        _session.value = null
+    }
+
+    /** Apagar conta no lab = signOut (delete server-side fica no fluxo de privacidade do mobile). */
+    suspend fun apagarTudo() {
+        sair()
+    }
+
+    private suspend fun ensureUserProfile(user: FirebaseUser) {
+        val ref = db.collection("users").document(user.uid)
+        val snap = ref.get().await()
+        val patch = hashMapOf<String, Any?>(
+            "displayName" to user.displayName,
+            "email" to user.email,
+            "photoURL" to user.photoUrl?.toString(),
+            "updatedAt" to FieldValue.serverTimestamp(),
+        )
+        if (!snap.exists()) {
+            patch["plan"] = "free"
+            patch["createdAt"] = FieldValue.serverTimestamp()
+            ref.set(patch).await()
+        } else {
+            ref.set(patch, SetOptions.merge()).await()
+        }
+    }
+
+    private fun FirebaseUser.toSession(): AuthSession {
+        val isGoogle = providerData.any { it.providerId == GoogleAuthProvider.PROVIDER_ID }
+        return AuthSession(
+            uid = uid,
+            email = email.orEmpty().ifBlank { "sem-email" },
+            displayName = displayName?.takeIf { it.isNotBlank() }
+                ?: email?.substringBefore("@")?.replaceFirstChar { it.uppercase() }
+                ?: "Você",
+            provider = if (isGoogle) AuthProvider.GOOGLE else AuthProvider.AURA,
+        )
+    }
+
+    private fun mapAuthError(e: Exception): String {
+        val msg = e.message.orEmpty()
+        return when {
+            "ERROR_INVALID_EMAIL" in msg || "invalid-email" in msg -> "Email inválido."
+            "ERROR_WRONG_PASSWORD" in msg || "wrong-password" in msg ||
+                "INVALID_LOGIN_CREDENTIALS" in msg || "invalid-credential" in msg ->
+                "Email ou senha incorretos."
+            "ERROR_USER_NOT_FOUND" in msg || "user-not-found" in msg ->
+                "Nenhuma conta com este email."
+            "ERROR_EMAIL_ALREADY_IN_USE" in msg || "email-already-in-use" in msg ->
+                "Já existe uma Conta Aura com este email."
+            "ERROR_WEAK_PASSWORD" in msg || "weak-password" in msg ->
+                "Senha fraca demais."
+            "ERROR_NETWORK_REQUEST_FAILED" in msg || "network" in msg.lowercase() ->
+                "Sem rede. Tenta de novo."
+            else -> e.message?.takeIf { it.isNotBlank() } ?: "Não deu pra autenticar."
+        }
+    }
+}
+
+/** Observa o usuário Firebase atual (uid) — útil pra sync. */
+fun AuthRepository.uidFlow(): Flow<String?> = callbackFlow {
+    val listener = FirebaseAuth.AuthStateListener { trySend(it.currentUser?.uid) }
+    FirebaseAuth.getInstance().addAuthStateListener(listener)
+    awaitClose { FirebaseAuth.getInstance().removeAuthStateListener(listener) }
+}
