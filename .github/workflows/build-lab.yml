@@ -1,7 +1,8 @@
 name: Build & Release Lab
 
-# Builda o APK Compose (flavor lab) e, opcionalmente, publica na tag `lab`
-# + actualiza updates-lab.json. Não precisa do notebook.
+# Builda o APK Compose (flavor lab) no GitHub — sem notebook.
+# Para publicar no canal público (orbit-releases), precisa do secret ORBIT_RELEASES_TOKEN
+# (PAT com contents:write no repo NowardEthan/orbit-releases).
 #
 # Como correr: Actions → Build & Release Lab → Run workflow
 
@@ -25,7 +26,7 @@ on:
         required: false
         default: "Build gerada pelo GitHub Actions."
       publish:
-        description: "Publicar release (tag lab) e updates-lab.json"
+        description: "Publicar no orbit-releases (tag lab + updates-lab.json)"
         type: boolean
         default: true
 
@@ -59,17 +60,15 @@ jobs:
             -PlabVersionName=${{ inputs.version_name }}
 
       - name: Preparar artefactos
-        id: apk
         run: |
           SRC="app/build/outputs/apk/lab/release/app-lab-release.apk"
           test -f "$SRC"
           mkdir -p dist
           cp -f "$SRC" dist/orbit.apk
           cp -f "$SRC" "dist/orbit-${{ inputs.version_name }}.apk"
-          echo "path=dist/orbit.apk" >> "$GITHUB_OUTPUT"
           ls -lh dist/
 
-      - name: Upload artefact (sempre)
+      - name: Upload artefact (sempre — podes baixar na UI do Actions)
         uses: actions/upload-artifact@v4
         with:
           name: orbit-lab-${{ inputs.version_name }}
@@ -78,7 +77,7 @@ jobs:
             dist/orbit-${{ inputs.version_name }}.apk
           if-no-files-found: error
 
-      - name: Actualizar updates-lab.json
+      - name: Gerar updates-lab.json
         if: ${{ inputs.publish }}
         env:
           VER: ${{ inputs.version_name }}
@@ -94,58 +93,75 @@ jobs:
           title = os.environ["TITLE"]
           body = os.environ["BODY"]
           today = date.today().isoformat()
-          path = "updates-lab.json"
-          with open(path, encoding="utf-8") as f:
-              data = json.load(f)
-          data["latestVersion"] = ver
-          data["latestVersionCode"] = code
-          data["publishedAt"] = today
-          data["apkUrl"] = "https://github.com/NowardEthan/orbit-lab/releases/download/lab/orbit.apk"
-          news = {
-              "id": f"lab-{ver}-{today}",
-              "date": today,
-              "version": ver,
-              "tag": "novidade",
-              "title": title,
-              "body": body,
+          data = {
+              "app": "orbit-lab",
+              "manifestVersion": 1,
+              "latestVersion": ver,
+              "latestVersionCode": code,
+              "publishedAt": today,
+              "apkUrl": "https://github.com/NowardEthan/orbit-releases/releases/download/lab/orbit.apk",
+              "minSupportedVersion": "0.1.0",
+              "mandatory": False,
+              "news": [
+                  {
+                      "id": f"lab-{ver}-{today}",
+                      "date": today,
+                      "version": ver,
+                      "tag": "novidade",
+                      "title": title,
+                      "body": body,
+                  }
+              ],
           }
-          data["news"] = [news] + [n for n in data.get("news", []) if n.get("version") != ver][:19]
+          # Preserva news antigas se o ficheiro local existir
+          path = "updates-lab.json"
+          try:
+              with open(path, encoding="utf-8") as f:
+                  old = json.load(f)
+              old_news = [n for n in old.get("news", []) if n.get("version") != ver]
+              data["news"] = data["news"] + old_news[:19]
+          except FileNotFoundError:
+              pass
           with open(path, "w", encoding="utf-8") as f:
               json.dump(data, f, ensure_ascii=False, indent=2)
               f.write("\n")
           print(json.dumps(data, ensure_ascii=False, indent=2))
           PY
 
-      - name: Publicar release tag lab
+      - name: Publicar no orbit-releases (público)
         if: ${{ inputs.publish }}
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.ORBIT_RELEASES_TOKEN }}
         run: |
-          # Tag fixa `lab` (igual ao canal beta do orbit-releases): recria o asset.
-          if gh release view lab >/dev/null 2>&1; then
-            gh release upload lab dist/orbit.apk --clobber
-            gh release edit lab --title "lab ${{ inputs.version_name }}" \
-              --notes "Orbit Compose ${{ inputs.version_name }} (code ${{ inputs.version_code }}). Build Actions."
-          else
-            gh release create lab dist/orbit.apk --prerelease \
-              --title "lab ${{ inputs.version_name }}" \
-              --notes "Orbit Compose ${{ inputs.version_name }} (code ${{ inputs.version_code }}). Build Actions."
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::Falta o secret ORBIT_RELEASES_TOKEN."
+            echo "Cria um PAT (contents:write no NowardEthan/orbit-releases) e adiciona em:"
+            echo "orbit-lab → Settings → Secrets → Actions → ORBIT_RELEASES_TOKEN"
+            echo "O APK ficou nos Artefactos deste run — podes baixar manualmente."
+            exit 1
           fi
 
-      - name: Commit updates-lab.json → main
-        if: ${{ inputs.publish }}
-        run: |
+          # APK na tag fixa `lab`
+          if gh release view lab --repo NowardEthan/orbit-releases >/dev/null 2>&1; then
+            gh release upload lab dist/orbit.apk --repo NowardEthan/orbit-releases --clobber
+            gh release edit lab --repo NowardEthan/orbit-releases \
+              --title "lab ${{ inputs.version_name }}" \
+              --notes "Orbit Compose ${{ inputs.version_name }} (code ${{ inputs.version_code }})."
+          else
+            gh release create lab dist/orbit.apk --repo NowardEthan/orbit-releases --prerelease \
+              --title "lab ${{ inputs.version_name }}" \
+              --notes "Orbit Compose ${{ inputs.version_name }} (code ${{ inputs.version_code }})."
+          fi
+
+          # Manifesto no main (o app lê raw/.../main/updates-lab.json)
+          git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/NowardEthan/orbit-releases.git" /tmp/orbit-releases
+          cp -f updates-lab.json /tmp/orbit-releases/updates-lab.json
+          cd /tmp/orbit-releases
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git fetch origin main
-          # Garante que o manifesto fica no main (o app lê raw/.../main/updates-lab.json)
-          git stash push -m "lab-manifest" -- updates-lab.json || true
-          git checkout main
-          git pull origin main
-          git stash pop || true
           git add updates-lab.json
           if git diff --staged --quiet; then
-            echo "Sem alterações no manifesto."
+            echo "Manifesto já estava actualizado."
           else
             git commit -m "release: lab ${{ inputs.version_name }} (code ${{ inputs.version_code }})"
             git push origin main
