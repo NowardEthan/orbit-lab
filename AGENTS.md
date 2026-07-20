@@ -31,7 +31,7 @@ publicado em `orbit-releases`.
 
 | Flavor | applicationId | Manifesto | Uso |
 |--------|---------------|-----------|-----|
-| `lab` (default no dia a dia) | `com.ethan.orbitlab` | `updates-beta.json` | Desenvolvimento local |
+| `lab` (default no dia a dia) | `com.ethan.orbitlab` | `updates-lab.json` | Dev + testar auto-update Lab→Lab |
 | `beta` | `com.luna.orbitmobile.beta` | `updates-beta.json` | Substituir o Orbit β |
 | `stable` | `com.luna.orbitmobile` | `updates.json` | Substituir o Orbit estável |
 
@@ -45,11 +45,10 @@ Mesmo contrato do orbit-mobile — **não** há `updates-lab.json`. O Lab lê o 
 - UI: banner na Início (`UpdateBanner`) + secção em Ajustes
 - Comparação por `versionCode` (string só como reserva)
 - Download + `FileProvider` + intent de instalação (`REQUEST_INSTALL_PACKAGES`)
+- **Testar Lab→Lab:** [`TESTE-UPDATE.md`](TESTE-UPDATE.md) (`updates-lab.json`, flavor lab code 1→2)
 
-Quando o Lab estiver pronto: build do flavor `beta`/`stable` → publicar o APK como `orbit.apk` no
-`orbit-releases` (mesmo fluxo do mobile). Quem tem o Orbit atualiza e recebe o Compose.
-
-Passo a passo: [`RELEASING.md`](RELEASING.md). Script: `./scripts/build-apk.sh [--lab|--beta|--stable]`.
+Quando o Lab estiver pronto para **substituir** o Expo: build `beta`/`stable` → `orbit.apk`
+nos canais oficiais (não uses o `updates-lab.json` para isso).
 
 ## Estrutura
 
