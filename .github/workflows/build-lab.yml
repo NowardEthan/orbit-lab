@@ -99,7 +99,7 @@ jobs:
               "latestVersion": ver,
               "latestVersionCode": code,
               "publishedAt": today,
-              "apkUrl": f"https://github.com/NowardEthan/orbit-releases/releases/download/lab/orbit-{ver}.apk",
+              "apkUrl": f"https://github.com/NowardEthan/orbit-releases/releases/download/lab-{ver}/orbit.apk",
               "minSupportedVersion": "0.1.0",
               "mandatory": False,
               "news": [
@@ -141,19 +141,27 @@ jobs:
             exit 1
           fi
 
-          # APK na tag fixa `lab` — ficheiro versionado (evita cache) + orbit.apk
+          # Release versionada lab-X.Y.Z (download fiável) + tag flutuante `lab`
           VER="${{ inputs.version_name }}"
+          TAG="lab-${VER}"
+          NOTES="Orbit Compose ${VER} (code ${{ inputs.version_code }}).
+APK: https://github.com/NowardEthan/orbit-releases/releases/download/${TAG}/orbit.apk"
+          if gh release view "$TAG" --repo NowardEthan/orbit-releases >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/orbit.apk --repo NowardEthan/orbit-releases --clobber
+            gh release edit "$TAG" --repo NowardEthan/orbit-releases --title "Lab ${VER}" --notes "$NOTES"
+          else
+            gh release create "$TAG" dist/orbit.apk --repo NowardEthan/orbit-releases --prerelease \
+              --title "Lab ${VER}" --notes "$NOTES"
+          fi
           if gh release view lab --repo NowardEthan/orbit-releases >/dev/null 2>&1; then
-            gh release upload lab "dist/orbit-${VER}.apk" dist/orbit.apk \
+            gh release upload lab dist/orbit.apk "dist/orbit-${VER}.apk" \
               --repo NowardEthan/orbit-releases --clobber
             gh release edit lab --repo NowardEthan/orbit-releases \
               --title "lab ${VER}" \
-              --notes "Orbit Compose ${VER} (code ${{ inputs.version_code }}). APK: orbit-${VER}.apk"
+              --notes "Última: ${TAG} — https://github.com/NowardEthan/orbit-releases/releases/tag/${TAG}"
           else
-            gh release create lab "dist/orbit-${VER}.apk" dist/orbit.apk \
-              --repo NowardEthan/orbit-releases --prerelease \
-              --title "lab ${VER}" \
-              --notes "Orbit Compose ${VER} (code ${{ inputs.version_code }}). APK: orbit-${VER}.apk"
+            gh release create lab dist/orbit.apk --repo NowardEthan/orbit-releases --prerelease \
+              --title "lab ${VER}" --notes "Última: ${TAG}"
           fi
 
           # Manifesto no main (o app lê raw/.../main/updates-lab.json)
