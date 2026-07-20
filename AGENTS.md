@@ -51,6 +51,33 @@ Animações via [`OrbitMotion`](app/src/main/java/com/ethan/orbitlab/ui/theme/Or
 - Idle (sem toque): brilho em faixa (`clipToBounds` + offset só na faixa), glow no ícone, orbs. **Nunca** `scale`/`translation` no card inteiro — o texto treme.
 - Evitar `infiniteTransition` agressivo fora do Chat (gravador) e destes idles sutis.
 
+## Google Sign-In (Firebase)
+
+O Lab usa o projeto Firebase **`luna-8787d`** (mesmo do mobile), com
+`WEB_CLIENT_ID` em `data/firebase/FirebaseBootstrap.kt`. O botão Google usa
+Credential Manager (`GetSignInWithGoogleOption`).
+
+**Package do Lab:** `com.ethan.orbitlab` (≠ `com.luna.orbitmobile` do Expo).
+
+Se o login diz «cancelado» sem o utilizador cancelar, falta o **cliente OAuth Android**
+para este package + SHA-1 do `app/debug.keystore`:
+
+```
+SHA-1: 5E:8F:16:06:2E:A3:CD:2C:4A:0D:54:78:76:BA:A6:F3:8C:AB:F6:25
+```
+
+Passos (Ethan, consola):
+
+1. [Firebase](https://console.firebase.google.com/) → `luna-8787d` → ⚙ Project settings  
+2. **Add app** → Android → package `com.ethan.orbitlab`  
+   (ou, na app Android já existente, **Add fingerprint**)  
+3. Cola o SHA-1 acima (e o SHA-256 se pedir)  
+4. Em Google Cloud → APIs & Services → Credentials: confirma que existe
+   OAuth client tipo **Android** com esse package + SHA-1  
+5. Espera 5–10 min a propagar e tenta de novo no telemóvel
+
+O `WEB_CLIENT_ID` (tipo Web) **não muda** — continua o que está no código.
+
 ## Estrutura
 
 ```
@@ -61,6 +88,7 @@ app/src/main/java/com/ethan/orbitlab/
   demo/      # fixtures de demo
   ui/theme/  # OrbitTokens + OrbitFills + OrbitMetrics + OrbitMotion
 ```
+
 
 ## Rotina (MVP local)
 
