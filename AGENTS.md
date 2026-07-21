@@ -78,6 +78,17 @@ Passos (Ethan, consola):
 
 O `WEB_CLIENT_ID` (tipo Web) **não muda** — continua o que está no código.
 
+## Latência (bench PAIA vs OpenRouter)
+
+Harness CLI no guarda-chuva: [`scripts/bench-luna-latencia/`](../scripts/bench-luna-latencia/README.md).
+
+No dispositivo, cada turno regista no Logcat (`OrbitLatencia`) via
+`data/latencia/LatenciaProbe` — caminhos `openrouter_direct` e `paia_json`.
+
+```bash
+adb logcat -s OrbitLatencia
+```
+
 ## Estrutura
 
 ```

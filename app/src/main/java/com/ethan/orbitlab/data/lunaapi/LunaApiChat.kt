@@ -5,6 +5,7 @@ import com.ethan.orbitlab.data.AuthRepository
 import com.ethan.orbitlab.data.PrefsRepository
 import com.ethan.orbitlab.data.UserProfileRepository
 import com.ethan.orbitlab.data.firebase.ChatMediaUpload
+import com.ethan.orbitlab.data.latencia.LatenciaProbe
 import com.ethan.orbitlab.ui.chat.AttachmentKind
 import com.ethan.orbitlab.ui.chat.ComposerAttachment
 import com.ethan.orbitlab.ui.chat.LunaStreamEstado
@@ -138,9 +139,18 @@ object LunaApiChat {
         onEstado(LunaStreamEstado.Raciocinando(""))
 
         val result = LunaApiClient.chat(idToken, body)
-        val dur = ((System.currentTimeMillis() - t0) / 1000.0).roundToInt().coerceAtLeast(1)
+        val totalMs = System.currentTimeMillis() - t0
+        val dur = (totalMs / 1000.0).roundToInt().coerceAtLeast(1)
 
         if (result.error != null) {
+            LatenciaProbe.record(
+                caminho = "paia_json",
+                totalMs = totalMs,
+                ttfbMs = totalMs,
+                chars = 0,
+                ok = false,
+                detalhe = result.error.take(80),
+            )
             return LunaStreamResultado(
                 reasoning = "",
                 reasoningDuracao = "${dur}s",
@@ -148,10 +158,19 @@ object LunaApiChat {
             )
         }
 
+        val texto = result.text.ifBlank { "…" }
+        LatenciaProbe.record(
+            caminho = "paia_json",
+            totalMs = totalMs,
+            ttfbMs = totalMs,
+            chars = texto.length,
+            ok = true,
+        )
+
         return LunaStreamResultado(
             reasoning = "",
             reasoningDuracao = "${dur}s",
-            resposta = result.text.ifBlank { "…" },
+            resposta = texto,
         )
     }
 }

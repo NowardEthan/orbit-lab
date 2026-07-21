@@ -2,6 +2,7 @@ package com.ethan.orbitlab.data.openrouter
 
 import android.content.Context
 import com.ethan.orbitlab.data.Mensagem
+import com.ethan.orbitlab.data.latencia.LatenciaProbe
 import com.ethan.orbitlab.ui.chat.AttachmentKind
 import com.ethan.orbitlab.ui.chat.ComposerAttachment
 import com.ethan.orbitlab.ui.chat.LunaActionRun
@@ -177,13 +178,25 @@ object LunaDirectChat {
             ),
         )
 
+        var ok = true
         val resposta = runCatching {
             OpenRouterClient.chat(apiMessages)
         }.getOrElse { e ->
+            ok = false
             "Não consegui responder: ${e.message ?: "desconhecido"}"
         }
 
-        val dur = ((System.currentTimeMillis() - t0) / 1000.0).roundToInt().coerceAtLeast(1)
+        val totalMs = System.currentTimeMillis() - t0
+        val dur = (totalMs / 1000.0).roundToInt().coerceAtLeast(1)
+        val texto = resposta.ifBlank { "…" }
+        LatenciaProbe.record(
+            caminho = "openrouter_direct",
+            totalMs = totalMs,
+            ttfbMs = totalMs,
+            chars = texto.length,
+            ok = ok,
+            detalhe = if (wireTools.isNotEmpty()) "com_midia" else null,
+        )
 
         return LunaStreamResultado(
             reasoning = if (wireTools.isNotEmpty()) {
@@ -192,7 +205,7 @@ object LunaDirectChat {
                 ""
             },
             reasoningDuracao = "${dur}s",
-            resposta = resposta.ifBlank { "…" },
+            resposta = texto,
             actionRun = actionRun,
         )
     }
