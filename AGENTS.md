@@ -83,7 +83,7 @@ O `WEB_CLIENT_ID` (tipo Web) **não muda** — continua o que está no código.
 Harness CLI no guarda-chuva: [`scripts/bench-luna-latencia/`](../scripts/bench-luna-latencia/README.md).
 
 No dispositivo, cada turno regista no Logcat (`OrbitLatencia`) via
-`data/latencia/LatenciaProbe` — caminhos `openrouter_direct` e `paia_json`.
+`data/latencia/LatenciaProbe` — caminhos `openrouter_direct`, `paia_json` e `paia_stream`.
 
 ```bash
 adb logcat -s OrbitLatencia

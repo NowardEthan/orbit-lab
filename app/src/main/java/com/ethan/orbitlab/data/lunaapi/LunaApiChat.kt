@@ -12,16 +12,25 @@ import com.ethan.orbitlab.ui.chat.LunaStreamEstado
 import com.ethan.orbitlab.ui.chat.LunaStreamResultado
 import com.ethan.orbitlab.ui.chat.ThreadReference
 import com.ethan.orbitlab.ui.chat.formatMessageWithReference
+import android.os.Handler
+import android.os.Looper
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.TimeZone
 import kotlin.math.roundToInt
 
 /**
- * Chat via mobile-api no Railway — resposta completa (sem SSE).
- * Mostra só “Pensando…” até o JSON chegar.
+ * Chat via mobile-api no Railway — SSE em `/v1/chat/stream`.
+ * Mostra fases (analisando / memória / escrevendo) e pinta o texto conforme chega.
  */
 object LunaApiChat {
+
+    private fun rotuloFase(phase: String): String = when (phase) {
+        "analysing" -> "Analisando…"
+        "memory" -> "Memória…"
+        "writing" -> "Escrevendo…"
+        else -> "Pensando…"
+    }
 
     suspend fun responder(
         context: Context,
@@ -136,39 +145,95 @@ object LunaApiChat {
         }
 
         val t0 = System.currentTimeMillis()
+        val mainHandler = Handler(Looper.getMainLooper())
         onEstado(LunaStreamEstado.Raciocinando(""))
 
-        val result = LunaApiClient.chat(idToken, body)
+        val respostaBuf = StringBuilder()
+        val reasoningBuf = StringBuilder()
+        var faseAtual = ""
+
+        fun emitirUi() {
+            val texto = respostaBuf.toString()
+            val reasoning = reasoningBuf.toString()
+            val durMs = System.currentTimeMillis() - t0
+            val durLabel = "${(durMs / 1000.0).roundToInt().coerceAtLeast(1)}s"
+            val estado = if (texto.isNotEmpty()) {
+                LunaStreamEstado.Respondendo(
+                    reasoning = reasoning,
+                    reasoningDuracao = durLabel,
+                    respostaParcial = texto,
+                )
+            } else {
+                val parcial = when {
+                    reasoning.isNotBlank() -> reasoning
+                    faseAtual.isNotBlank() -> rotuloFase(faseAtual)
+                    else -> ""
+                }
+                LunaStreamEstado.Raciocinando(parcial)
+            }
+            mainHandler.post { onEstado(estado) }
+        }
+
+        val result = LunaApiClient.chatStream(idToken, body) { event ->
+            when (event) {
+                is LunaApiClient.StreamEvent.Status -> {
+                    faseAtual = event.phase
+                    if (respostaBuf.isEmpty()) emitirUi()
+                }
+                is LunaApiClient.StreamEvent.Reasoning -> {
+                    reasoningBuf.append(event.delta)
+                    emitirUi()
+                }
+                is LunaApiClient.StreamEvent.Content -> {
+                    respostaBuf.append(event.delta)
+                    emitirUi()
+                }
+                is LunaApiClient.StreamEvent.Acao -> {
+                    // L1: só marca atividade; UI de tools fica pra depois
+                    if (respostaBuf.isEmpty() && reasoningBuf.isEmpty()) {
+                        faseAtual = "writing"
+                        emitirUi()
+                    }
+                }
+                is LunaApiClient.StreamEvent.Error -> Unit
+            }
+        }
+
         val totalMs = System.currentTimeMillis() - t0
         val dur = (totalMs / 1000.0).roundToInt().coerceAtLeast(1)
+        val phasesDetail = result.phasesMs.entries
+            .joinToString(" ") { "${it.key}=${it.value}ms" }
+            .ifBlank { null }
 
-        if (result.error != null) {
+        if (result.error != null && result.text.isBlank()) {
             LatenciaProbe.record(
-                caminho = "paia_json",
+                caminho = "paia_stream",
                 totalMs = totalMs,
-                ttfbMs = totalMs,
+                ttfbMs = result.ttfbMs,
                 chars = 0,
                 ok = false,
-                detalhe = result.error.take(80),
+                detalhe = listOfNotNull(result.error.take(80), phasesDetail).joinToString(" | "),
             )
             return LunaStreamResultado(
-                reasoning = "",
+                reasoning = result.reasoning,
                 reasoningDuracao = "${dur}s",
                 resposta = "Não consegui responder: ${result.error}",
             )
         }
 
-        val texto = result.text.ifBlank { "…" }
+        val texto = result.text.ifBlank { respostaBuf.toString() }.ifBlank { "…" }
+        val reasoning = result.reasoning.ifBlank { reasoningBuf.toString() }
         LatenciaProbe.record(
-            caminho = "paia_json",
+            caminho = "paia_stream",
             totalMs = totalMs,
-            ttfbMs = totalMs,
+            ttfbMs = result.ttfbMs,
             chars = texto.length,
             ok = true,
+            detalhe = phasesDetail,
         )
 
         return LunaStreamResultado(
-            reasoning = "",
+            reasoning = reasoning,
             reasoningDuracao = "${dur}s",
             resposta = texto,
         )

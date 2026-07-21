@@ -9,7 +9,7 @@ import java.util.concurrent.ConcurrentLinkedDeque
  * Filtrar: `adb logcat -s OrbitLatencia`
  *
  * Não substitui o harness CLI (`scripts/bench-luna-latencia`); serve para
- * turnos reais no telemóvel enquanto usas o app.
+ * turnos reais no celular enquanto usa o app.
  */
 object LatenciaProbe {
     private const val TAG = "OrbitLatencia"
