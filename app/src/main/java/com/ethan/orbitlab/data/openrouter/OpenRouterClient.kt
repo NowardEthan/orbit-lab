@@ -182,21 +182,21 @@ object OpenRouterClient {
                     "Você é um observador factual de vídeo. Em português do Brasil:\n" +
                         "1) Descreva só o que se vê/ouve de forma clara.\n" +
                         "2) Texto na imagem: transcreva LITERALMENTE entre aspas. " +
-                        "Não completes palavras, nomes de ruas, linhas ou números.\n" +
-                        "3) Se estiver borrado, cortado ou incerto, escreva exactamente: «ilegível».\n" +
-                        "4) Não inventes placas, paragens, marcas ou legendas plausíveis."
+                        "Não complete palavras, nomes de ruas, linhas ou números.\n" +
+                        "3) Se estiver borrado, cortado ou incerto, escreva exatamente: «ilegível».\n" +
+                        "4) Não invente placas, paradas, marcas ou legendas plausíveis."
                 } else {
                     "Você é um observador factual de imagem (OCR rigoroso). Em português do Brasil:\n" +
                         "1) Descreva só o que está visível.\n" +
                         "2) Texto: transcreva LITERALMENTE entre aspas, carácter a carácter quando possível. " +
-                        "Não completes nomes de ruas, linhas de ônibus/BRT, paragens, placas ou números.\n" +
-                        "3) Se estiver borrado, cortado, reflectido ou incerto, escreva exactamente: «ilegível».\n" +
+                        "Não complete nomes de ruas, linhas de ônibus/BRT, paradas, placas ou números.\n" +
+                        "3) Se estiver borrado, cortado, refletido ou incerto, escreva exatamente: «ilegível».\n" +
                         "4) Proibido inventar leituras «prováveis» — se não lês, diz «ilegível».\n" +
                         "5) Separa: Cenário (1–2 frases) · Texto visível (lista de citações)."
                 },
             )
             if (!pergunta.isNullOrBlank()) {
-                append("\n\nPergunta do utilizador (responde só com base no que vês): ")
+                append("\n\nPergunta do usuário (responde só com base no que vês): ")
                     .append(pergunta.trim())
             }
         }

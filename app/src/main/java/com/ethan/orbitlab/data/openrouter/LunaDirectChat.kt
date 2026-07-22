@@ -55,7 +55,7 @@ object LunaDirectChat {
             it.kind == AttachmentKind.IMAGE || it.kind == AttachmentKind.VIDEO
         }.toMutableList()
 
-        // Referência a imagem antiga: reanalisa os pixels (não só o nome do ficheiro).
+        // Referência a imagem antiga: reanalisa os pixels (não só o nome do arquivo).
         if (reference is ThreadReference.Image && reference.uri != null) {
             val jaTem = midias.any { it.uri == reference.uri || it.id == reference.attachmentId }
             if (!jaTem) {
@@ -157,7 +157,7 @@ object LunaDirectChat {
             if (laudos.isNotEmpty()) {
                 appendLine("[Contexto visual — laudo OCR/factual; fonte única do que está na mídia]")
                 appendLine(
-                    "Regras: cita só o laudo abaixo. Não completes texto. " +
+                    "Regras: cita só o laudo abaixo. Não complete texto. " +
                         "Se aparecer «ilegível» ou incerteza, admite — não inventes leitura.",
                 )
                 appendLine()
@@ -175,7 +175,7 @@ object LunaDirectChat {
         val apiMessages = mutableListOf(
             ChatMessage(role = "system", content = OpenRouterConfig.systemPrompt),
         )
-        // Histórico curto (últimas 12 mensagens antes do turno actual)
+        // Histórico curto (últimas 12 mensagens antes do turno atual)
         historico.takeLast(12).forEach { msg ->
             apiMessages += ChatMessage(
                 role = if (msg.isLuna) "assistant" else "user",

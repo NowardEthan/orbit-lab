@@ -71,23 +71,41 @@ object LunaApiChat {
         }
 
         val displayMessage = textoUsuario.trim()
-        val message = when {
+        val messageBase = when {
             reference != null -> formatMessageWithReference(displayMessage, reference)
             else -> displayMessage
         }.ifBlank {
             if (anexos.isNotEmpty()) "Veja os anexos." else "Oi"
         }
 
-        val uploaded = if (anexos.isNotEmpty()) {
+        // Referência a imagem antiga: sobe de novo pro Storage (PAIA precisa da URL).
+        val anexosParaEnviar = anexos.toMutableList()
+        if (reference is ThreadReference.Image && reference.uri != null) {
+            val jaTem = anexosParaEnviar.any {
+                it.uri == reference.uri || it.id == reference.attachmentId
+            }
+            if (!jaTem) {
+                anexosParaEnviar += ComposerAttachment(
+                    id = reference.attachmentId,
+                    kind = AttachmentKind.IMAGE,
+                    name = reference.attachmentName,
+                    sizeLabel = "",
+                    mime = "image/jpeg",
+                    uri = reference.uri,
+                )
+            }
+        }
+
+        val uploaded = if (anexosParaEnviar.isNotEmpty()) {
             ChatMediaUpload.uploadAttachments(
                 context = context,
                 uid = uid,
                 conversationId = conversaId,
                 messageId = userMessageId,
-                attachments = anexos,
+                attachments = anexosParaEnviar,
             )
         } else {
-            anexos
+            anexosParaEnviar
         }
 
         val attachmentsJson = JSONArray()
@@ -122,6 +140,23 @@ object LunaApiChat {
                     )
                 }
             }
+        }
+
+        // Mitigação no cliente até o prompt do `ver_imagem` no luna-core endurecer OCR.
+        val message = if (attachmentsJson.length() > 0) {
+            buildString {
+                appendLine("[Instrução de visão — obrigatória]")
+                appendLine(
+                    "Se precisar ler a imagem/vídeo, use a ferramenta ver_imagem (ou equivalente). " +
+                        "Transcreva texto LITERALMENTE entre aspas. Não complete nomes de ruas, " +
+                        "linhas de ônibus/BRT, paradas, placas ou números. " +
+                        "Se estiver borrado ou incerto, diga exatamente «ilegível» — não invente leitura plausível.",
+                )
+                appendLine()
+                append(messageBase)
+            }
+        } else {
+            messageBase
         }
 
         val session = AuthRepository.session.value

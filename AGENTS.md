@@ -2,7 +2,7 @@
 
 > Laboratório Android **nativo** (Kotlin + Jetpack Compose). Não é o app de produção.
 > Produção = [`orbit-mobile/`](../orbit-mobile/AGENTS.md) (Expo).
-> Idioma: **pt-BR** (Brasil) em UI, comentários e docs — **nunca pt-PT** (sem “ecrã”, “ficheiro”, “controlo”, “sítio”, “actual”).
+> Idioma: **pt-BR** (Brasil) em UI, comentários e docs — **nunca pt-PT** (sem “ecrã”, “arquivo”, “controlo”, “sítio”, “actual”).
 
 ## O que é
 
@@ -59,7 +59,7 @@ Credential Manager (`GetSignInWithGoogleOption`).
 
 **Package do Lab:** `com.ethan.orbitlab` (≠ `com.luna.orbitmobile` do Expo).
 
-Se o login diz «cancelado» sem o utilizador cancelar, falta o **cliente OAuth Android**
+Se o login diz «cancelado» sem o usuário cancelar, falta o **cliente OAuth Android**
 para este package + SHA-1 do `app/debug.keystore`:
 
 ```
@@ -89,16 +89,18 @@ No dispositivo, cada turno regista no Logcat (`OrbitLatencia`) via
 adb logcat -s OrbitLatencia
 ```
 
-## Visão / OCR (OpenRouter directo)
+## Visão / OCR
 
-O caminho directo faz **2 passos**: modelo de visão → laudo texto → chat flash.
-Para não inventar texto de placas/paragens:
+### OpenRouter directo (lab)
+2 passos: visão → laudo → chat. Prompt OCR literal + `«ilegível»` (temp 0);
+chat com mídia a temp baixa; referência a imagem reanalisa o URI.
 
-- Prompt OCR exige citação literal e `«ilegível»` quando incerto (`OpenRouterClient.analisarMidia`, temp 0).
-- O chat com mídia usa temperatura baixa e o system prompt **não** manda «fingir que viu».
-- Referência a imagem antiga **reenvia** o URI para reanalisar (não só o nome do ficheiro).
-
-Se usares PAIA (switch OpenRouter directo desligado), o rigor OCR vive no tool `ver_imagem` do `luna-core`.
+### PAIA (produção)
+Imagens sobem pro Storage e vão em `attachments` no `/v1/chat/stream`.
+A Luna olha com `ver_imagem` no **luna-core**. O rigor OCR definitivo vive lá —
+ver [`INSTRUCOES-NOTEBOOK-VISAO-PAIA.md`](../core/Teses%20de%20Arquitetura/INSTRUCOES-NOTEBOOK-VISAO-PAIA.md)
+no luna-docs. No Lab, o cliente PAIA injeta uma instrução anti-invenção no `message`
+como mitigação (`LunaApiChat`).
 
 ## Estrutura
 
