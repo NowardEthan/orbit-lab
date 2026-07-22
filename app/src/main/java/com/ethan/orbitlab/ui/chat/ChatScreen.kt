@@ -55,6 +55,7 @@ import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -152,25 +153,19 @@ fun ChatScreen(conversaId: String, onBack: () -> Unit) {
     val clipboard = LocalClipboardManager.current
     val haptics = LocalHapticFeedback.current
 
-    val onSend = remember(conversaId, streamState, appContext, lunaDirect) {
-        { texto: String, anexos: List<ComposerAttachment>, reference: ThreadReference? ->
-            val textoEnvio = texto.trim()
-            val historicoAntes = ChatRepository.getConversa(conversaId)?.mensagens.orEmpty()
-            // Ids estáveis no Railway: o servidor persiste o mesmo par e não duplica.
-            val userMsgId = if (lunaDirect) null else newUserMessageId()
-            val lunaMsgId = userMsgId?.let { lunaMessageIdForUser(it) }
-            ChatRepository.enviarMensagem(
-                conversaId = conversaId,
-                texto = textoEnvio,
-                isLuna = false,
-                attachments = anexos,
-                reference = reference,
-                messageId = userMsgId,
-            )
-            // Slot da Luna — “Pensando…” até a resposta completa
+    // Gera (e persiste) a resposta da Luna para um dado texto + histórico. NÃO envia a
+    // mensagem do usuário — quem envia é o onSend. O onRetry chama isto direto, então
+    // retomar uma mensagem órfã não duplica a fala do usuário no histórico.
+    val dispararResposta = remember(conversaId, streamState, appContext, lunaDirect) {
+        { textoEnvio: String,
+          historicoAntes: List<Mensagem>,
+          anexos: List<ComposerAttachment>,
+          reference: ThreadReference?,
+          userMsgId: String?,
+          lunaMsgId: String? ->
             streamLunaMsgId = lunaMsgId
             streamState.value = LunaStreamEstado.Raciocinando("")
-            // Escopo de app: não cancela se a composição sair no meio da chamada
+            // Escopo de app: não cancela se a composição sair no meio da chamada.
             ChatRepository.launch {
                 try {
                     val resultado = if (lunaDirect) {
@@ -190,8 +185,8 @@ fun ChatScreen(conversaId: String, onBack: () -> Unit) {
                             textoUsuario = textoEnvio,
                             anexos = anexos,
                             reference = reference,
-                            userMessageId = userMsgId!!,
-                            lunaMessageId = lunaMsgId!!,
+                            userMessageId = userMsgId ?: newUserMessageId(),
+                            lunaMessageId = lunaMsgId ?: newUserMessageId(),
                             onEstado = { streamState.value = it },
                         )
                     }
@@ -202,6 +197,7 @@ fun ChatScreen(conversaId: String, onBack: () -> Unit) {
                         reasoning = resultado.reasoning.takeIf { it.isNotBlank() },
                         reasoningDuracao = resultado.reasoningDuracao.takeIf { it.isNotBlank() },
                         actionRun = resultado.actionRun,
+                        // Reusa o id (substitui um balão de erro no lugar) ou gera novo (anexa).
                         messageId = lunaMsgId,
                     )
                 } catch (e: CancellationException) {
@@ -217,6 +213,56 @@ fun ChatScreen(conversaId: String, onBack: () -> Unit) {
                 } finally {
                     streamState.value = LunaStreamEstado.Idle
                     streamLunaMsgId = null
+                }
+            }
+            Unit
+        }
+    }
+
+    val onSend = remember(dispararResposta, conversaId, lunaDirect) {
+        { texto: String, anexos: List<ComposerAttachment>, reference: ThreadReference? ->
+            val textoEnvio = texto.trim()
+            val historicoAntes = ChatRepository.getConversa(conversaId)?.mensagens.orEmpty()
+            // Ids estáveis no Railway: o servidor persiste o mesmo par e não duplica.
+            val userMsgId = if (lunaDirect) null else newUserMessageId()
+            val lunaMsgId = userMsgId?.let { lunaMessageIdForUser(it) }
+            ChatRepository.enviarMensagem(
+                conversaId = conversaId,
+                texto = textoEnvio,
+                isLuna = false,
+                attachments = anexos,
+                reference = reference,
+                messageId = userMsgId,
+            )
+            dispararResposta(textoEnvio, historicoAntes, anexos, reference, userMsgId, lunaMsgId)
+            Unit
+        }
+    }
+
+    // Retomar sem duplicar: se a última é uma mensagem SUA sem resposta (saiu do app e a
+    // resposta se perdeu), ou um erro da Luna, refaz a resposta pra AQUELA mensagem — sem
+    // reenviar a fala do usuário. A Luna vê a mensagem uma vez só, como você pediu. 🌙
+    val onRetry = remember(dispararResposta, conversaId, lunaDirect) {
+        {
+            val msgs = ChatRepository.getConversa(conversaId)?.mensagens.orEmpty()
+            val ultima = msgs.lastOrNull()
+            if (ultima != null && streamState.value is LunaStreamEstado.Idle) {
+                // (userMsg a refazer, histórico antes dela, id da resposta a substituir/anexar)
+                val alvo: Triple<Mensagem, List<Mensagem>, String?>? = when {
+                    !ultima.isLuna -> Triple(ultima, msgs.dropLast(1), null)
+                    respostaEhErro(ultima.texto) -> {
+                        val userAntes = msgs.dropLast(1).lastOrNull { !it.isLuna }
+                        userAntes?.let { u ->
+                            val idxUser = msgs.indexOfFirst { it.id == u.id }
+                            Triple(u, msgs.subList(0, idxUser).toList(), ultima.id)
+                        }
+                    }
+                    else -> null
+                }
+                alvo?.let { (userMsg, historicoAntes, replyId) ->
+                    val userMsgId = if (lunaDirect) null else newUserMessageId()
+                    val lunaMsgId = replyId ?: userMsgId?.let { lunaMessageIdForUser(it) }
+                    dispararResposta(userMsg.texto, historicoAntes, emptyList(), userMsg.reference, userMsgId, lunaMsgId)
                 }
             }
             Unit
@@ -251,6 +297,7 @@ fun ChatScreen(conversaId: String, onBack: () -> Unit) {
                     historico = historico,
                     streamState = streamState,
                     ocultarMessageId = streamLunaMsgId,
+                    onRetry = onRetry,
                     onMessageLongPress = { msg ->
                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                         actionSheetMsg = msg
@@ -415,6 +462,7 @@ private fun ChatTimeline(
     historico: List<Mensagem>,
     streamState: MutableState<LunaStreamEstado>,
     ocultarMessageId: String? = null,
+    onRetry: () -> Unit = {},
     onMessageLongPress: (Mensagem) -> Unit = {},
     onReferenciarMedia: (Mensagem, ComposerAttachment) -> Unit = { _, _ -> },
 ) {
@@ -495,6 +543,59 @@ private fun ChatTimeline(
             item(key = "luna-stream", contentType = "stream") {
                 LunaStreamDraft(estado = streamEstado)
             }
+        } else {
+            // Retomar: última é SUA (resposta se perdeu ao sair do app) ou é um erro da Luna.
+            val ultima = mensagensVisiveis.lastOrNull()
+            val podeRetry = ultima != null && (!ultima.isLuna || respostaEhErro(ultima.texto))
+            if (podeRetry) {
+                item(key = "retry", contentType = "retry") {
+                    RetryChip(onClick = onRetry)
+                }
+            }
+        }
+    }
+}
+
+/** A última resposta da Luna é um erro (pra oferecer "tentar de novo")? */
+private fun respostaEhErro(texto: String): Boolean {
+    val t = texto.trimStart()
+    return t.startsWith("Não consegui responder") ||
+        t.startsWith("Nao consegui responder") ||
+        t.startsWith("Erro ao falar") ||
+        t.startsWith("Erro ao")
+}
+
+/** Botãozinho "tentar de novo" — retoma a mensagem sem duplicá-la pra Luna. */
+@Composable
+private fun RetryChip(onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp),
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(20.dp))
+                .background(OrbitTokens.surfaceRaised)
+                .border(1.dp, OrbitTokens.borderSoft, RoundedCornerShape(20.dp))
+                .orbitPressable(onClick = onClick)
+                .padding(horizontal = 16.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Refresh,
+                contentDescription = null,
+                tint = OrbitTokens.accentText,
+                modifier = Modifier.size(16.dp),
+            )
+            Text(
+                text = "Tentar de novo",
+                color = OrbitTokens.accentText,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
         }
     }
 }

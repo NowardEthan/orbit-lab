@@ -1,6 +1,11 @@
 package com.ethan.orbitlab.ui.chat
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -138,14 +143,29 @@ fun LunaReasoningPensando(
             .fillMaxWidth()
             .padding(vertical = 4.dp, horizontal = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Box(
-            Modifier
-                .size(6.dp)
-                .clip(CircleShape)
-                .background(OrbitTokens.accent.copy(alpha = 0.7f)),
-        )
+        // Três bolinhas pulsando em onda (typing indicator) — não mais estático.
+        val transicao = rememberInfiniteTransition(label = "pensando")
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            repeat(3) { i ->
+                val alpha by transicao.animateFloat(
+                    initialValue = 0.25f,
+                    targetValue = 1f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(durationMillis = 620, delayMillis = i * 160),
+                        repeatMode = RepeatMode.Reverse,
+                    ),
+                    label = "dot$i",
+                )
+                Box(
+                    Modifier
+                        .size(6.dp)
+                        .clip(CircleShape)
+                        .background(OrbitTokens.accent.copy(alpha = alpha)),
+                )
+            }
+        }
         Text(
             text = "Pensando…",
             color = OrbitTokens.textMid,

@@ -18,6 +18,17 @@ import com.ethan.orbitlab.ui.chat.formatMessageWithReference
 import com.ethan.orbitlab.ui.chat.toolMeta
 import kotlin.math.roundToInt
 
+/** Falha transitória (rede/DNS/timeout/5xx) que vale re-tentar; 4xx (auth/limite) não. */
+private fun erroTransitorio(msg: String?): Boolean {
+    if (msg == null) return true
+    val m = msg.lowercase()
+    return listOf(
+        "unable to resolve host", "failed to connect", "timeout", "timed out",
+        "econnreset", "connection reset", "connection closed", "connection abort",
+        "unexpected end", "network", "http 5", " 500", " 502", " 503", " 504",
+    ).any { m.contains(it) }
+}
+
 /**
  * Resposta da Luna no lab — OpenRouter direto (sem agentico / luna-core).
  *
@@ -171,38 +182,103 @@ object LunaDirectChat {
         apiMessages += ChatMessage(role = "user", content = userContent)
 
         val t0 = System.currentTimeMillis()
-        onEstado(
-            LunaStreamEstado.Raciocinando(
-                parcial = "",
-                actionRun = actionRun,
-            ),
-        )
+        onEstado(LunaStreamEstado.Raciocinando(parcial = "", actionRun = actionRun))
 
+        // STREAM de verdade: pinta o texto conforme chega (caret animado) em vez de esperar
+        // a resposta inteira bloqueada. Mata o "Pensando…" estático e o timeout percebido.
+        val respostaBuf = StringBuilder()
+        val reasoningBuf = StringBuilder()
+        var ttfbMs: Long? = null
         var ok = true
-        val resposta = runCatching {
-            OpenRouterClient.chat(apiMessages)
-        }.getOrElse { e ->
-            ok = false
-            "Não consegui responder: ${e.message ?: "desconhecido"}"
+        var erro: String? = null
+
+        fun durLabel(): String =
+            "${((System.currentTimeMillis() - t0) / 1000.0).roundToInt().coerceAtLeast(1)}s"
+
+        val maxTentativas = 3
+        var tentativa = 0
+        while (true) {
+            tentativa++
+            // Só repetimos se NADA foi transmitido ainda → limpar o buffer é seguro.
+            respostaBuf.setLength(0)
+            reasoningBuf.setLength(0)
+            ttfbMs = null
+            ok = true
+            erro = null
+            try {
+                OpenRouterClient.streamChat(apiMessages).collect { ev ->
+                    when (ev) {
+                        is OpenRouterClient.StreamEvent.Delta -> {
+                            if (ttfbMs == null) ttfbMs = System.currentTimeMillis() - t0
+                            respostaBuf.append(ev.text)
+                            onEstado(
+                                LunaStreamEstado.Respondendo(
+                                    reasoning = reasoningBuf.toString(),
+                                    reasoningDuracao = durLabel(),
+                                    respostaParcial = respostaBuf.toString(),
+                                    actionRun = actionRun,
+                                ),
+                            )
+                        }
+                        is OpenRouterClient.StreamEvent.Reasoning -> {
+                            reasoningBuf.append(ev.text)
+                            if (respostaBuf.isEmpty()) {
+                                onEstado(
+                                    LunaStreamEstado.Raciocinando(
+                                        parcial = reasoningBuf.toString(),
+                                        actionRun = actionRun,
+                                    ),
+                                )
+                            }
+                        }
+                        is OpenRouterClient.StreamEvent.Done -> {
+                            if (respostaBuf.isEmpty() && ev.fullText.isNotBlank()) {
+                                respostaBuf.append(ev.fullText)
+                            }
+                        }
+                        is OpenRouterClient.StreamEvent.Error -> {
+                            ok = false
+                            erro = ev.message
+                        }
+                    }
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                ok = false
+                erro = e.message
+            }
+
+            // Retry só em falha de REDE quando nada apareceu (DNS/timeout/5xx). Nunca
+            // re-tenta se já streamou texto (senão duplicaria) nem em 4xx (auth/limite).
+            val podeRepetir = !ok && respostaBuf.isEmpty() && erroTransitorio(erro)
+            if (podeRepetir && tentativa < maxTentativas) {
+                onEstado(LunaStreamEstado.Raciocinando(parcial = "", actionRun = actionRun))
+                kotlinx.coroutines.delay(tentativa * 1200L)
+                continue
+            }
+            break
         }
 
         val totalMs = System.currentTimeMillis() - t0
         val dur = (totalMs / 1000.0).roundToInt().coerceAtLeast(1)
-        val texto = resposta.ifBlank { "…" }
+        val texto = when {
+            respostaBuf.isNotBlank() -> respostaBuf.toString()
+            erro != null -> "Não consegui responder: $erro"
+            else -> "…"
+        }
         LatenciaProbe.record(
             caminho = "openrouter_direct",
             totalMs = totalMs,
-            ttfbMs = totalMs,
+            ttfbMs = ttfbMs ?: totalMs,
             chars = texto.length,
             ok = ok,
             detalhe = if (wireTools.isNotEmpty()) "com_midia" else null,
         )
 
         return LunaStreamResultado(
-            reasoning = if (wireTools.isNotEmpty()) {
-                "Olhei os anexos e respondi em cima disso."
-            } else {
-                ""
+            reasoning = reasoningBuf.toString().ifBlank {
+                if (wireTools.isNotEmpty()) "Olhei os anexos e respondi em cima disso." else ""
             },
             reasoningDuracao = "${dur}s",
             resposta = texto,
