@@ -24,7 +24,17 @@ object LunaApiClient {
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(180, TimeUnit.SECONDS)
         .writeTimeout(60, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
         .build()
+
+    /**
+     * Descarta conexões ociosas do pool. Chamar antes de re-tentar após "software caused
+     * connection abort": um socket keep-alive morto reusado aborta de novo — evictar força
+     * uma conexão nova.
+     */
+    fun evictConnections() {
+        runCatching { http.connectionPool.evictAll() }
+    }
 
     data class ChatResult(
         val text: String,

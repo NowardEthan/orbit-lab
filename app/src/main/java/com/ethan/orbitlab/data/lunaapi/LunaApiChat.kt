@@ -19,6 +19,18 @@ import org.json.JSONObject
 import java.util.TimeZone
 import kotlin.math.roundToInt
 
+/** Falha transitória (rede/DNS/timeout/conexão abortada/5xx) que vale re-tentar. */
+private fun erroTransitorio(msg: String?): Boolean {
+    if (msg == null) return true
+    val m = msg.lowercase()
+    return listOf(
+        "unable to resolve host", "failed to connect", "timeout", "timed out",
+        "econnreset", "connection reset", "connection closed", "connection abort",
+        "unexpected end", "network", "http 5", " 500", " 502", " 503", " 504",
+        "stream fechou", "falha de rede",
+    ).any { m.contains(it) }
+}
+
 /**
  * Chat via mobile-api no Railway — SSE em `/v1/chat/stream`.
  * Mostra fases (analisando / memória / escrevendo) e pinta o texto conforme chega.
@@ -174,29 +186,49 @@ object LunaApiChat {
             mainHandler.post { onEstado(estado) }
         }
 
-        val result = LunaApiClient.chatStream(idToken, body) { event ->
-            when (event) {
-                is LunaApiClient.StreamEvent.Status -> {
-                    faseAtual = event.phase
-                    if (respostaBuf.isEmpty()) emitirUi()
-                }
-                is LunaApiClient.StreamEvent.Reasoning -> {
-                    reasoningBuf.append(event.delta)
-                    emitirUi()
-                }
-                is LunaApiClient.StreamEvent.Content -> {
-                    respostaBuf.append(event.delta)
-                    emitirUi()
-                }
-                is LunaApiClient.StreamEvent.Acao -> {
-                    // L1: só marca atividade; UI de tools fica pra depois
-                    if (respostaBuf.isEmpty() && reasoningBuf.isEmpty()) {
-                        faseAtual = "writing"
+        // Retry em falha de rede/conexão: se abortar SEM ter transmitido nada, evicta o
+        // socket morto do pool e tenta de novo (não duplica texto já mostrado).
+        var result = LunaApiClient.ChatResult(text = "", sessionId = "")
+        var tentativa = 0
+        val maxTentativas = 3
+        while (true) {
+            tentativa++
+            respostaBuf.setLength(0)
+            reasoningBuf.setLength(0)
+            faseAtual = ""
+            result = LunaApiClient.chatStream(idToken, body) { event ->
+                when (event) {
+                    is LunaApiClient.StreamEvent.Status -> {
+                        faseAtual = event.phase
+                        if (respostaBuf.isEmpty()) emitirUi()
+                    }
+                    is LunaApiClient.StreamEvent.Reasoning -> {
+                        reasoningBuf.append(event.delta)
                         emitirUi()
                     }
+                    is LunaApiClient.StreamEvent.Content -> {
+                        respostaBuf.append(event.delta)
+                        emitirUi()
+                    }
+                    is LunaApiClient.StreamEvent.Acao -> {
+                        // L1: só marca atividade; UI de tools fica pra depois
+                        if (respostaBuf.isEmpty() && reasoningBuf.isEmpty()) {
+                            faseAtual = "writing"
+                            emitirUi()
+                        }
+                    }
+                    is LunaApiClient.StreamEvent.Error -> Unit
                 }
-                is LunaApiClient.StreamEvent.Error -> Unit
             }
+            val podeRepetir = result.error != null && respostaBuf.isEmpty() &&
+                erroTransitorio(result.error)
+            if (podeRepetir && tentativa < maxTentativas) {
+                LunaApiClient.evictConnections()
+                mainHandler.post { onEstado(LunaStreamEstado.Raciocinando("")) }
+                kotlinx.coroutines.delay(tentativa * 1200L)
+                continue
+            }
+            break
         }
 
         val totalMs = System.currentTimeMillis() - t0

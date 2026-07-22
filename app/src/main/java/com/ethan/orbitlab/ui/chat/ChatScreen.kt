@@ -372,8 +372,10 @@ fun ChatScreen(conversaId: String, onBack: () -> Unit) {
                         if (ancora != null) {
                             val historicoAntes = msgs.take(msgs.indexOfFirst { it.id == ancora.id })
                             ChatRepository.truncarApos(conversaId, ancora.id)
-                            val userMsgId = if (lunaDirect) null else newUserMessageId()
-                            val lunaMsgId = userMsgId?.let { lunaMessageIdForUser(it) }
+                            // Servidor: REUSA o id da âncora (upsert → não duplica a tua fala) e usa
+                            // um lunaMsgId NOVO pra forçar regeneração (não pegar o cache do turno).
+                            val userMsgId = if (lunaDirect) null else ancora.id
+                            val lunaMsgId = if (lunaDirect) null else newUserMessageId()
                             dispararResposta(ancora.texto, historicoAntes, emptyList(), ancora.reference, userMsgId, lunaMsgId)
                         }
                     }
