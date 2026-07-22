@@ -53,6 +53,21 @@ object LunaDirectChat {
         val laudos = mutableListOf<String>()
         val midias = anexos.filter {
             it.kind == AttachmentKind.IMAGE || it.kind == AttachmentKind.VIDEO
+        }.toMutableList()
+
+        // Referência a imagem antiga: reanalisa os pixels (não só o nome do ficheiro).
+        if (reference is ThreadReference.Image && reference.uri != null) {
+            val jaTem = midias.any { it.uri == reference.uri || it.id == reference.attachmentId }
+            if (!jaTem) {
+                midias += ComposerAttachment(
+                    id = reference.attachmentId,
+                    kind = AttachmentKind.IMAGE,
+                    name = reference.attachmentName,
+                    sizeLabel = "",
+                    mime = "image/jpeg",
+                    uri = reference.uri,
+                )
+            }
         }
 
         if (midias.isNotEmpty()) {
@@ -140,13 +155,18 @@ object LunaDirectChat {
 
         val userContent = buildString {
             if (laudos.isNotEmpty()) {
-                appendLine("[Contexto visual — o que a Luna viu]")
+                appendLine("[Contexto visual — laudo OCR/factual; fonte única do que está na mídia]")
+                appendLine(
+                    "Regras: cita só o laudo abaixo. Não completes texto. " +
+                        "Se aparecer «ilegível» ou incerteza, admite — não inventes leitura.",
+                )
+                appendLine()
                 laudos.forEach { appendLine(it); appendLine() }
             }
             if (pergunta.isNotBlank()) {
                 append(pergunta)
             } else if (laudos.isNotEmpty()) {
-                append("Comenta o que você viu nos anexos.")
+                append("Comenta o que o laudo descreve — sem inventar detalhes em falta.")
             } else {
                 append("Oi")
             }
@@ -179,8 +199,10 @@ object LunaDirectChat {
         )
 
         var ok = true
+        // Com mídia: temperatura baixa — o flash deixa de «completar» OCR inventado.
+        val tempChat = if (laudos.isNotEmpty()) 0.25 else 0.7
         val resposta = runCatching {
-            OpenRouterClient.chat(apiMessages)
+            OpenRouterClient.chat(apiMessages, temperature = tempChat)
         }.getOrElse { e ->
             ok = false
             "Não consegui responder: ${e.message ?: "desconhecido"}"

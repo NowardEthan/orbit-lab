@@ -89,6 +89,17 @@ No dispositivo, cada turno regista no Logcat (`OrbitLatencia`) via
 adb logcat -s OrbitLatencia
 ```
 
+## Visão / OCR (OpenRouter directo)
+
+O caminho directo faz **2 passos**: modelo de visão → laudo texto → chat flash.
+Para não inventar texto de placas/paragens:
+
+- Prompt OCR exige citação literal e `«ilegível»` quando incerto (`OpenRouterClient.analisarMidia`, temp 0).
+- O chat com mídia usa temperatura baixa e o system prompt **não** manda «fingir que viu».
+- Referência a imagem antiga **reenvia** o URI para reanalisar (não só o nome do ficheiro).
+
+Se usares PAIA (switch OpenRouter directo desligado), o rigor OCR vive no tool `ver_imagem` do `luna-core`.
+
 ## Estrutura
 
 ```

@@ -41,6 +41,7 @@ object OpenRouterClient {
     fun streamChat(
         messages: List<ChatMessage>,
         model: String = OpenRouterConfig.chatModel,
+        temperature: Double = 0.7,
     ): Flow<StreamEvent> = callbackFlow {
         if (!OpenRouterConfig.isConfigured()) {
             trySend(StreamEvent.Error("OPENROUTER_API_KEY ausente. Coloca a chave no luna-core/.env ou local.properties."))
@@ -51,7 +52,7 @@ object OpenRouterClient {
         val body = JSONObject().apply {
             put("model", model)
             put("stream", true)
-            put("temperature", 0.7)
+            put("temperature", temperature)
             put("messages", messagesToJson(messages))
         }
 
@@ -126,6 +127,7 @@ object OpenRouterClient {
     suspend fun chat(
         messages: List<ChatMessage>,
         model: String = OpenRouterConfig.chatModel,
+        temperature: Double = 0.7,
     ): String = withContext(Dispatchers.IO) {
         if (!OpenRouterConfig.isConfigured()) {
             error("OPENROUTER_API_KEY ausente. Coloca a chave no luna-core/.env ou local.properties.")
@@ -134,7 +136,7 @@ object OpenRouterClient {
         val body = JSONObject().apply {
             put("model", model)
             put("stream", false)
-            put("temperature", 0.7)
+            put("temperature", temperature)
             put("messages", messagesToJson(messages))
         }
 
@@ -177,15 +179,25 @@ object OpenRouterClient {
         val instrucao = buildString {
             append(
                 if (ehVideo) {
-                    "Você é os olhos de quem não pode ver este vídeo. Descreva o que acontece, " +
-                        "em português do Brasil, factual. Transcreva texto legível. Não invente."
+                    "Você é um observador factual de vídeo. Em português do Brasil:\n" +
+                        "1) Descreva só o que se vê/ouve de forma clara.\n" +
+                        "2) Texto na imagem: transcreva LITERALMENTE entre aspas. " +
+                        "Não completes palavras, nomes de ruas, linhas ou números.\n" +
+                        "3) Se estiver borrado, cortado ou incerto, escreva exactamente: «ilegível».\n" +
+                        "4) Não inventes placas, paragens, marcas ou legendas plausíveis."
                 } else {
-                    "Você é os olhos de quem não pode ver esta imagem. Descreva o que está nela, " +
-                        "em português do Brasil, factual. Transcreva texto legível (OCR). Não invente."
+                    "Você é um observador factual de imagem (OCR rigoroso). Em português do Brasil:\n" +
+                        "1) Descreva só o que está visível.\n" +
+                        "2) Texto: transcreva LITERALMENTE entre aspas, carácter a carácter quando possível. " +
+                        "Não completes nomes de ruas, linhas de ônibus/BRT, paragens, placas ou números.\n" +
+                        "3) Se estiver borrado, cortado, reflectido ou incerto, escreva exactamente: «ilegível».\n" +
+                        "4) Proibido inventar leituras «prováveis» — se não lês, diz «ilegível».\n" +
+                        "5) Separa: Cenário (1–2 frases) · Texto visível (lista de citações)."
                 },
             )
             if (!pergunta.isNullOrBlank()) {
-                append("\n\nPergunta específica: ").append(pergunta.trim())
+                append("\n\nPergunta do utilizador (responde só com base no que vês): ")
+                    .append(pergunta.trim())
             }
         }
         val midiaPart = if (ehVideo) {
@@ -201,7 +213,8 @@ object OpenRouterClient {
 
         val body = JSONObject().apply {
             put("model", model)
-            put("temperature", 0.2)
+            // OCR: temperatura zero — menos «preenchimento» de texto inventado.
+            put("temperature", 0)
             put(
                 "messages",
                 JSONArray().put(
