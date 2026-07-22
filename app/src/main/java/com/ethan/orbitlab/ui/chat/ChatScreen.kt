@@ -358,6 +358,26 @@ fun ChatScreen(conversaId: String, onBack: () -> Unit) {
                         clipboard.setText(AnnotatedString(sheetMsg.texto))
                     }
                 },
+                onReenviar = {
+                    if (streamState.value is LunaStreamEstado.Idle) {
+                        val msgs = ChatRepository.getConversa(conversaId)?.mensagens.orEmpty()
+                        // A âncora é a mensagem do USUÁRIO a refazer: a própria (se for sua)
+                        // ou a última tua antes dela (se você tocou numa da Luna).
+                        val ancora: Mensagem? = if (!sheetMsg.isLuna) {
+                            sheetMsg
+                        } else {
+                            val idx = msgs.indexOfFirst { it.id == sheetMsg.id }
+                            if (idx >= 0) msgs.take(idx).lastOrNull { !it.isLuna } else null
+                        }
+                        if (ancora != null) {
+                            val historicoAntes = msgs.take(msgs.indexOfFirst { it.id == ancora.id })
+                            ChatRepository.truncarApos(conversaId, ancora.id)
+                            val userMsgId = if (lunaDirect) null else newUserMessageId()
+                            val lunaMsgId = userMsgId?.let { lunaMessageIdForUser(it) }
+                            dispararResposta(ancora.texto, historicoAntes, emptyList(), ancora.reference, userMsgId, lunaMsgId)
+                        }
+                    }
+                },
             )
         }
     }

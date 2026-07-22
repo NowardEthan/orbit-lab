@@ -271,6 +271,41 @@ object ChatRepository {
         } ?: getConversa(id)?.mensagens.orEmpty()
     }
 
+    /**
+     * Reenviar a partir de uma mensagem (estilo ChatGPT): mantém tudo ATÉ [ancoraId]
+     * (inclusive) e apaga o que vem depois — local e na nuvem (soft-delete).
+     */
+    fun truncarApos(conversaId: String, ancoraId: String) {
+        val conv = getConversa(conversaId) ?: return
+        val idx = conv.mensagens.indexOfFirst { it.id == ancoraId }
+        if (idx < 0) return
+        val mantidas = conv.mensagens.take(idx + 1)
+        val removidas = conv.mensagens.drop(idx + 1).map { it.id }
+        if (removidas.isEmpty()) return
+
+        _conversas.update { lista ->
+            lista.map { c ->
+                if (c.id != conversaId) c
+                else c.copy(
+                    mensagens = mantidas,
+                    preview = limparPreviewMensagem(mantidas.lastOrNull()?.texto),
+                )
+            }
+        }
+
+        val uid = currentUid
+        val meta = metaById[conversaId]
+        if (meta != null) {
+            metaById[conversaId] = meta.copy(deletedMessageIds = meta.deletedMessageIds + removidas)
+            if (uid != null) reattachMessages(uid, conversaId)
+        }
+        if (uid != null) {
+            scope.launch {
+                runCatching { FirestoreChat.marcarMensagensApagadas(uid, conversaId, removidas) }
+            }
+        }
+    }
+
     fun deletarConversas(ids: List<String>) {
         if (ids.isEmpty()) return
         _conversas.update { lista -> lista.filterNot { it.id in ids } }

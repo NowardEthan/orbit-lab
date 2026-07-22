@@ -18,6 +18,14 @@ import com.ethan.orbitlab.ui.chat.formatMessageWithReference
 import com.ethan.orbitlab.ui.chat.toolMeta
 import kotlin.math.roundToInt
 
+/** Mensagem amigável — não joga "software caused connection abort" cru na cara do usuário. */
+private fun mensagemErro(erro: String): String =
+    if (erroTransitorio(erro)) {
+        "A conexão caiu no meio da resposta. Toca em «Tentar de novo» — se insistir, é a rede oscilando."
+    } else {
+        "Não consegui responder: $erro"
+    }
+
 /** Falha transitória (rede/DNS/timeout/5xx) que vale re-tentar; 4xx (auth/limite) não. */
 private fun erroTransitorio(msg: String?): Boolean {
     if (msg == null) return true
@@ -253,6 +261,8 @@ object LunaDirectChat {
             // re-tenta se já streamou texto (senão duplicaria) nem em 4xx (auth/limite).
             val podeRepetir = !ok && respostaBuf.isEmpty() && erroTransitorio(erro)
             if (podeRepetir && tentativa < maxTentativas) {
+                // Conexão abortada costuma ser um socket morto no pool — descarta antes de repetir.
+                OpenRouterClient.evictConnections()
                 onEstado(LunaStreamEstado.Raciocinando(parcial = "", actionRun = actionRun))
                 kotlinx.coroutines.delay(tentativa * 1200L)
                 continue
@@ -264,7 +274,7 @@ object LunaDirectChat {
         val dur = (totalMs / 1000.0).roundToInt().coerceAtLeast(1)
         val texto = when {
             respostaBuf.isNotBlank() -> respostaBuf.toString()
-            erro != null -> "Não consegui responder: $erro"
+            erro != null -> mensagemErro(erro)
             else -> "…"
         }
         LatenciaProbe.record(

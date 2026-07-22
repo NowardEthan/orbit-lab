@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.FormatQuote
 import androidx.compose.material.icons.rounded.Image
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
@@ -42,6 +43,7 @@ fun MessageActionSheet(
     onReferenciarMensagem: () -> Unit,
     onReferenciarImagem: (ComposerAttachment) -> Unit,
     onCopiar: () -> Unit,
+    onReenviar: () -> Unit = {},
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val imagens = mensagem.attachments.filter {
@@ -109,6 +111,16 @@ fun MessageActionSheet(
                     },
                 )
             }
+
+            ActionRow(
+                icon = Icons.Rounded.Refresh,
+                label = "Reenviar a partir daqui",
+                subtitle = "A Luna responde de novo; o que vem depois é apagado",
+                onClick = {
+                    onReenviar()
+                    onDismiss()
+                },
+            )
         }
     }
 }

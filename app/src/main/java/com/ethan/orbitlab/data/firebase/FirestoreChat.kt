@@ -146,6 +146,22 @@ object FirestoreChat {
         ).await()
     }
 
+    /** Soft-delete de mensagens específicas (pra truncar a conversa ao reenviar de um ponto). */
+    suspend fun marcarMensagensApagadas(
+        uid: String,
+        conversationId: String,
+        messageIds: List<String>,
+    ) {
+        if (messageIds.isEmpty()) return
+        conversationDoc(uid, conversationId).set(
+            mapOf(
+                "deletedMessageIds" to FieldValue.arrayUnion(*messageIds.toTypedArray()),
+                "updatedAt" to FieldValue.serverTimestamp(),
+            ),
+            SetOptions.merge(),
+        ).await()
+    }
+
     suspend fun writeUserMessage(
         uid: String,
         conversationId: String,

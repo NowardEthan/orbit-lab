@@ -29,7 +29,17 @@ object OpenRouterClient {
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(120, TimeUnit.SECONDS)
         .writeTimeout(60, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
         .build()
+
+    /**
+     * Descarta conexões ociosas do pool. Chamar antes de re-tentar depois de
+     * "software caused connection abort": uma conexão keep-alive morta reusada aborta
+     * de novo — evictar força uma conexão nova.
+     */
+    fun evictConnections() {
+        runCatching { http.connectionPool.evictAll() }
+    }
 
     sealed class StreamEvent {
         data class Delta(val text: String) : StreamEvent()
