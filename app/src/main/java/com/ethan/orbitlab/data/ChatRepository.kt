@@ -17,9 +17,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -253,6 +255,20 @@ object ChatRepository {
         return conversas
             .map { lista -> lista.find { it.id == id } }
             .distinctUntilChanged()
+    }
+
+    /**
+     * Garante as mensagens completas de [id] (pra exportar do histórico sem abrir o chat).
+     * Se já estão em memória, devolve na hora; senão liga o listener e espera popular.
+     */
+    suspend fun carregarMensagens(id: String): List<Mensagem> {
+        getConversa(id)?.mensagens?.takeIf { it.isNotEmpty() }?.let { return it }
+        ensureMessagesListener(id)
+        return withTimeoutOrNull(5000) {
+            conversas
+                .map { lista -> lista.find { it.id == id }?.mensagens.orEmpty() }
+                .first { it.isNotEmpty() }
+        } ?: getConversa(id)?.mensagens.orEmpty()
     }
 
     fun deletarConversas(ids: List<String>) {

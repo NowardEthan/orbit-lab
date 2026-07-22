@@ -30,6 +30,7 @@ import androidx.compose.material.icons.rounded.ChatBubbleOutline
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.IosShare
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.SearchOff
 import androidx.compose.material3.Icon
@@ -40,9 +41,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -63,12 +66,14 @@ import androidx.compose.ui.unit.sp
 import com.ethan.orbitlab.R
 import com.ethan.orbitlab.data.ChatRepository
 import com.ethan.orbitlab.data.Conversa
+import com.ethan.orbitlab.data.export.ConversaExporter
 import com.ethan.orbitlab.ui.theme.OrbitFills
 import com.ethan.orbitlab.ui.theme.OrbitMetrics
 import com.ethan.orbitlab.ui.theme.OrbitMotion
 import com.ethan.orbitlab.ui.theme.OrbitTokens
 import com.ethan.orbitlab.ui.theme.orbitPressable
 import com.ethan.orbitlab.ui.theme.rememberOrbitPressScale
+import kotlinx.coroutines.launch
 
 private val SearchPill = RoundedCornerShape(999.dp)
 
@@ -80,6 +85,8 @@ fun ConversasScreen(onOpenChat: (String) -> Unit = {}) {
 
     val selecionados = remember { mutableStateListOf<String>() }
     val isSelectionMode = selecionados.isNotEmpty()
+    val exportScope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     val filtradas = remember(conversas, query) {
         conversas
@@ -174,6 +181,18 @@ fun ConversasScreen(onOpenChat: (String) -> Unit = {}) {
             BarraSelecao(
                 quantidade = selecionados.size,
                 onCancelar = { selecionados.clear() },
+                onExportar = {
+                    val ids = selecionados.toList()
+                    selecionados.clear()
+                    exportScope.launch {
+                        val itens = ids.mapNotNull { id ->
+                            val conv = ChatRepository.getConversa(id) ?: return@mapNotNull null
+                            val msgs = ChatRepository.carregarMensagens(id)
+                            if (msgs.isEmpty()) null else ConversaExporter.Item(conv.titulo, msgs)
+                        }
+                        if (itens.isNotEmpty()) ConversaExporter.compartilhar(context, itens)
+                    }
+                },
                 onApagar = {
                     ChatRepository.deletarConversas(selecionados.toList())
                     selecionados.clear()
@@ -240,6 +259,7 @@ private fun HeaderConversas(
 private fun BarraSelecao(
     quantidade: Int,
     onCancelar: () -> Unit,
+    onExportar: () -> Unit,
     onApagar: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -276,6 +296,22 @@ private fun BarraSelecao(
             fontWeight = FontWeight.Medium,
             modifier = Modifier.weight(1f),
         )
+
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(OrbitTokens.surfaceHover)
+                .orbitPressable(onClick = onExportar),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Rounded.IosShare,
+                contentDescription = "Exportar",
+                tint = OrbitTokens.accentText,
+                modifier = Modifier.size(18.dp),
+            )
+        }
 
         Row(
             modifier = Modifier

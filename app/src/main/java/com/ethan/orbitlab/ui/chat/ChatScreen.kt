@@ -51,6 +51,7 @@ import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.rounded.ArrowBackIosNew
 import androidx.compose.material.icons.rounded.ChatBubbleOutline
+import androidx.compose.material.icons.rounded.IosShare
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.Lock
@@ -103,6 +104,7 @@ import com.ethan.orbitlab.data.PrefsRepository
 import com.ethan.orbitlab.data.lunaMessageIdForUser
 import com.ethan.orbitlab.data.newUserMessageId
 import com.ethan.orbitlab.data.lunaapi.LunaApiChat
+import com.ethan.orbitlab.data.export.ConversaExporter
 import com.ethan.orbitlab.data.openrouter.LunaDirectChat
 import com.ethan.orbitlab.ui.theme.OrbitFills
 import com.ethan.orbitlab.ui.theme.OrbitMetrics
@@ -290,7 +292,16 @@ fun ChatScreen(conversaId: String, onBack: () -> Unit) {
                 .navigationBarsPadding()
                 .imePadding(),
         ) {
-            ChatHeader(onBack = onBack, titulo = conversaAtual.titulo)
+            ChatHeader(
+                onBack = onBack,
+                titulo = conversaAtual.titulo,
+                onExport = {
+                    ConversaExporter.compartilhar(
+                        context,
+                        listOf(ConversaExporter.Item(conversaAtual.titulo, historico)),
+                    )
+                },
+            )
 
             Box(modifier = Modifier.weight(1f)) {
                 ChatTimeline(
@@ -353,7 +364,7 @@ fun ChatScreen(conversaId: String, onBack: () -> Unit) {
 }
 
 @Composable
-private fun ChatHeader(onBack: () -> Unit, titulo: String) {
+private fun ChatHeader(onBack: () -> Unit, titulo: String, onExport: () -> Unit = {}) {
     val tituloExibido =
         if (titulo.equals("Nova conversa", ignoreCase = true)) "Luna" else titulo
 
@@ -432,6 +443,24 @@ private fun ChatHeader(onBack: () -> Unit, titulo: String) {
                         fontWeight = FontWeight.Medium,
                     )
                 }
+            }
+
+            // Exportar esta conversa (compartilhar como .md).
+            Box(
+                modifier = Modifier
+                    .size(OrbitMetrics.iconBtn)
+                    .clip(CircleShape)
+                    .background(OrbitTokens.surface)
+                    .border(1.dp, OrbitTokens.borderSoft, CircleShape)
+                    .orbitPressable(onClick = onExport),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Rounded.IosShare,
+                    contentDescription = "Exportar conversa",
+                    tint = OrbitTokens.textHigh,
+                    modifier = Modifier.size(18.dp),
+                )
             }
         }
         Box(
