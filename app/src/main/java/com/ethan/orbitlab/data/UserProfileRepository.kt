@@ -207,7 +207,7 @@ object UserProfileRepository {
             val pathKind = if (kind == ProfileImageKind.AVATAR) "avatar" else "cover"
             val path = "users/$uid/profile/$pathKind.$ext"
             // Mesmo caminho do anexo do chat: token explícito, com teimosia (ver ChatMediaUpload).
-            val url = ChatMediaUpload.subirArquivo(context, path, uri, mime)
+            val url = ChatMediaUpload.subirArquivo(context, path, uri, mime).url
             val patch = when (kind) {
                 ProfileImageKind.AVATAR -> mapOf(
                     "avatarUrl" to url,

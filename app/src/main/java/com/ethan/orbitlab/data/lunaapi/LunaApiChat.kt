@@ -44,6 +44,13 @@ object LunaApiChat {
         else -> "Pensando…"
     }
 
+    private fun rotuloEnvio(anexos: List<ComposerAttachment>): String = when {
+        anexos.size > 1 -> "Enviando os anexos…"
+        anexos.firstOrNull()?.kind == AttachmentKind.IMAGE -> "Enviando a foto…"
+        anexos.firstOrNull()?.kind == AttachmentKind.VIDEO -> "Enviando o vídeo…"
+        else -> "Enviando o arquivo…"
+    }
+
     suspend fun responder(
         context: Context,
         conversaId: String,
@@ -94,6 +101,9 @@ object LunaApiChat {
         }
 
         val uploaded = if (anexos.isNotEmpty()) {
+            // O anexo sobe ANTES da conversa começar; sem isso o "Pensando…" aparece parado
+            // e a demora parece ser da Luna, quando é da foto subindo.
+            onEstado(LunaStreamEstado.Raciocinando("", fase = rotuloEnvio(anexos)))
             ChatMediaUpload.uploadAttachments(
                 context = context,
                 uid = uid,

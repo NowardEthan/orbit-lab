@@ -1,7 +1,11 @@
 package com.ethan.orbitlab.data.firebase
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Matrix
 import android.net.Uri
+import androidx.exifinterface.media.ExifInterface
 import com.ethan.orbitlab.ui.chat.AttachmentKind
 import com.ethan.orbitlab.ui.chat.ComposerAttachment
 import com.google.firebase.auth.FirebaseAuth
@@ -49,6 +53,17 @@ object ChatMediaUpload {
 
     private const val TENTATIVAS = 3
     private const val HOST = "https://firebasestorage.googleapis.com/v0/b"
+
+    /**
+     * Foto de celular sai com 12 MP e 4-6 MB. Subir isso em rede de celular leva quase um
+     * minuto — e o modelo que vai olhar a imagem reduz pra ~1000 px antes de ver. Então
+     * mandamos já enxuto: mesmo conteúdo, uma fração do tempo.
+     */
+    private const val LADO_MAX = 1600
+    private const val QUALIDADE = 82
+
+    /** Abaixo disso não vale reprocessar: o ganho é menor que o custo. */
+    private const val PISO_BYTES = 320L * 1024
 
     private val http: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
@@ -131,15 +146,22 @@ object ChatMediaUpload {
         attachment: ComposerAttachment,
         local: Uri,
     ): ComposerAttachment {
-        val url = try {
+        val subida = try {
             subirArquivo(context, path, local, attachment.mime)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             throw IOException(recado(attachment, e), e)
         }
-        return attachment.copy(uri = Uri.parse(url))
+        return attachment.copy(
+            uri = Uri.parse(subida.url),
+            mime = subida.mime,
+            sizeLabel = tamanhoLegivel(subida.bytes),
+        )
     }
+
+    /** O que de fato foi parar no Storage (pode ser uma versão enxuta do original). */
+    data class Subida(val url: String, val mime: String, val bytes: Long)
 
     /** Sobe um arquivo qualquer pro Storage e devolve a URL de download. */
     suspend fun subirArquivo(
@@ -147,42 +169,68 @@ object ChatMediaUpload {
         path: String,
         local: Uri,
         mimeDeclarado: String,
-    ): String {
+    ): Subida {
         val bucket = storage.reference.bucket
-        val mime = mimeDeclarado.ifBlank { "application/octet-stream" }
+        val original = mimeDeclarado.ifBlank { "application/octet-stream" }
         val destino = "$HOST/$bucket/o?uploadType=media&name=${enc(path)}"
 
-        var ultima: Exception? = null
-        var tentativa = 0
-        while (tentativa < TENTATIVAS) {
-            tentativa++
-            // 1ª tentativa usa o token em cache; se falhar, força um token novo.
-            val token = idToken(forcar = tentativa > 1)
-                ?: throw IOException("sem sessão pra subir o arquivo")
-            try {
-                val json = withContext(Dispatchers.IO) {
-                    val req = Request.Builder()
-                        .url(destino)
-                        .addHeader("Authorization", "Firebase $token")
-                        .post(corpoDoAnexo(context, local, mime))
-                        .build()
-                    http.newCall(req).execute().use { resp ->
-                        val txt = resp.body?.string().orEmpty()
-                        if (!resp.isSuccessful) throw IOException("HTTP ${resp.code} ${resumo(txt)}")
-                        JSONObject(txt)
-                    }
-                }
-                val chave = json.optString("downloadTokens")
-                return "$HOST/$bucket/o/${enc(path)}?alt=media" +
-                    if (chave.isNotBlank()) "&token=$chave" else ""
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                ultima = e
-                if (tentativa < TENTATIVAS) delay(tentativa * 1200L)
-            }
+        // Imagem pesada vira uma cópia enxuta antes de encostar na rede.
+        val enxuta = withContext(Dispatchers.IO) { encolherImagem(context, local, original) }
+        // Sem tamanho conhecido não dá pra fazer streaming — materializa uma cópia UMA vez
+        // (dentro do laço, cada tentativa apagaria o arquivo da anterior).
+        val copia = if (enxuta == null && tamanhoDe(context, local) <= 0L) {
+            withContext(Dispatchers.IO) { runCatching { copiarParaCache(context, local) }.getOrNull() }
+        } else {
+            null
         }
-        throw ultima ?: IOException("o upload falhou sem dizer por quê")
+        val fonte = enxuta?.arquivo ?: copia
+        val mime = enxuta?.mime ?: original
+        val bytes = fonte?.length() ?: tamanhoDe(context, local).coerceAtLeast(0L)
+
+        try {
+            var ultima: Exception? = null
+            var tentativa = 0
+            while (tentativa < TENTATIVAS) {
+                tentativa++
+                // 1ª tentativa usa o token em cache; se falhar, força um token novo.
+                val token = idToken(forcar = tentativa > 1)
+                    ?: throw IOException("sem sessão pra subir o arquivo")
+                try {
+                    val json = withContext(Dispatchers.IO) {
+                        val corpo = if (fonte != null) {
+                            corpoDeArquivo(fonte, mime)
+                        } else {
+                            corpoDeUri(context, local, mime, bytes)
+                        }
+                        val req = Request.Builder()
+                            .url(destino)
+                            .addHeader("Authorization", "Firebase $token")
+                            .post(corpo)
+                            .build()
+                        http.newCall(req).execute().use { resp ->
+                            val txt = resp.body?.string().orEmpty()
+                            if (!resp.isSuccessful) {
+                                throw IOException("HTTP ${resp.code} ${resumo(txt)}")
+                            }
+                            JSONObject(txt)
+                        }
+                    }
+                    val chave = json.optString("downloadTokens")
+                    val url = "$HOST/$bucket/o/${enc(path)}?alt=media" +
+                        if (chave.isNotBlank()) "&token=$chave" else ""
+                    return Subida(url = url, mime = mime, bytes = bytes)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    ultima = e
+                    if (tentativa < TENTATIVAS) delay(tentativa * 1200L)
+                }
+            }
+            throw ultima ?: IOException("o upload falhou sem dizer por quê")
+        } finally {
+            enxuta?.arquivo?.delete()
+            copia?.delete()
+        }
     }
 
     private suspend fun idToken(forcar: Boolean): String? = runCatching {
@@ -190,30 +238,108 @@ object ChatMediaUpload {
     }.getOrNull()?.takeIf { it.isNotBlank() }
 
     /** Streaming: o arquivo nunca é carregado inteiro na memória (celular apertado). */
-    private fun corpoDoAnexo(context: Context, uri: Uri, mime: String): RequestBody {
-        val tamanho = tamanhoDe(context, uri)
-        if (tamanho <= 0L) {
-            // Sem tamanho conhecido não dá pra mandar direto: copia pro cache e mede.
-            val copia = copiarParaCache(context, uri)
-            return object : RequestBody() {
-                override fun contentType(): MediaType? = mime.toMediaTypeOrNull()
-                override fun contentLength(): Long = copia.length()
-                override fun writeTo(sink: BufferedSink) {
-                    try {
-                        FileInputStream(copia).use { sink.writeAll(it.source()) }
-                    } finally {
-                        copia.delete()
-                    }
-                }
-            }
+    private fun corpoDeArquivo(arquivo: File, mime: String): RequestBody = object : RequestBody() {
+        override fun contentType(): MediaType? = mime.toMediaTypeOrNull()
+        override fun contentLength(): Long = arquivo.length()
+        override fun writeTo(sink: BufferedSink) {
+            FileInputStream(arquivo).use { sink.writeAll(it.source()) }
         }
-        return object : RequestBody() {
-            override fun contentType(): MediaType? = mime.toMediaTypeOrNull()
-            override fun contentLength(): Long = tamanho
-            override fun writeTo(sink: BufferedSink) {
-                abrirEntrada(context, uri).use { entrada -> sink.writeAll(entrada.source()) }
-            }
+    }
+
+    private fun corpoDeUri(
+        context: Context,
+        uri: Uri,
+        mime: String,
+        tamanho: Long,
+    ): RequestBody = object : RequestBody() {
+        override fun contentType(): MediaType? = mime.toMediaTypeOrNull()
+        override fun contentLength(): Long = if (tamanho > 0L) tamanho else -1L
+        override fun writeTo(sink: BufferedSink) {
+            abrirEntrada(context, uri).use { entrada -> sink.writeAll(entrada.source()) }
         }
+    }
+
+    private class Enxuta(val arquivo: File, val mime: String)
+
+    /**
+     * Reduz a imagem antes de subir: lado maior em [LADO_MAX], JPEG em [QUALIDADE].
+     *
+     * O que sai daqui costuma ser 10-20x menor que a foto original, e é exatamente o que
+     * o modelo enxerga de qualquer jeito. A orientação do EXIF é aplicada na hora (quem
+     * recomprime sem olhar o EXIF entrega a foto deitada).
+     *
+     * Devolve `null` quando não vale a pena mexer — aí sobe o arquivo original, intacto.
+     */
+    private fun encolherImagem(context: Context, uri: Uri, mime: String): Enxuta? {
+        val m = mime.lowercase(Locale.US)
+        if (!m.startsWith("image/") || m.contains("gif")) return null
+        val original = tamanhoDe(context, uri)
+        if (original in 1 until PISO_BYTES) return null
+
+        return runCatching {
+            val limites = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            abrirEntrada(context, uri).use { BitmapFactory.decodeStream(it, null, limites) }
+            val maior = maxOf(limites.outWidth, limites.outHeight)
+            if (maior <= 0) return null
+
+            val giro = giroExif(context, uri)
+
+            // Decodifica já reduzido (potência de 2) — nunca cabe a foto inteira na memória.
+            val opcoes = BitmapFactory.Options().apply {
+                inSampleSize = amostragem(maior, LADO_MAX)
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            }
+            val bruta = abrirEntrada(context, uri).use {
+                BitmapFactory.decodeStream(it, null, opcoes)
+            } ?: return null
+
+            val escala = (LADO_MAX.toFloat() / maxOf(bruta.width, bruta.height)).coerceAtMost(1f)
+            val matriz = Matrix().apply {
+                if (escala < 1f) postScale(escala, escala)
+                if (giro != 0) postRotate(giro.toFloat())
+            }
+            val pronta = if (matriz.isIdentity) {
+                bruta
+            } else {
+                Bitmap.createBitmap(bruta, 0, 0, bruta.width, bruta.height, matriz, true)
+                    .also { if (it !== bruta) bruta.recycle() }
+            }
+
+            val destino = File(File(context.cacheDir, "uploads").apply { mkdirs() }, "opt_${System.nanoTime()}.jpg")
+            destino.outputStream().use { saida ->
+                pronta.compress(Bitmap.CompressFormat.JPEG, QUALIDADE, saida)
+            }
+            pronta.recycle()
+
+            // Se não ficou menor (imagem já otimizada), o original serve melhor.
+            if (destino.length() <= 0L || (original > 0 && destino.length() >= original)) {
+                destino.delete()
+                return null
+            }
+            Enxuta(destino, "image/jpeg")
+        }.getOrNull()
+    }
+
+    private fun amostragem(maior: Int, alvo: Int): Int {
+        var passo = 1
+        while (maior / (passo * 2) >= alvo) passo *= 2
+        return passo
+    }
+
+    private fun giroExif(context: Context, uri: Uri): Int = runCatching {
+        val exif = abrirEntrada(context, uri).use { ExifInterface(it) }
+        when (exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)) {
+            ExifInterface.ORIENTATION_ROTATE_90 -> 90
+            ExifInterface.ORIENTATION_ROTATE_180 -> 180
+            ExifInterface.ORIENTATION_ROTATE_270 -> 270
+            else -> 0
+        }
+    }.getOrDefault(0)
+
+    private fun tamanhoLegivel(bytes: Long): String = when {
+        bytes <= 0L -> "—"
+        bytes < 1024L * 1024 -> "${(bytes / 1024f).toInt()} KB"
+        else -> String.format(Locale.US, "%.1f MB", bytes / (1024f * 1024f))
     }
 
     private fun tamanhoDe(context: Context, uri: Uri): Long {
