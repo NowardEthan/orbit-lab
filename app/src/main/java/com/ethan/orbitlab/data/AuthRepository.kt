@@ -187,6 +187,10 @@ object AuthRepository {
 
     private fun saiu() {
         PrefsRepository.sessaoUid = null
+        // Sair zera o «onde eu estava»: quem entrar depois não cai na conversa do anterior.
+        PrefsRepository.ultimaConversa = null
+        PrefsRepository.ultimaAba = null
+        PrefsRepository.setAncora("", null)
         _session.value = null
         _authReady.value = true
     }

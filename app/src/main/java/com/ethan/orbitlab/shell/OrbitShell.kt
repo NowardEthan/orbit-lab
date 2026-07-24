@@ -66,6 +66,7 @@ import kotlinx.coroutines.delay
 
 import com.ethan.orbitlab.data.AuthRepository
 import com.ethan.orbitlab.data.ChatRepository
+import com.ethan.orbitlab.data.PrefsRepository
 import com.ethan.orbitlab.data.updates.UpdatesRepository
 import com.ethan.orbitlab.ui.ajustes.AjustesScreen
 import com.ethan.orbitlab.ui.auth.LoginScreen
@@ -144,11 +145,25 @@ fun OrbitShell() {
         return
     }
 
-    var abaAtual by remember { mutableStateOf(OrbitTab.INICIO) }
+    // Volta exatamente onde ele parou. O Android mata o app por fome de memória a toda
+    // hora; sem isto, cada volta era um recomeço no Início — e quem estava no meio de uma
+    // conversa com a Luna tinha que se reencontrar sozinho.
+    var abaAtual by remember {
+        mutableStateOf(
+            PrefsRepository.ultimaAba
+                ?.let { salva -> OrbitTab.entries.firstOrNull { it.name == salva } }
+                ?: OrbitTab.INICIO,
+        )
+    }
     var menuAberto by remember { mutableStateOf(false) }
-    var chatAberto by remember { mutableStateOf(false) }
-    var conversaAtivaId by remember { mutableStateOf<String?>(null) }
+    var conversaAtivaId by remember { mutableStateOf(PrefsRepository.ultimaConversa) }
+    var chatAberto by remember { mutableStateOf(conversaAtivaId != null) }
     var novidadesAberto by remember { mutableStateOf(false) }
+
+    LaunchedEffect(abaAtual) { PrefsRepository.ultimaAba = abaAtual.name }
+    LaunchedEffect(chatAberto, conversaAtivaId) {
+        PrefsRepository.ultimaConversa = conversaAtivaId?.takeIf { chatAberto }
+    }
     val manifest by UpdatesRepository.manifest.collectAsState()
     val seenSignature by UpdatesRepository.seenSignature.collectAsState()
     val seenLoaded by UpdatesRepository.seenLoaded.collectAsState()

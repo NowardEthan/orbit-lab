@@ -45,7 +45,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -71,6 +70,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -162,6 +163,8 @@ fun ChatScreen(conversaId: String, onBack: () -> Unit) {
     // Id da mensagem pra rolar até / destacar após tocar num resultado da busca.
     var scrollAlvo by remember { mutableStateOf<String?>(null) }
     var destaqueId by remember { mutableStateOf<String?>(null) }
+    // Onde ele estava lendo quando saiu desta conversa (null = estava no fim, o padrão).
+    val ancoraInicial = remember(conversaId) { PrefsRepository.ancoraDe(conversaId) }
 
     // O destaque do resultado é um pulso: acende ao chegar e apaga sozinho.
     LaunchedEffect(destaqueId) {
@@ -354,12 +357,16 @@ fun ChatScreen(conversaId: String, onBack: () -> Unit) {
 
             Box(modifier = Modifier.weight(1f)) {
                 ChatTimeline(
+                    conversaId = conversaId,
                     historico = historico,
                     streamState = streamState,
                     ocultarMessageId = streamLunaMsgId,
                     scrollParaId = scrollAlvo,
                     onScrollFeito = { scrollAlvo = null },
                     destacarId = destaqueId,
+                    selecionadoId = actionSheetMsg?.id,
+                    ancoraInicial = ancoraInicial,
+                    onAncora = { id -> PrefsRepository.setAncora(conversaId, id) },
                     onRetry = onRetry,
                     onMessageLongPress = { msg ->
                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -607,18 +614,23 @@ private fun AssinaturaAzul(modifier: Modifier = Modifier) {
 
 @Composable
 private fun ChatTimeline(
+    conversaId: String,
     historico: List<Mensagem>,
     streamState: MutableState<LunaStreamEstado>,
     ocultarMessageId: String? = null,
     scrollParaId: String? = null,
     onScrollFeito: () -> Unit = {},
     destacarId: String? = null,
+    selecionadoId: String? = null,
+    ancoraInicial: String? = null,
+    onAncora: (String?) -> Unit = {},
     onRetry: () -> Unit = {},
     onMessageLongPress: (Mensagem) -> Unit = {},
     onReferenciarMedia: (Mensagem, ComposerAttachment) -> Unit = { _, _ -> },
 ) {
     val streamEstado = streamState.value
-    val listState = rememberLazyListState()
+    // Uma posição de rolagem por conversa: trocar de conversa não herda o lugar da anterior.
+    val listState = rememberSaveable(conversaId, saver = LazyListState.Saver) { LazyListState() }
     val streamAtivo = streamEstado !is LunaStreamEstado.Idle
     val density = LocalDensity.current
     val limiarFundoPx = with(density) { 120.dp.toPx() }
@@ -630,10 +642,42 @@ private fun ChatTimeline(
         }
     }
 
-    // Nova mensagem (envio ou resposta final) → sempre desce, mesmo no meio do histórico.
+    // Posicionamento da lista — abertura e mensagem nova no MESMO efeito, de propósito:
+    // em dois efeitos separados eles corriam juntos e o «desce até o fim» atropelava a
+    // volta pra onde ele estava lendo.
+    var posicionado by remember(conversaId) { mutableStateOf(false) }
     LaunchedEffect(mensagensVisiveis.size, streamAtivo) {
+        // Lista vazia = histórico ainda chegando do Firestore; espera a próxima leva.
         if (mensagensVisiveis.isEmpty() && !streamAtivo) return@LaunchedEffect
+        if (!posicionado) {
+            val alvo = ancoraInicial
+            val idx = if (alvo == null) -1 else mensagensVisiveis.indexOfFirst { it.id == alvo }
+            // Sem âncora (ou a mensagem já não existe) o lugar certo é o fim, como sempre.
+            if (idx >= 0) runCatching { listState.scrollToItem(idx) } else listState.irAoFundo(animado = false)
+            posicionado = true
+            return@LaunchedEffect
+        }
+        // Daqui pra frente: mensagem nova (envio ou resposta) sempre desce.
         listState.irAoFundo(animado = true)
+    }
+
+    // Guarda a âncora conforme ele lê: a mensagem no topo da tela. Se estiver perto do fim,
+    // guarda nada — o fim é onde o app já abre, e é lá que a mensagem nova aparece.
+    val listaAgora by rememberUpdatedState(mensagensVisiveis)
+    val selecionadoAgora by rememberUpdatedState(selecionadoId)
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.firstVisibleItemIndex }
+            .distinctUntilChanged()
+            .collect { idx ->
+                // Antes de assentar a lista o topo é o item 0 por um instante; guardar isso
+                // ancorava a conversa no começo do histórico pra sempre.
+                if (!posicionado) return@collect
+                // Com mensagem selecionada a lista está deslocada pelo vão da folha de ações:
+                // o que ele vê agora não é onde ele estava lendo.
+                if (selecionadoAgora != null) return@collect
+                val perto = listState.pertoDoFundo(limiarFundoPx)
+                onAncora(if (perto) null else listaAgora.getOrNull(idx)?.id)
+            }
     }
 
     // Stream: ao começar, sobe ao fundo; depois só acompanha se o user continuar no fim.
@@ -663,6 +707,26 @@ private fun ChatTimeline(
             }
     }
 
+    // Selecionou uma mensagem: a folha de ações cobre a metade de baixo da tela, então se a
+    // bolha escolhida ficaria escondida atrás dela, sobe ela pro alto — de nada serve acender
+    // uma mensagem que ele não vê.
+    LaunchedEffect(selecionadoId) {
+        val alvo = selecionadoId ?: return@LaunchedEffect
+        val idx = listaAgora.indexOfFirst { it.id == alvo }
+        if (idx < 0) return@LaunchedEffect
+        // Um quadro pro vão de baixo entrar em vigor antes de medirmos.
+        delay(24)
+        val info = listState.layoutInfo
+        val altura = info.viewportEndOffset
+        if (altura <= 0) return@LaunchedEffect
+        val item = info.visibleItemsInfo.firstOrNull { it.index == idx }
+        val cabe = item != null && item.offset >= 0 && item.offset + item.size <= altura * 0.45f
+        if (cabe) return@LaunchedEffect
+        runCatching {
+            listState.animateScrollToItem(idx, scrollOffset = -(altura * 0.10f).toInt())
+        }
+    }
+
     // Tocou num resultado da busca → rola até a mensagem (centralizada dá pra ver o contexto).
     LaunchedEffect(scrollParaId) {
         val alvo = scrollParaId ?: return@LaunchedEffect
@@ -686,7 +750,9 @@ private fun ChatTimeline(
             start = OrbitMetrics.pagePadding,
             end = OrbitMetrics.pagePadding,
             top = 16.dp,
-            bottom = 28.dp,
+            // Com uma mensagem selecionada abrimos um vão embaixo: sem esse espaço a lista
+            // não teria pra onde rolar e a última bolha ficaria presa atrás da folha de ações.
+            bottom = 28.dp + if (selecionadoId != null) 300.dp else 0.dp,
         ),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -698,19 +764,42 @@ private fun ChatTimeline(
             // Pulso de destaque: quando a busca aponta esta mensagem, um brilho suave acende
             // atrás dela e apaga sozinho — pra você ver onde aterrissou.
             val destacado = msg.id == destacarId
+            // Selecionada (segurou pra abrir as ações): ela fica acesa e um pouco maior,
+            // e as vizinhas recuam pro fundo — pra não ter dúvida de em qual você tocou.
+            val selecionada = selecionadoId != null && msg.id == selecionadoId
+            val recuada = selecionadoId != null && !selecionada
             val corPulso by animateColorAsState(
-                targetValue = if (destacado) {
-                    OrbitTokens.accent.copy(alpha = 0.16f)
-                } else {
-                    Color.Transparent
+                targetValue = when {
+                    selecionada -> OrbitTokens.accent.copy(alpha = 0.22f)
+                    destacado -> OrbitTokens.accent.copy(alpha = 0.16f)
+                    else -> Color.Transparent
                 },
-                animationSpec = tween(durationMillis = if (destacado) 220 else 900),
-                label = "pulsoBusca",
+                animationSpec = tween(durationMillis = if (selecionada || destacado) 180 else 700),
+                label = "pulsoMensagem",
+            )
+            val brilho by animateFloatAsState(
+                targetValue = if (recuada) 0.34f else 1f,
+                animationSpec = tween(durationMillis = 180),
+                label = "brilhoMensagem",
+            )
+            val crescer by animateFloatAsState(
+                targetValue = if (selecionada) 1.025f else 1f,
+                animationSpec = spring(dampingRatio = 0.62f, stiffness = Spring.StiffnessMedium),
+                label = "cresceMensagem",
             )
             Box(
                 modifier = Modifier
                     .animateItem(fadeInSpec = null, fadeOutSpec = null)
                     .fillMaxWidth()
+                    .graphicsLayer {
+                        alpha = brilho
+                        scaleX = crescer
+                        scaleY = crescer
+                        transformOrigin = TransformOrigin(
+                            pivotFractionX = if (msg.isLuna) 0f else 1f,
+                            pivotFractionY = 0.5f,
+                        )
+                    }
                     .clip(RoundedCornerShape(16.dp))
                     .background(corPulso)
                     .padding(vertical = 2.dp),

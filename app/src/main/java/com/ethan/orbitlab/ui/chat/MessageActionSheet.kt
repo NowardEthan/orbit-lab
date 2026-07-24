@@ -94,6 +94,9 @@ fun MessageActionSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = OrbitTokens.surfaceRaised,
+        // Véu bem leve: quem apaga o resto da conversa é o recuo das mensagens vizinhas
+        // (ver ChatTimeline), pra que a mensagem selecionada continue acesa aqui atrás.
+        scrimColor = Color.Black.copy(alpha = 0.16f),
     ) {
         Column(
             Modifier
