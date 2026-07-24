@@ -50,8 +50,11 @@ sealed class LunaStreamEstado {
     ) : LunaStreamEstado()
 
     data class Raciocinando(
+        /** Raciocínio REAL (tokens de reasoning) — vira a caixa recolhível. */
         val parcial: String,
         val actionRun: LunaActionRun? = null,
+        /** Rótulo de progresso (Analisando…/Escrevendo…) — só o texto do "Pensando…", não é raciocínio. */
+        val fase: String = "",
     ) : LunaStreamEstado()
 
     data class Respondendo(
@@ -67,6 +70,8 @@ data class LunaStreamResultado(
     val reasoningDuracao: String,
     val resposta: String,
     val actionRun: LunaActionRun? = null,
+    /** true = a "resposta" é um aviso de falha, não fala real da Luna (não persistir/nem virar memória). */
+    val erro: Boolean = false,
 )
 
 suspend fun executarStreamLuna(
@@ -296,9 +301,10 @@ fun LunaStreamDraft(
                             )
                         }
                     }
-                    // Sempre mostra “Pensando…” enquanto espera o primeiro token —
-                    // senão, com raciocínio desligado, a tela fica muda no Railway.
-                    else -> LunaReasoningPensando()
+                    // Sempre mostra o indicador enquanto espera o primeiro token — com o
+                    // rótulo da fase (Analisando…/Escrevendo…) quando o servidor manda, senão
+                    // “Pensando…”. A caixa de raciocínio só aparece com raciocínio de verdade.
+                    else -> LunaReasoningPensando(label = estado.fase.ifBlank { "Pensando…" })
                 }
             }
         }

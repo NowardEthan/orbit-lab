@@ -60,6 +60,7 @@ object LunaDirectChat {
                 reasoningDuracao = "",
                 resposta = "Falta a chave OpenRouter. Coloca `OPENROUTER_API_KEY` no " +
                     "`core/src/luna-core/.env` (ou `openrouter.api.key` no local.properties) e recompila.",
+                erro = true,
             )
         }
 
@@ -174,8 +175,9 @@ object LunaDirectChat {
         val apiMessages = mutableListOf(
             ChatMessage(role = "system", content = OpenRouterConfig.systemPrompt),
         )
-        // Histórico curto (últimas 12 mensagens antes do turno actual)
-        historico.takeLast(12).forEach { msg ->
+        // Histórico curto (últimas 12 mensagens antes do turno actual). Balões de erro são
+        // avisos locais, não fala real da Luna — ficam de fora pra não confundi-la.
+        historico.filterNot { it.erro }.takeLast(12).forEach { msg ->
             apiMessages += ChatMessage(
                 role = if (msg.isLuna) "assistant" else "user",
                 content = msg.texto.ifBlank {
@@ -293,6 +295,8 @@ object LunaDirectChat {
             reasoningDuracao = "${dur}s",
             resposta = texto,
             actionRun = actionRun,
+            // Falhou de rede e nada chegou → é aviso de erro, não fala real da Luna.
+            erro = respostaBuf.isBlank() && erro != null,
         )
     }
 }

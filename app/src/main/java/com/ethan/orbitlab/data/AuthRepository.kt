@@ -17,7 +17,12 @@ import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.GetCredentialException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -52,12 +57,58 @@ object AuthRepository {
     private val _authReady = MutableStateFlow(false)
     val authReady: StateFlow<Boolean> = _authReady.asStateFlow()
 
+    /** Tempo que damos ao Firebase pra ler a conta do disco antes de assumir «deslogado». */
+    private const val GRACA_RESTAURO_MS = 5_000L
+
+    /** Enquanto true, `currentUser == null` significa «ainda restaurando», não «saiu». */
+    private var restaurando = false
+
+    private val escopo = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
     fun init(@Suppress("UNUSED_PARAMETER") context: Context) {
+        val jaEntrouAqui = PrefsRepository.sessaoUid != null
+        val agora = auth.currentUser
+
+        when {
+            // Conta já em mãos: entra direto, sem piscar login.
+            agora != null -> entrou(agora)
+            // Havia sessão neste aparelho — segura o splash até o Firebase responder.
+            jaEntrouAqui -> {
+                restaurando = true
+                escopo.launch {
+                    delay(GRACA_RESTAURO_MS)
+                    if (restaurando) {
+                        restaurando = false
+                        if (auth.currentUser == null) saiu()
+                    }
+                }
+            }
+            // Nunca entrou: login na hora.
+            else -> _authReady.value = true
+        }
+
         // Listener único — restaura sessão persistida pelo Firebase Auth
         auth.addAuthStateListener { firebaseAuth ->
-            _session.value = firebaseAuth.currentUser?.toSession()
-            _authReady.value = true
+            val user = firebaseAuth.currentUser
+            if (user != null) {
+                restaurando = false
+                entrou(user)
+            } else if (!restaurando) {
+                saiu()
+            }
         }
+    }
+
+    private fun entrou(user: FirebaseUser) {
+        PrefsRepository.sessaoUid = user.uid
+        _session.value = user.toSession()
+        _authReady.value = true
+    }
+
+    private fun saiu() {
+        PrefsRepository.sessaoUid = null
+        _session.value = null
+        _authReady.value = true
     }
 
     fun validateEmail(email: String): String? {
@@ -178,8 +229,9 @@ object AuthRepository {
     }
 
     suspend fun sair() {
+        restaurando = false
         auth.signOut()
-        _session.value = null
+        saiu()
     }
 
     /** Apagar conta no lab = signOut (delete server-side fica no fluxo de privacidade do mobile). */

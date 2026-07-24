@@ -137,6 +137,7 @@ fun LunaReasoning(
 @Composable
 fun LunaReasoningPensando(
     modifier: Modifier = Modifier,
+    label: String = "Pensando…",
 ) {
     Row(
         modifier = modifier
@@ -167,7 +168,7 @@ fun LunaReasoningPensando(
             }
         }
         Text(
-            text = "Pensando…",
+            text = label,
             color = OrbitTokens.textMid,
             fontSize = 13.sp,
             fontWeight = FontWeight.Medium,

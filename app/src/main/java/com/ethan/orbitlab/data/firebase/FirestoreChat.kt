@@ -136,6 +136,24 @@ object FirestoreChat {
         ).await()
     }
 
+    /**
+     * Renomeia a conversa (título que a Luna gera pelo assunto atual). Trava o título
+     * (`titleLocked`) pra o palpite ingênuo da 1ª mensagem não brigar com ele — a própria
+     * Luna pode reescrever depois, que este método sempre grava por cima.
+     */
+    suspend fun renomearConversa(uid: String, conversationId: String, title: String) {
+        val limpo = title.trim().take(48)
+        if (limpo.isBlank()) return
+        conversationDoc(uid, conversationId).set(
+            mapOf(
+                "title" to limpo,
+                "titleLocked" to true,
+                "updatedAt" to FieldValue.serverTimestamp(),
+            ),
+            SetOptions.merge(),
+        ).await()
+    }
+
     suspend fun softDeleteConversation(uid: String, conversationId: String) {
         conversationDoc(uid, conversationId).set(
             mapOf(

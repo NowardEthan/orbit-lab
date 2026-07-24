@@ -1,12 +1,15 @@
 package com.ethan.orbitlab.ui.chat
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -41,7 +44,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -52,6 +55,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.rounded.ArrowBackIosNew
 import androidx.compose.material.icons.rounded.ChatBubbleOutline
 import androidx.compose.material.icons.rounded.IosShare
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.Lock
@@ -77,6 +81,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -87,6 +92,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
@@ -104,7 +110,6 @@ import com.ethan.orbitlab.data.PrefsRepository
 import com.ethan.orbitlab.data.lunaMessageIdForUser
 import com.ethan.orbitlab.data.newUserMessageId
 import com.ethan.orbitlab.data.lunaapi.LunaApiChat
-import com.ethan.orbitlab.data.export.ConversaExporter
 import com.ethan.orbitlab.data.openrouter.LunaDirectChat
 import com.ethan.orbitlab.ui.theme.OrbitFills
 import com.ethan.orbitlab.ui.theme.OrbitMetrics
@@ -152,6 +157,19 @@ fun ChatScreen(conversaId: String, onBack: () -> Unit) {
     var streamLunaMsgId by remember { mutableStateOf<String?>(null) }
     var messageReference by remember(conversaId) { mutableStateOf<ThreadReference?>(null) }
     var actionSheetMsg by remember { mutableStateOf<Mensagem?>(null) }
+    var exportAberto by remember { mutableStateOf(false) }
+    var buscaAberta by remember { mutableStateOf(false) }
+    // Id da mensagem pra rolar até / destacar após tocar num resultado da busca.
+    var scrollAlvo by remember { mutableStateOf<String?>(null) }
+    var destaqueId by remember { mutableStateOf<String?>(null) }
+
+    // O destaque do resultado é um pulso: acende ao chegar e apaga sozinho.
+    LaunchedEffect(destaqueId) {
+        if (destaqueId != null) {
+            delay(1600)
+            destaqueId = null
+        }
+    }
     val clipboard = LocalClipboardManager.current
     val haptics = LocalHapticFeedback.current
 
@@ -196,12 +214,20 @@ fun ChatScreen(conversaId: String, onBack: () -> Unit) {
                         conversaId = conversaId,
                         texto = resultado.resposta,
                         isLuna = true,
-                        reasoning = resultado.reasoning.takeIf { it.isNotBlank() },
-                        reasoningDuracao = resultado.reasoningDuracao.takeIf { it.isNotBlank() },
-                        actionRun = resultado.actionRun,
+                        reasoning = resultado.reasoning.takeIf { it.isNotBlank() && !resultado.erro },
+                        reasoningDuracao = resultado.reasoningDuracao.takeIf { it.isNotBlank() && !resultado.erro },
+                        actionRun = if (resultado.erro) null else resultado.actionRun,
                         // Reusa o id (substitui um balão de erro no lugar) ou gera novo (anexa).
                         messageId = lunaMsgId,
+                        // Erro = aviso local: não vai pra nuvem nem vira memória; some no retry.
+                        persistirNuvem = !resultado.erro,
+                        erro = resultado.erro,
                     )
+                    // Deu certo → a Luna rebatiza a conversa pelo assunto atual (no 1º par
+                    // e a cada 6 turnos). Barato e à parte; não trava a resposta.
+                    if (!resultado.erro) {
+                        ChatRepository.talvezRenomearPelaLuna(conversaId)
+                    }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -211,6 +237,8 @@ fun ChatScreen(conversaId: String, onBack: () -> Unit) {
                         texto = "Erro ao falar com o $origem: ${e.message ?: "desconhecido"}",
                         isLuna = true,
                         messageId = lunaMsgId,
+                        persistirNuvem = false,
+                        erro = true,
                     )
                 } finally {
                     streamState.value = LunaStreamEstado.Idle
@@ -225,9 +253,11 @@ fun ChatScreen(conversaId: String, onBack: () -> Unit) {
         { texto: String, anexos: List<ComposerAttachment>, reference: ThreadReference? ->
             val textoEnvio = texto.trim()
             val historicoAntes = ChatRepository.getConversa(conversaId)?.mensagens.orEmpty()
-            // Ids estáveis no Railway: o servidor persiste o mesmo par e não duplica.
-            val userMsgId = if (lunaDirect) null else newUserMessageId()
-            val lunaMsgId = userMsgId?.let { lunaMessageIdForUser(it) }
+            // Par de ids ordenado (…-0 tua, …-1 Luna) em AMBOS os caminhos. No Railway
+            // evita duplicar; no direto garante que, enquanto o carimbo do servidor não
+            // assenta, o Firestore ordene pelo id e a Luna NUNCA caia acima da tua. 🌙
+            val userMsgId = newUserMessageId()
+            val lunaMsgId = lunaMessageIdForUser(userMsgId)
             ChatRepository.enviarMensagem(
                 conversaId = conversaId,
                 texto = textoEnvio,
@@ -252,7 +282,7 @@ fun ChatScreen(conversaId: String, onBack: () -> Unit) {
                 // (userMsg a refazer, histórico antes dela, id da resposta a substituir/anexar)
                 val alvo: Triple<Mensagem, List<Mensagem>, String?>? = when {
                     !ultima.isLuna -> Triple(ultima, msgs.dropLast(1), null)
-                    respostaEhErro(ultima.texto) -> {
+                    ultima.erro || respostaEhErro(ultima.texto) -> {
                         val userAntes = msgs.dropLast(1).lastOrNull { !it.isLuna }
                         userAntes?.let { u ->
                             val idxUser = msgs.indexOfFirst { it.id == u.id }
@@ -262,13 +292,35 @@ fun ChatScreen(conversaId: String, onBack: () -> Unit) {
                     else -> null
                 }
                 alvo?.let { (userMsg, historicoAntes, replyId) ->
-                    val userMsgId = if (lunaDirect) null else newUserMessageId()
-                    val lunaMsgId = replyId ?: userMsgId?.let { lunaMessageIdForUser(it) }
+                    // Reusa o id da SUA mensagem — o servidor faz upsert e NÃO duplica a tua fala.
+                    // (Gerar id novo aqui era o bug: o Railway gravava um segundo turno seu.)
+                    val userMsgId = if (lunaDirect) null else userMsg.id
+                    val lunaMsgId = replyId ?: if (lunaDirect) null else lunaMessageIdForUser(userMsg.id)
                     dispararResposta(userMsg.texto, historicoAntes, emptyList(), userMsg.reference, userMsgId, lunaMsgId)
                 }
             }
             Unit
         }
+    }
+
+    // Turno interrompido (o Android matou o app enquanto ele estava fora, a rede caiu no
+    // meio) deixa a mensagem DELE sozinha, sem resposta. Em vez de exigir que ele fique
+    // tocando em «tentar de novo», a tela retoma sozinha — uma vez por mensagem órfã, e só
+    // se for recente (abrir uma conversa velha não acorda a Luna do nada).
+    var autoRetomadoId by remember(conversaId) { mutableStateOf<String?>(null) }
+    val ultimaMsg = conversa?.mensagens?.lastOrNull()
+    val ocioso = streamState.value is LunaStreamEstado.Idle
+    LaunchedEffect(ultimaMsg?.id, ocioso) {
+        val orfa = ultimaMsg ?: return@LaunchedEffect
+        if (orfa.isLuna || !ocioso || autoRetomadoId == orfa.id) return@LaunchedEffect
+        if (System.currentTimeMillis() - orfa.timestamp > 30 * 60_000L) return@LaunchedEffect
+        // Respira: a resposta pode estar descendo do Firestore neste instante.
+        delay(1500)
+        val agora = ChatRepository.getConversa(conversaId)?.mensagens?.lastOrNull()
+        if (agora == null || agora.id != orfa.id || agora.isLuna) return@LaunchedEffect
+        if (streamState.value !is LunaStreamEstado.Idle) return@LaunchedEffect
+        autoRetomadoId = orfa.id
+        onRetry()
     }
 
     // Só volta se a conversa sumir de verdade (evita pop no meio do sync Firestore)
@@ -284,6 +336,7 @@ fun ChatScreen(conversaId: String, onBack: () -> Unit) {
     } else {
         val historico = conversaAtual.mensagens
 
+        Box(Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -295,12 +348,8 @@ fun ChatScreen(conversaId: String, onBack: () -> Unit) {
             ChatHeader(
                 onBack = onBack,
                 titulo = conversaAtual.titulo,
-                onExport = {
-                    ConversaExporter.compartilhar(
-                        context,
-                        listOf(ConversaExporter.Item(conversaAtual.titulo, historico)),
-                    )
-                },
+                onBuscar = { buscaAberta = true },
+                onExport = { exportAberto = true },
             )
 
             Box(modifier = Modifier.weight(1f)) {
@@ -308,6 +357,9 @@ fun ChatScreen(conversaId: String, onBack: () -> Unit) {
                     historico = historico,
                     streamState = streamState,
                     ocultarMessageId = streamLunaMsgId,
+                    scrollParaId = scrollAlvo,
+                    onScrollFeito = { scrollAlvo = null },
+                    destacarId = destaqueId,
                     onRetry = onRetry,
                     onMessageLongPress = { msg ->
                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -331,6 +383,26 @@ fun ChatScreen(conversaId: String, onBack: () -> Unit) {
                     onSend(texto, anexos, ref)
                     messageReference = null
                 },
+            )
+        }
+
+        BuscaConversaOverlay(
+            visivel = buscaAberta,
+            mensagens = historico,
+            onIrPara = { id ->
+                buscaAberta = false
+                scrollAlvo = id
+                destaqueId = id
+            },
+            onFechar = { buscaAberta = false },
+        )
+        }
+
+        if (exportAberto) {
+            ExportSheet(
+                titulo = conversaAtual.titulo,
+                mensagens = historico,
+                onDismiss = { exportAberto = false },
             )
         }
 
@@ -386,7 +458,12 @@ fun ChatScreen(conversaId: String, onBack: () -> Unit) {
 }
 
 @Composable
-private fun ChatHeader(onBack: () -> Unit, titulo: String, onExport: () -> Unit = {}) {
+private fun ChatHeader(
+    onBack: () -> Unit,
+    titulo: String,
+    onBuscar: () -> Unit = {},
+    onExport: () -> Unit = {},
+) {
     val tituloExibido =
         if (titulo.equals("Nova conversa", ignoreCase = true)) "Luna" else titulo
 
@@ -467,6 +544,26 @@ private fun ChatHeader(onBack: () -> Unit, titulo: String, onExport: () -> Unit 
                 }
             }
 
+            // Buscar nesta conversa (busca semântica — «pergunta à Luna»).
+            Box(
+                modifier = Modifier
+                    .size(OrbitMetrics.iconBtn)
+                    .clip(CircleShape)
+                    .background(OrbitTokens.surface)
+                    .border(1.dp, OrbitTokens.borderSoft, CircleShape)
+                    .orbitPressable(onClick = onBuscar),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Rounded.Search,
+                    contentDescription = "Buscar na conversa",
+                    tint = OrbitTokens.textHigh,
+                    modifier = Modifier.size(19.dp),
+                )
+            }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
             // Exportar esta conversa (compartilhar como .md).
             Box(
                 modifier = Modifier
@@ -513,6 +610,9 @@ private fun ChatTimeline(
     historico: List<Mensagem>,
     streamState: MutableState<LunaStreamEstado>,
     ocultarMessageId: String? = null,
+    scrollParaId: String? = null,
+    onScrollFeito: () -> Unit = {},
+    destacarId: String? = null,
     onRetry: () -> Unit = {},
     onMessageLongPress: (Mensagem) -> Unit = {},
     onReferenciarMedia: (Mensagem, ComposerAttachment) -> Unit = { _, _ -> },
@@ -563,6 +663,17 @@ private fun ChatTimeline(
             }
     }
 
+    // Tocou num resultado da busca → rola até a mensagem (centralizada dá pra ver o contexto).
+    LaunchedEffect(scrollParaId) {
+        val alvo = scrollParaId ?: return@LaunchedEffect
+        val idx = mensagensVisiveis.indexOfFirst { it.id == alvo }
+        if (idx >= 0) {
+            val visivel = listState.layoutInfo.viewportEndOffset
+            runCatching { listState.animateScrollToItem(idx, scrollOffset = -visivel / 3) }
+        }
+        onScrollFeito()
+    }
+
     if (mensagensVisiveis.isEmpty() && !streamAtivo) {
         ChatEmptyState()
         return
@@ -579,16 +690,40 @@ private fun ChatTimeline(
         ),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        items(
+        itemsIndexed(
             items = mensagensVisiveis,
-            key = { it.id },
-            contentType = { if (it.isLuna) "luna" else "user" },
-        ) { msg ->
-            MessageBubble(
-                msg = msg,
-                onLongPress = { onMessageLongPress(msg) },
-                onReferenciarMedia = { att -> onReferenciarMedia(msg, att) },
+            key = { _, msg -> msg.id },
+            contentType = { _, msg -> if (msg.isLuna) "luna" else "user" },
+        ) { index, msg ->
+            // Pulso de destaque: quando a busca aponta esta mensagem, um brilho suave acende
+            // atrás dela e apaga sozinho — pra você ver onde aterrissou.
+            val destacado = msg.id == destacarId
+            val corPulso by animateColorAsState(
+                targetValue = if (destacado) {
+                    OrbitTokens.accent.copy(alpha = 0.16f)
+                } else {
+                    Color.Transparent
+                },
+                animationSpec = tween(durationMillis = if (destacado) 220 else 900),
+                label = "pulsoBusca",
             )
+            Box(
+                modifier = Modifier
+                    .animateItem(fadeInSpec = null, fadeOutSpec = null)
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(corPulso)
+                    .padding(vertical = 2.dp),
+            ) {
+                MessageBubble(
+                    msg = msg,
+                    // Só a última bolha entra animada — abrir a conversa não faz o histórico
+                    // inteiro dançar; quem envia/recebe agora é que ganha a chegada com vida.
+                    animarEntrada = index == mensagensVisiveis.lastIndex,
+                    onLongPress = { onMessageLongPress(msg) },
+                    onReferenciarMedia = { att -> onReferenciarMedia(msg, att) },
+                )
+            }
         }
         if (streamAtivo) {
             item(key = "luna-stream", contentType = "stream") {
@@ -597,7 +732,8 @@ private fun ChatTimeline(
         } else {
             // Retomar: última é SUA (resposta se perdeu ao sair do app) ou é um erro da Luna.
             val ultima = mensagensVisiveis.lastOrNull()
-            val podeRetry = ultima != null && (!ultima.isLuna || respostaEhErro(ultima.texto))
+            val podeRetry = ultima != null &&
+                (!ultima.isLuna || ultima.erro || respostaEhErro(ultima.texto))
             if (podeRetry) {
                 item(key = "retry", contentType = "retry") {
                     RetryChip(onClick = onRetry)
@@ -728,6 +864,8 @@ private fun ChatEmptyState() {
 @Composable
 private fun MessageBubble(
     msg: Mensagem,
+    modifier: Modifier = Modifier,
+    animarEntrada: Boolean = false,
     onLongPress: () -> Unit = {},
     onReferenciarMedia: (ComposerAttachment) -> Unit = {},
 ) {
@@ -749,7 +887,39 @@ private fun MessageBubble(
     val bubbleInteraction = remember { MutableInteractionSource() }
     val mostrarRaciocinio by PrefsRepository.reasoningEnabled.collectAsState()
 
-    Box(modifier = Modifier.fillMaxWidth()) {
+    // Entrada com vida: a bolha sobe do lado de quem fala (você da direita, a Luna da
+    // esquerda), cresce a partir do rabinho e assenta com um leve overshoot da mola —
+    // viva, sem pular feito app genérico. Só dispara uma vez, quando a bolha nasce.
+    val density = LocalDensity.current
+    val deslocaBase = with(density) { 12.dp.toPx() }
+    var nasceu by remember { mutableStateOf(!animarEntrada) }
+    LaunchedEffect(Unit) { nasceu = true }
+    val entrada by animateFloatAsState(
+        targetValue = if (nasceu) 1f else 0f,
+        animationSpec = spring(
+            dampingRatio = 0.68f,
+            stiffness = Spring.StiffnessMediumLow,
+        ),
+        label = "entradaBolha",
+    )
+    val faltando = 1f - entrada
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .graphicsLayer {
+                alpha = entrada.coerceIn(0f, 1f)
+                translationY = faltando * deslocaBase
+                translationX = faltando * (if (msg.isLuna) -deslocaBase else deslocaBase)
+                val escala = 0.94f + 0.06f * entrada
+                scaleX = escala
+                scaleY = escala
+                transformOrigin = TransformOrigin(
+                    pivotFractionX = if (msg.isLuna) 0f else 1f,
+                    pivotFractionY = 1f,
+                )
+            },
+    ) {
         Column(
             horizontalAlignment = if (msg.isLuna) Alignment.Start else Alignment.End,
             modifier = Modifier
@@ -869,6 +1039,7 @@ private fun ChatInputArea(
     var segundos by remember { mutableIntStateOf(0) }
 
     val haptics = LocalHapticFeedback.current
+    val keyboard = LocalSoftwareKeyboardController.current
     val density = LocalDensity.current
     val cancelThresholdPx = with(density) { 120.dp.toPx() }
     val lockThresholdPx = with(density) { 90.dp.toPx() }
@@ -913,6 +1084,8 @@ private fun ChatInputArea(
 
     fun enviarTexto() {
         if (texto.isBlank() && anexos.isEmpty() && messageReference == null) return
+        // Fecha o teclado na hora do envio — a tela já desce sozinha pra acompanhar a resposta.
+        keyboard?.hide()
         onSend(texto.trim(), anexos, messageReference)
         texto = ""
         anexos = emptyList()

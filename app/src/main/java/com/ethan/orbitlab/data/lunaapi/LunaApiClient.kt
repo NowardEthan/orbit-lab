@@ -1,6 +1,7 @@
 package com.ethan.orbitlab.data.lunaapi
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -10,6 +11,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.sse.EventSource
 import okhttp3.sse.EventSourceListener
 import okhttp3.sse.EventSources
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
 import java.util.concurrent.TimeUnit
@@ -47,6 +49,133 @@ object LunaApiClient {
         /** fase → ms desde o início (só no stream). */
         val phasesMs: Map<String, Long> = emptyMap(),
     )
+
+    /** Uma mensagem enxuta pra mandar ao buscador semântico. */
+    data class MensagemBusca(val id: String, val papel: String, val texto: String)
+
+    /** Um acerto da busca — id da mensagem pra rolar até lá + o trecho citado. */
+    data class BuscaItem(val messageId: String, val papel: String, val trecho: String)
+
+    data class BuscaResposta(val resultados: List<BuscaItem>, val error: String?)
+
+    /** Mesmos limites do servidor — cortar aqui evita subir um payload gigante por nada. */
+    private const val BUSCA_MAX_MSGS = 120
+    private const val BUSCA_MAX_CHARS = 500
+
+    /** Rede tropeçou (DNS/timeout/socket morto/5xx)? Vale re-tentar, igual o chat faz. */
+    private fun buscaTransitoria(msg: String?): Boolean {
+        if (msg == null) return true
+        val m = msg.lowercase()
+        return listOf(
+            "unable to resolve host", "failed to connect", "timeout", "timed out",
+            "econnreset", "connection reset", "connection closed", "connection abort",
+            "unexpected end", "network", "falha de rede", "http 5",
+            " 500", " 502", " 503", " 504",
+        ).any { m.contains(it) }
+    }
+
+    /**
+     * POST /v1/conversa/buscar — busca SEMÂNTICA na conversa (o «pergunta à Luna» da busca).
+     * O servidor lê as mensagens e devolve os pontos que casam pelo SIGNIFICADO, com o id
+     * validado contra as mensagens reais (não deixa inventar id).
+     *
+     * Teimosa como o chat: um socket keep-alive morto derruba a 1ª tentativa e, sem re-tentar,
+     * o erro cru do OkHttp (que traz o endereço do servidor no texto) chegava na tela.
+     */
+    suspend fun buscarConversa(
+        idToken: String?,
+        query: String,
+        mensagens: List<MensagemBusca>,
+    ): BuscaResposta {
+        val enxutas = mensagens.takeLast(BUSCA_MAX_MSGS).map { m ->
+            if (m.texto.length <= BUSCA_MAX_CHARS) m else m.copy(texto = m.texto.take(BUSCA_MAX_CHARS))
+        }
+        var ultimo = BuscaResposta(emptyList(), "Não consegui buscar agora.")
+        var tentativa = 0
+        while (true) {
+            tentativa++
+            val r = buscarUmaVez(idToken, query, enxutas)
+            if (r.error == null) return r
+            ultimo = r
+            if (tentativa >= 3 || !buscaTransitoria(r.error)) break
+            evictConnections()
+            delay(tentativa * 900L)
+        }
+        // Erro de rede vira recado humano — o endereço do servidor não é problema dele.
+        return if (buscaTransitoria(ultimo.error)) {
+            BuscaResposta(emptyList(), "A conexão tropeçou. Tenta de novo?")
+        } else {
+            ultimo
+        }
+    }
+
+    private suspend fun buscarUmaVez(
+        idToken: String?,
+        query: String,
+        mensagens: List<MensagemBusca>,
+    ): BuscaResposta = withContext(Dispatchers.IO) {
+        if (!LunaApiConfig.isConfigured()) {
+            return@withContext BuscaResposta(emptyList(), "Busca indisponível neste build.")
+        }
+
+        val arr = JSONArray()
+        mensagens.forEach { m ->
+            arr.put(
+                JSONObject()
+                    .put("id", m.id)
+                    .put("papel", m.papel)
+                    .put("texto", m.texto),
+            )
+        }
+        val body = JSONObject().put("query", query).put("mensagens", arr)
+
+        val request = Request.Builder()
+            .url(LunaApiConfig.buscarUrl)
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json")
+            .apply {
+                if (!idToken.isNullOrBlank()) header("Authorization", "Bearer $idToken")
+            }
+            .post(body.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+
+        try {
+            http.newCall(request).execute().use { response ->
+                val raw = response.body?.string().orEmpty()
+                val json = runCatching { JSONObject(raw) }.getOrNull()
+                    ?: return@use BuscaResposta(emptyList(), "HTTP ${response.code} na busca.")
+                if (json.optBoolean("ok", false)) {
+                    val out = mutableListOf<BuscaItem>()
+                    val rs = json.optJSONArray("resultados")
+                    if (rs != null) {
+                        for (i in 0 until rs.length()) {
+                            val o = rs.optJSONObject(i) ?: continue
+                            val id = o.optString("message_id")
+                            if (id.isBlank()) continue
+                            out.add(
+                                BuscaItem(
+                                    messageId = id,
+                                    papel = o.optString("papel"),
+                                    trecho = o.optString("trecho"),
+                                ),
+                            )
+                        }
+                    }
+                    BuscaResposta(out, null)
+                } else {
+                    BuscaResposta(
+                        emptyList(),
+                        json.optString("error").ifBlank { "Não consegui buscar agora." },
+                    )
+                }
+            }
+        } catch (e: IOException) {
+            BuscaResposta(
+                emptyList(),
+                e.message?.takeIf { it.isNotBlank() } ?: "Falha de rede na busca.",
+            )
+        }
+    }
 
     sealed class StreamEvent {
         data class Status(val phase: String) : StreamEvent()

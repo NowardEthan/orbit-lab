@@ -44,6 +44,8 @@ data class Mensagem(
     val attachments: List<ComposerAttachment> = emptyList(),
     /** Referência contextual (mensagem / imagem citada). */
     val reference: ThreadReference? = null,
+    /** Balão de falha (rede/servidor) — local, some no retry, NUNCA vira memória da Luna. */
+    val erro: Boolean = false,
 )
 
 data class Conversa(
@@ -205,18 +207,38 @@ object ChatRepository {
                 _conversas.update { lista ->
                     lista.map { conv ->
                         if (conv.id != conversationId) conv
-                        else conv.copy(
-                            mensagens = msgs,
+                        else {
+                        val idsNuvem = msgs.mapTo(HashSet()) { it.id }
+                        val deletados = metaById[conversationId]?.deletedMessageIds.orEmpty()
+                        val locaisPorId = conv.mensagens.associateBy { it.id }
+                        // 1. Ancora o timestamp da nuvem no timestamp LOCAL que já temos. O
+                        //    carimbo do servidor oscila enquanto não assenta (cada snapshot
+                        //    recalcula agora()) e faz os balões pularem de lugar. O local é
+                        //    estável e já está na ordem certa (tua fala antes da Luna).
+                        val daNuvem = msgs.map { nuvem ->
+                            val local = locaisPorId[nuvem.id]
+                            if (local != null) nuvem.copy(timestamp = local.timestamp) else nuvem
+                        }
+                        // 2. Mensagens que só existem local (otimista recém-enviada que a nuvem
+                        //    ainda não devolveu, ou balão de erro). Mantém até sincronizar —
+                        //    senão o snapshot as apaga e elas piscam/somem no meio do envio.
+                        val soLocais = conv.mensagens.filter {
+                            it.id !in idsNuvem && it.id !in deletados
+                        }
+                        val mensagensFinais = ordenarMensagensChat(daNuvem + soLocais)
+                        conv.copy(
+                            mensagens = mensagensFinais,
                             preview = limparPreviewMensagem(
-                                msgs.lastOrNull()?.texto
+                                mensagensFinais.lastOrNull()?.texto
                                     ?: meta?.preview,
                             ),
-                            ultimaAtualizacao = msgs.lastOrNull()?.timestamp
+                            ultimaAtualizacao = mensagensFinais.lastOrNull()?.timestamp
                                 ?: conv.ultimaAtualizacao,
                             horaFormatada = formatarHoraCurta(
-                                msgs.lastOrNull()?.timestamp ?: conv.ultimaAtualizacao,
+                                mensagensFinais.lastOrNull()?.timestamp ?: conv.ultimaAtualizacao,
                             ),
                         )
+                        }
                     }
                 }
             },
@@ -247,6 +269,40 @@ object ChatRepository {
 
     fun getConversa(id: String): Conversa? {
         return _conversas.value.find { it.id == id }
+    }
+
+    /** Renomeia a conversa (título gerado pela Luna) — otimista na UI + grava na nuvem. */
+    fun renomearConversa(conversaId: String, titulo: String) {
+        val limpo = titulo.trim()
+        if (limpo.isBlank()) return
+        _conversas.update { lista ->
+            lista.map { c -> if (c.id == conversaId) c.copy(titulo = limpo) else c }
+        }
+        val uid = currentUid ?: return
+        scope.launch {
+            runCatching {
+                com.ethan.orbitlab.data.firebase.FirestoreChat.renomearConversa(uid, conversaId, limpo)
+            }
+        }
+    }
+
+    /**
+     * Deixa a Luna rebatizar a conversa conforme o assunto atual. Roda no 1º par (título
+     * imediato) e a cada 6 turnos depois — pega a deriva do assunto sem trocar o nome a
+     * cada mensagem. Chamada barata e à parte do stream; se falhar, o título fica como está.
+     */
+    fun talvezRenomearPelaLuna(conversaId: String) {
+        val conv = getConversa(conversaId) ?: return
+        val turnosUsuario = conv.mensagens.count { !it.isLuna && !it.erro }
+        val deveRenomear = turnosUsuario == 1 || (turnosUsuario >= 6 && turnosUsuario % 6 == 0)
+        if (!deveRenomear) return
+        scope.launch {
+            val msgs = getConversa(conversaId)?.mensagens ?: return@launch
+            val novo = com.ethan.orbitlab.data.openrouter.LunaTitler.gerarTitulo(msgs) ?: return@launch
+            // Não repinta se saiu igual — evita flicker do header à toa.
+            if (novo.equals(getConversa(conversaId)?.titulo, ignoreCase = true)) return@launch
+            renomearConversa(conversaId, novo)
+        }
     }
 
     /** Observa só a conversa [id] — liga listener de mensagens sob demanda. */
@@ -347,6 +403,8 @@ object ChatRepository {
         messageId: String? = null,
         /** false = só UI local (servidor já persiste o mesmo id). */
         persistirNuvem: Boolean = true,
+        /** Balão de falha (só Luna) — não vira memória; some quando o retro reusa o id. */
+        erro: Boolean = false,
     ): String {
         val id = messageId?.takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString()
         val agora = System.currentTimeMillis()
@@ -390,6 +448,7 @@ object ChatRepository {
                 actionRun = if (isLuna) actionRun else null,
                 attachments = localAttachments,
                 reference = localRef,
+                erro = if (isLuna) erro else false,
             )
             val jaExiste = conv.mensagens.any { it.id == id }
             val novasMensagens = ordenarMensagensChat(
@@ -403,6 +462,8 @@ object ChatRepository {
                             actionRun = nova.actionRun ?: it.actionRun,
                             attachments = localAttachments.ifEmpty { it.attachments },
                             reference = localRef ?: it.reference,
+                            // Retry reusa o id: uma resposta real (erro=false) limpa o balão de falha.
+                            erro = if (isLuna) erro else it.erro,
                         )
                     } else it }
                 } else {

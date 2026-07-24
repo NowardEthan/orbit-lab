@@ -11,50 +11,52 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 object PrefsRepository {
     private const val PREFS = "orbitlab_prefs"
-    private const val KEY_REASONING = "orbit.luna.reasoning.enabled"
     private const val KEY_VIBRACAO = "orbit.lab.vibracao"
-    private const val KEY_LUNA_DIRECT = "orbit.luna.chat.direct"
+    private const val KEY_SESSAO_UID = "orbit.lab.sessao.uid"
 
     private lateinit var prefs: SharedPreferences
 
-    private val _reasoningEnabled = MutableStateFlow(true)
-    val reasoningEnabled: StateFlow<Boolean> = _reasoningEnabled.asStateFlow()
+    /** Raciocínio SEMPRE visível — não é mais opção do usuário. */
+    val reasoningEnabled: StateFlow<Boolean> = MutableStateFlow(true).asStateFlow()
+
+    /**
+     * Chat SEMPRE pelo servidor Luna (Railway/core) — a Luna de verdade, com memória e
+     * ferramentas. O OpenRouter direto foi aposentado (era uma Luna oca e dava pra esquecer ligada).
+     */
+    val lunaDirectEnabled: StateFlow<Boolean> = MutableStateFlow(false).asStateFlow()
 
     private val _vibracao = MutableStateFlow(true)
     val vibracao: StateFlow<Boolean> = _vibracao.asStateFlow()
 
-    /** true = OpenRouter direto no lab; false = mobile-api no Railway (agentico). */
-    private val _lunaDirectEnabled = MutableStateFlow(true)
-    val lunaDirectEnabled: StateFlow<Boolean> = _lunaDirectEnabled.asStateFlow()
-
     fun init(context: Context) {
         if (::prefs.isInitialized) return
         prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        _reasoningEnabled.value = prefs.getBoolean(KEY_REASONING, true)
         _vibracao.value = prefs.getBoolean(KEY_VIBRACAO, true)
-        _lunaDirectEnabled.value = prefs.getBoolean(KEY_LUNA_DIRECT, true)
     }
 
-    fun setReasoningEnabled(enabled: Boolean) {
-        _reasoningEnabled.value = enabled
-        prefs.edit().putBoolean(KEY_REASONING, enabled).apply()
-    }
+    /**
+     * Uid da última conta que entrou — marcador de «já tem sessão neste aparelho».
+     * Serve pra segurar a tela de login enquanto o Firebase lê a conta do disco: num
+     * celular apertado de memória o app é recriado toda hora, e sem isto ele piscava
+     * o login (e pedia a conta Google de novo) só porque o Firebase ainda não respondera.
+     */
+    var sessaoUid: String?
+        get() = if (::prefs.isInitialized) prefs.getString(KEY_SESSAO_UID, null) else null
+        set(value) {
+            if (!::prefs.isInitialized) return
+            val ed = prefs.edit()
+            if (value.isNullOrBlank()) ed.remove(KEY_SESSAO_UID) else ed.putString(KEY_SESSAO_UID, value)
+            ed.apply()
+        }
 
     fun setVibracao(enabled: Boolean) {
         _vibracao.value = enabled
         prefs.edit().putBoolean(KEY_VIBRACAO, enabled).apply()
     }
 
-    fun setLunaDirectEnabled(enabled: Boolean) {
-        _lunaDirectEnabled.value = enabled
-        prefs.edit().putBoolean(KEY_LUNA_DIRECT, enabled).apply()
-    }
-
     /** Limpa prefs locais (após «apagar dados»). */
     fun reset() {
         prefs.edit().clear().apply()
-        _reasoningEnabled.value = true
         _vibracao.value = true
-        _lunaDirectEnabled.value = true
     }
 }

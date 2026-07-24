@@ -61,6 +61,7 @@ object LunaApiChat {
                 reasoningDuracao = "",
                 resposta = "URL da API Luna não configurada. Coloca `luna.api.url` no local.properties " +
                     "ou `EXPO_PUBLIC_LUNA_API_URL` no orbit-mobile/.env e recompila.",
+                erro = true,
             )
         }
 
@@ -70,6 +71,7 @@ object LunaApiChat {
                 reasoning = "",
                 reasoningDuracao = "",
                 resposta = "Precisa estar logado pra falar com o servidor Luna.",
+                erro = true,
             )
         }
 
@@ -79,6 +81,7 @@ object LunaApiChat {
                 reasoning = "",
                 reasoningDuracao = "",
                 resposta = "Sessão inválida — tenta entrar de novo.",
+                erro = true,
             )
         }
 
@@ -176,12 +179,12 @@ object LunaApiChat {
                     respostaParcial = texto,
                 )
             } else {
-                val parcial = when {
-                    reasoning.isNotBlank() -> reasoning
-                    faseAtual.isNotBlank() -> rotuloFase(faseAtual)
-                    else -> ""
-                }
-                LunaStreamEstado.Raciocinando(parcial)
+                // Raciocínio real (se houver) vira a caixa; a fase é só o rótulo do "Pensando…".
+                // Antes a fase entrava no parcial e virava uma caixa de raciocínio fantasma.
+                LunaStreamEstado.Raciocinando(
+                    parcial = reasoning,
+                    fase = if (faseAtual.isNotBlank()) rotuloFase(faseAtual) else "",
+                )
             }
             mainHandler.post { onEstado(estado) }
         }
@@ -250,6 +253,7 @@ object LunaApiChat {
                 reasoning = result.reasoning,
                 reasoningDuracao = "${dur}s",
                 resposta = "Não consegui responder: ${result.error}",
+                erro = true,
             )
         }
 

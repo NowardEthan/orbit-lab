@@ -36,6 +36,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -58,6 +59,8 @@ import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.ui.graphics.vector.ImageVector
+
+import kotlinx.coroutines.delay
 
 import com.ethan.orbitlab.data.AuthRepository
 import com.ethan.orbitlab.data.ChatRepository
@@ -99,7 +102,20 @@ fun OrbitShell() {
             Modifier.fillMaxSize().background(OrbitTokens.ink1),
             contentAlignment = Alignment.Center,
         ) {
-            // Splash curto enquanto o Firebase Auth restaura a sessão
+            // Splash curto enquanto o Firebase Auth restaura a sessão. Se demorar (celular
+            // apertado de memória), avisa — em vez de parecer tela preta travada.
+            var demorou by remember { mutableStateOf(false) }
+            LaunchedEffect(Unit) {
+                delay(900)
+                demorou = true
+            }
+            if (demorou) {
+                Text(
+                    "Recuperando sua sessão…",
+                    color = OrbitTokens.textMid,
+                    fontSize = 13.sp,
+                )
+            }
         }
         return
     }

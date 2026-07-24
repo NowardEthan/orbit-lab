@@ -20,9 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Logout
-import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.ChevronRight
-import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.FlashOn
 import androidx.compose.material.icons.rounded.Info
@@ -62,7 +60,6 @@ import com.ethan.orbitlab.data.AuthProvider
 import com.ethan.orbitlab.data.AuthRepository
 import com.ethan.orbitlab.data.PrefsRepository
 import com.ethan.orbitlab.data.UserProfileRepository
-import com.ethan.orbitlab.data.lunaapi.LunaApiConfig
 import com.ethan.orbitlab.data.updates.ApkInstaller
 import com.ethan.orbitlab.data.updates.UpdatesRepository
 import com.ethan.orbitlab.data.updates.isNewer
@@ -96,9 +93,7 @@ fun AjustesScreen(
         AjustesTela.Lista -> Unit
     }
 
-    val reasoning by PrefsRepository.reasoningEnabled.collectAsState()
     val vibracao by PrefsRepository.vibracao.collectAsState()
-    val lunaDirect by PrefsRepository.lunaDirectEnabled.collectAsState()
     val manifest by UpdatesRepository.manifest.collectAsState()
     val updateAvailable = remember(manifest) {
         val m = manifest ?: return@remember false
@@ -166,42 +161,9 @@ fun AjustesScreen(
         )
 
         SecaoAjustes(
-            titulo = "Conexão do chat",
-            rodape = if (lunaDirect) {
-                "OpenRouter direto — latência mínima, sem agente no servidor."
-            } else {
-                "Railway (${LunaApiConfig.baseUrl.removePrefix("https://")}) — pipeline agentico como no orbit-mobile."
-            },
-            assinaturaAzul = true,
-        ) {
-            LinhaSwitch(
-                icone = Icons.Rounded.FlashOn,
-                titulo = "OpenRouter direto",
-                subtitulo = if (lunaDirect) {
-                    "Ligação direta ao modelo (lab)"
-                } else {
-                    "Desligado — usa o servidor Luna no Railway"
-                },
-                checado = lunaDirect,
-                onCheck = { PrefsRepository.setLunaDirectEnabled(it) },
-            )
-            LinhaAjuste(
-                icone = Icons.Rounded.Cloud,
-                titulo = "Servidor Luna (Railway)",
-                subtitulo = if (lunaDirect) {
-                    "Desligue o switch acima pra testar o agente"
-                } else {
-                    "Ativo — memória, tools e roteamento do core"
-                },
-                iconeBg = OrbitTokens.surfaceRaised,
-                iconeTint = if (lunaDirect) OrbitTokens.textLow else OrbitTokens.accentText,
-                clicavel = false,
-            )
-        }
-
-        SecaoAjustes(
             titulo = "Modo de resposta",
-            rodape = "A Luna escolhe o modelo a cada mensagem — leve no papo, profundo quando o assunto pede.",
+            rodape = "A Luna escolhe o modelo a cada mensagem — leve no papo, profundo quando o assunto pede. O raciocínio dela fica sempre à mostra.",
+            assinaturaAzul = true,
         ) {
             LinhaAjuste(
                 icone = Icons.Rounded.FlashOn,
@@ -210,20 +172,6 @@ fun AjustesScreen(
                 iconeBg = OrbitTokens.surfaceRaised,
                 iconeTint = OrbitTokens.textMid,
                 clicavel = false,
-            )
-        }
-
-        SecaoAjustes(
-            titulo = "Transparência",
-            rodape = "Use quando quiser acompanhar como a resposta está sendo construída.",
-            assinaturaAzul = true,
-        ) {
-            LinhaSwitch(
-                icone = Icons.Rounded.AutoAwesome,
-                titulo = "Mostrar raciocínio",
-                subtitulo = "Exibe o processo quando a Luna enviar etapas",
-                checado = reasoning,
-                onCheck = { PrefsRepository.setReasoningEnabled(it) },
             )
         }
 

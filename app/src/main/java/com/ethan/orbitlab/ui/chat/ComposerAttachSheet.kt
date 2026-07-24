@@ -100,6 +100,7 @@ fun ComposerAttachSheet(
         mutableStateOf(GalleryLoadResult(emptyList(), emptyList(), permissionGranted = false))
     }
     var reloadKey by remember { mutableStateOf(0) }
+    var cameraModo by remember { mutableStateOf<ModoCaptura?>(null) }
 
     // id → media (só itens selecionados; a grade só recebe Set de ids)
     val selectedById = remember { mutableStateOf(emptyMap<String, GalleryMedia>()) }
@@ -235,8 +236,8 @@ fun ComposerAttachSheet(
                                         selectedIds = selectedIds,
                                         canSelect = ::canSelectMedia,
                                         onToggle = ::toggleMedia,
-                                        onCamera = launchers.takePhoto,
-                                        onVideo = launchers.recordVideo,
+                                        onCamera = { cameraModo = ModoCaptura.FOTO },
+                                        onVideo = { cameraModo = ModoCaptura.VIDEO },
                                         onSystemPicker = launchers.pickPhotos,
                                         hasMore = gallery.hasMore && albumId == "all",
                                         loadingMore = loadingMore,
@@ -274,6 +275,18 @@ fun ComposerAttachSheet(
             )
         }
     }
+
+    // Câmera aqui dentro (não a do sistema): num celular apertado de memória, abrir outro
+    // app de câmera fazia o Android matar o Orbit e a foto ia embora com ele.
+    CameraNoAppSheet(
+        visivel = cameraModo != null,
+        modoInicial = cameraModo ?: ModoCaptura.FOTO,
+        onFechar = { cameraModo = null },
+        onCapturado = { anexo ->
+            cameraModo = null
+            onConfirm(listOf(anexo))
+        },
+    )
 }
 
 @Composable
