@@ -49,12 +49,11 @@ object AuthDiag {
     /**
      * Radiografia do cofre do Firebase Auth em disco.
      *
-     * A conta guardada deveria viver num arquivo de preferências chamado
-     * `com.google.firebase.auth.api.Store.<chave>`, onde a chave sai do nome do app + o id
-     * dele. O diário já provou que o SDK nunca devolve essa conta; falta saber por quê, e só
-     * há três respostas possíveis: o arquivo não existe (ninguém escreveu), existe vazio
-     * (alguém limpou), ou existe cheio e o SDK procura por outra chave (duas chaves = dois
-     * cofres, e ele abre o errado). Uma linha por abertura resolve qual das três é.
+     * Já sabemos que o cofre `[DEFAULT]+<appId>` está CHEIO e o SDK não o relê ao abrir.
+     * Falta ver O QUE tem dentro: os NOMES das chaves (sem valores — é conta do dono) dizem
+     * se o usuário guardado (FIREBASE_USER) está no arquivo padrão ou perdido em outro. Se
+     * o FIREBASE_USER estiver no arquivo certo e mesmo assim não voltar, o defeito é a
+     * leitura/parse do SDK, não a gravação — e o conserto é outro.
      */
     fun radiografarCofre(context: Context, quando: String) {
         val achados = runCatching {
@@ -64,13 +63,20 @@ object AuthDiag {
                 ?.sortedBy { it.name }
                 ?.map { arquivo ->
                     val nome = arquivo.name.removeSuffix(".xml")
-                    val chave = nome.removePrefix("com.google.firebase.auth.api.Store.")
-                    val quantas = runCatching {
-                        context.getSharedPreferences(nome, Context.MODE_PRIVATE).all.size
-                    }.getOrDefault(-1)
+                    val chaveArq = nome.removePrefix("com.google.firebase.auth.api.Store.")
+                    val prefs = runCatching {
+                        context.getSharedPreferences(nome, Context.MODE_PRIVATE).all.keys
+                    }.getOrDefault(emptySet())
+                    // Só o rótulo final de cada chave (FIREBASE_USER, GET_TOKEN_RESPONSE…),
+                    // nunca o valor — o valor é a conta dele.
+                    val rotulos = prefs
+                        .map { it.substringAfterLast('.').take(22) }
+                        .sorted()
+                        .joinToString(",")
+                        .ifBlank { "vazio" }
                     val etiqueta =
-                        if (chave.length > 20) "${chave.take(6)}…${chave.takeLast(10)}" else chave
-                    "$etiqueta ${arquivo.length()}b/${quantas}ch"
+                        if (chaveArq.length > 16) "${chaveArq.take(6)}…${chaveArq.takeLast(8)}" else chaveArq
+                    "$etiqueta ${arquivo.length()}b [$rotulos]"
                 }
                 .orEmpty()
         }.getOrElse { listOf("não deu pra ler (${it.javaClass.simpleName})") }

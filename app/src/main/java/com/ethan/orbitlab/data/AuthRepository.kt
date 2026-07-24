@@ -113,6 +113,21 @@ object AuthRepository {
             // Havia sessão neste aparelho — segura o splash até o Firebase responder.
             jaEntrouAqui -> {
                 restaurando = true
+                // Sonda: espia o currentUser nos instantes ANTES da reentrada (que só começa
+                // aos 800ms). Se a conta aparecer aqui, o Firebase restaura sozinho, só num
+                // fio de atraso — e aí a cura é esperar esse fio, sem muleta. Se nunca
+                // aparecer, é a leitura do SDK que está quebrada.
+                escopo.launch {
+                    // Passos curtos somando ~550ms, todos antes da reentrada (800ms).
+                    for (passo in listOf(60L, 80L, 160L, 250L)) {
+                        delay(passo)
+                        if (auth.currentUser != null) {
+                            AuthDiag.anota("sonda: conta apareceu SOZINHA antes da reentrada")
+                            return@launch
+                        }
+                    }
+                    AuthDiag.anota("sonda: seguiu vazia até a reentrada (SDK não releu)")
+                }
                 escopo.launch {
                     delay(PACIENCIA_RESTAURO_MS)
                     if (restaurando) {
