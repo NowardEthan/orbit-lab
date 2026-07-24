@@ -7,7 +7,6 @@ import coil.decode.VideoFrameDecoder
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import coil.request.CachePolicy
-import com.ethan.orbitlab.data.AuthDiag
 import com.ethan.orbitlab.data.AuthRepository
 import com.ethan.orbitlab.data.ChatRepository
 import com.ethan.orbitlab.data.PrefsRepository
@@ -19,7 +18,6 @@ class OrbitApp : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         PrefsRepository.init(this)
-        AuthDiag.vigiarAbertura()
         FirebaseBootstrap.init(this)
         AuthRepository.init(this)
         ChatRepository.bindApp(this)

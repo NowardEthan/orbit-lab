@@ -59,6 +59,7 @@ import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -83,6 +84,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -104,6 +106,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import com.ethan.orbitlab.R
 import com.ethan.orbitlab.data.ChatRepository
 import com.ethan.orbitlab.data.Mensagem
@@ -473,6 +477,8 @@ private fun ChatHeader(
 ) {
     val tituloExibido =
         if (titulo.equals("Nova conversa", ignoreCase = true)) "Luna" else titulo
+    var menuAberto by remember { mutableStateOf(false) }
+    val density = LocalDensity.current
 
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
@@ -547,6 +553,8 @@ private fun ChatHeader(
                         color = OrbitTokens.textMid,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
@@ -571,22 +579,53 @@ private fun ChatHeader(
 
             Spacer(modifier = Modifier.width(8.dp))
 
-            // Exportar esta conversa (compartilhar como .md).
-            Box(
-                modifier = Modifier
-                    .size(OrbitMetrics.iconBtn)
-                    .clip(CircleShape)
-                    .background(OrbitTokens.surface)
-                    .border(1.dp, OrbitTokens.borderSoft, CircleShape)
-                    .orbitPressable(onClick = onExport),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    Icons.Rounded.IosShare,
-                    contentDescription = "Exportar conversa",
-                    tint = OrbitTokens.textHigh,
-                    modifier = Modifier.size(18.dp),
-                )
+            // Mais ações (exportar…) num menuzinho — tira o peso do topo.
+            Box {
+                Box(
+                    modifier = Modifier
+                        .size(OrbitMetrics.iconBtn)
+                        .clip(CircleShape)
+                        .background(OrbitTokens.surface)
+                        .border(1.dp, OrbitTokens.borderSoft, CircleShape)
+                        .orbitPressable(onClick = { menuAberto = true }),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Rounded.MoreVert,
+                        contentDescription = "Mais",
+                        tint = OrbitTokens.textHigh,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+                if (menuAberto) {
+                    Popup(
+                        alignment = Alignment.TopEnd,
+                        offset = IntOffset(
+                            0,
+                            with(density) { (OrbitMetrics.iconBtn + 6.dp).roundToPx() },
+                        ),
+                        onDismissRequest = { menuAberto = false },
+                        properties = PopupProperties(focusable = true),
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .widthIn(min = 208.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(OrbitTokens.surfaceRaised)
+                                .border(1.dp, OrbitTokens.borderSoft, RoundedCornerShape(14.dp))
+                                .padding(6.dp),
+                        ) {
+                            ChatMenuItem(
+                                icone = Icons.Rounded.IosShare,
+                                rotulo = "Exportar conversa",
+                                onClick = {
+                                    menuAberto = false
+                                    onExport()
+                                },
+                            )
+                        }
+                    }
+                }
             }
         }
         Box(
@@ -594,6 +633,37 @@ private fun ChatHeader(
                 .fillMaxWidth()
                 .height(1.dp)
                 .background(OrbitTokens.borderSoft.copy(alpha = 0.65f)),
+        )
+    }
+}
+
+/** Linha de ação do menuzinho de três-pontinhos do topo. */
+@Composable
+private fun ChatMenuItem(
+    icone: ImageVector,
+    rotulo: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .orbitPressable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            icone,
+            contentDescription = null,
+            tint = OrbitTokens.textHigh,
+            modifier = Modifier.size(18.dp),
+        )
+        Spacer(Modifier.width(12.dp))
+        Text(
+            rotulo,
+            color = OrbitTokens.textHigh,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
         )
     }
 }
@@ -1240,65 +1310,32 @@ private fun ChatInputArea(
             onRemove = { id -> anexos = anexos.filterNot { it.id == id } },
         )
 
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.Bottom,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        val gravando =
-            recordState == RecordState.Recording || recordState == RecordState.Locked
-        val multiLinha = texto.contains('\n') || texto.length > 48
-        val isTyping =
-            texto.isNotBlank() || anexos.isNotEmpty() || messageReference != null
+    val gravando =
+        recordState == RecordState.Recording || recordState == RecordState.Locked
+    val multiLinha = texto.contains('\n') || texto.length > 48
+    val isTyping =
+        texto.isNotBlank() || anexos.isNotEmpty() || messageReference != null
 
-        // Slot fixo do Plus — se remover na gravação, o Compose remonta o mic e cancela o hold
-        if (!gravando) {
-            val plusEnabled = enabled && imageBudget + fileBudget > 0
-            val (plusInteraction, plusPressScale) = rememberOrbitPressScale()
-            Box(
-                Modifier
-                    .size(44.dp)
-                    .graphicsLayer {
-                        scaleX = plusPressScale
-                        scaleY = plusPressScale
-                    }
-                    .clip(CircleShape)
-                    .background(OrbitTokens.surface)
-                    .border(1.dp, OrbitTokens.borderSoft, CircleShape)
-                    .clickable(
-                        interactionSource = plusInteraction,
-                        indication = null,
-                        enabled = plusEnabled,
-                        onClick = {
-                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            attachAberto = true
-                        },
-                    ),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    Icons.Filled.Add,
-                    contentDescription = "Anexos",
-                    tint = if (anexos.isNotEmpty()) OrbitTokens.accentText else OrbitTokens.textHigh,
-                    modifier = Modifier.size(24.dp),
-                )
-            }
-        } else {
-            Spacer(Modifier.size(44.dp))
-        }
+    // Composer num cartão único (estilo Claude): o campo em cima, os botões dentro
+    // embaixo. A borda e os cantos são do cartão; ele cresce pra cima conforme escreve.
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(ComposerFieldShape)
+            .background(OrbitTokens.surface)
+            .border(1.dp, OrbitTokens.borderSoft, ComposerFieldShape),
+    ) {
+    Column(modifier = Modifier.fillMaxWidth().padding(6.dp)) {
 
         // Campo — animações de gravação só aqui (não remonta o mic)
         RecordingAnimHost(ativo = gravando) { dotAlpha ->
             Box(
                 modifier = Modifier
-                    .weight(1f)
-                    .heightIn(min = 44.dp, max = 140.dp)
-                    .clip(ComposerFieldShape)
-                    .background(OrbitTokens.surface)
-                    .border(1.dp, OrbitTokens.borderSoft, ComposerFieldShape)
+                    .fillMaxWidth()
+                    .heightIn(min = 40.dp, max = 150.dp)
                     .padding(
-                        horizontal = 14.dp,
-                        vertical = if (multiLinha && !gravando) 10.dp else 11.dp,
+                        horizontal = 10.dp,
+                        vertical = if (multiLinha && !gravando) 8.dp else 10.dp,
                     ),
                 contentAlignment = when {
                     gravando -> Alignment.CenterStart
@@ -1420,6 +1457,49 @@ private fun ChatInputArea(
                 }
             }
         }
+
+        Spacer(Modifier.height(2.dp))
+
+        // Botões dentro do cartão, embaixo: anexos à esquerda, mic/enviar à direita.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+        // Slot fixo do Plus — se remover na gravação, o Compose remonta o mic e cancela o hold
+        if (!gravando) {
+            val plusEnabled = enabled && imageBudget + fileBudget > 0
+            val (plusInteraction, plusPressScale) = rememberOrbitPressScale()
+            Box(
+                Modifier
+                    .size(44.dp)
+                    .graphicsLayer {
+                        scaleX = plusPressScale
+                        scaleY = plusPressScale
+                    }
+                    .clip(CircleShape)
+                    .clickable(
+                        interactionSource = plusInteraction,
+                        indication = null,
+                        enabled = plusEnabled,
+                        onClick = {
+                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            attachAberto = true
+                        },
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Filled.Add,
+                    contentDescription = "Anexos",
+                    tint = if (anexos.isNotEmpty()) OrbitTokens.accentText else OrbitTokens.textHigh,
+                    modifier = Modifier.size(24.dp),
+                )
+            }
+        } else {
+            Spacer(Modifier.size(44.dp))
+        }
+
+        Spacer(Modifier.weight(1f))
 
         // Mic/Send fora do AnimHost — o hold precisa sobreviver ao Idle→Recording
         val escalaBase by animateFloatAsState(
@@ -1581,7 +1661,9 @@ private fun ChatInputArea(
                 }
             }
         }
-    } // Row
+        } // Row de controles
+    } // Column do cartão
+    } // Box do cartão
     } // Column
 }
 

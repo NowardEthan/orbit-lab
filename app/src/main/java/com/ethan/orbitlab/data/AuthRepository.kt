@@ -20,12 +20,7 @@ import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.GetCredentialException
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.awaitClose
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -69,42 +64,14 @@ object AuthRepository {
     private val _restauroExpirou = MutableStateFlow(false)
     val restauroExpirou: StateFlow<Boolean> = _restauroExpirou.asStateFlow()
 
-    /**
-     * Tempo que damos ao Firebase pra devolver a conta guardada antes do plano B.
-     *
-     * Curto porque o diário provou que ele NUNCA devolve: com 10s de paciência, o registro
-     * do aparelho dele diz «firebase=continua vazio» aos 10s e a conta só aparece junto com
-     * o «reentrada deu certo» — ou seja, o que fazia o listener acordar era o nosso próprio
-     * login, não um restauro. Aquele «devolveu a conta aos 6,3s» de antes era a reentrada
-     * daquela abertura terminando, e eu li como restauro.
-     *
-     * Então esperar é tempo morto: acordar o Auth custa ~30ms, e o que ele tem pra dizer,
-     * diz na hora. Sobra um fio de prazo pro dia em que o cofre voltar a funcionar.
-     */
-    private const val PACIENCIA_RESTAURO_MS = 800L
-
     /** Enquanto true, `currentUser == null` significa «ainda restaurando», não «saiu». */
     private var restaurando = false
 
-    private val escopo = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-
     private lateinit var appCtx: Context
-
-    /** Uma radiografia por abertura: interessa a primeira entrada, não cada recomposição. */
-    private var radiografouDepois = false
 
     fun init(context: Context) {
         appCtx = context.applicationContext
         AuthDiag.radiografarCofre(appCtx, "na abertura")
-
-        // Acorda o cofre de hardware ANTES do Firebase tocar no Auth. O usuário guardado
-        // vem criptografado (há um StorageCryptoKeyset no disco) e a chave-mestra mora no
-        // AndroidKeyStore. O diário mostrou o Firebase abrindo vazio no +0.0s e a conta só
-        // voltando pela reentrada, segundos depois — a leitura é síncrona no primeiro
-        // getInstance(), então se o KeyStore ainda não «acordou» nesse instante, a
-        // descriptografia falha calada e o SDK cacheia «sem conta» pro resto da vida do
-        // processo. load(null) é bloqueante: espera o serviço do KeyStore ligar.
-        AuthDiag.aquecerKeystore()
 
         val jaEntrouAqui = PrefsRepository.sessaoUid != null
         // Quanto custa acordar o Firebase Auth — é aqui que ele começa a ler o disco.
@@ -118,42 +85,17 @@ object AuthRepository {
         )
 
         when {
-            // Conta já em mãos: entra direto, sem piscar login.
+            // Conta já em mãos: entra direto, sem piscar login. (Aparelho «são», onde o
+            // Firebase relê a sessão guardada no primeiro getInstance().)
             agora != null -> entrou(agora)
-            // Havia sessão neste aparelho — segura o splash até o Firebase responder.
+            // Tinha sessão aqui mas o Firebase abriu vazio. Neste aparelho isso é definitivo,
+            // não «ainda carregando»: a conta guardada vem criptografada e a chave-mestra que
+            // a abre some do AndroidKeyStore a cada fechamento (diário: keystore com 0 chaves,
+            // a conta nunca volta sozinha). Esperar o restauro é esperar o que não vem — vai
+            // direto pro plano B (reentrada pela conta Google), sem 800ms de espera à toa.
             jaEntrouAqui -> {
                 restaurando = true
-                // Sonda: espia o currentUser nos instantes ANTES da reentrada (que só começa
-                // aos 800ms). Se a conta aparecer aqui, o Firebase restaura sozinho, só num
-                // fio de atraso — e aí a cura é esperar esse fio, sem muleta. Se nunca
-                // aparecer, é a leitura do SDK que está quebrada.
-                escopo.launch {
-                    // Passos curtos somando ~550ms, todos antes da reentrada (800ms).
-                    for (passo in listOf(60L, 80L, 160L, 250L)) {
-                        delay(passo)
-                        if (auth.currentUser != null) {
-                            AuthDiag.anota("sonda: conta apareceu SOZINHA antes da reentrada")
-                            return@launch
-                        }
-                    }
-                    AuthDiag.anota("sonda: seguiu vazia até a reentrada (SDK não releu)")
-                }
-                escopo.launch {
-                    delay(PACIENCIA_RESTAURO_MS)
-                    if (restaurando) {
-                        restaurando = false
-                        val chegou = auth.currentUser != null
-                        AuthDiag.anota(
-                            "paciência de ${PACIENCIA_RESTAURO_MS}ms acabou · firebase=" +
-                                if (chegou) "chegou" else "continua vazio",
-                        )
-                        // Acabou a paciência: passa a vez pro plano B, mas NÃO conclui que
-                        // ele saiu nem mostra login. Apagar o marcador aqui era um efeito
-                        // dominó — uma restauração lenta apagava a pista e TODA abertura
-                        // seguinte ia direto pro login. Só sair de verdade limpa o marcador.
-                        if (!chegou) _restauroExpirou.value = true
-                    }
-                }
+                _restauroExpirou.value = true
             }
             // Nunca entrou: login na hora.
             else -> _authReady.value = true
@@ -253,16 +195,6 @@ object AuthRepository {
         _restauroExpirou.value = false
         _session.value = user.toSession()
         _authReady.value = true
-        // Radiografa o cofre uns segundos DEPOIS de entrar: é a única forma de saber se o
-        // Firebase escreveu a conta em disco. Se escreveu aqui e na próxima abertura o cofre
-        // aparece vazio, alguém está limpando; se nem aqui escreveu, o problema é a escrita.
-        if (!radiografouDepois && ::appCtx.isInitialized) {
-            radiografouDepois = true
-            escopo.launch {
-                delay(3_000)
-                AuthDiag.radiografarCofre(appCtx, "3s depois de entrar")
-            }
-        }
     }
 
     private fun saiu() {
