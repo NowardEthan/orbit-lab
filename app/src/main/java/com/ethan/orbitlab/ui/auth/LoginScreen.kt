@@ -8,6 +8,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,6 +39,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,10 +52,13 @@ import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -63,6 +68,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ethan.orbitlab.R
+import com.ethan.orbitlab.data.AuthDiag
 import com.ethan.orbitlab.data.AuthRepository
 import com.ethan.orbitlab.ui.theme.OrbitMetrics
 import com.ethan.orbitlab.ui.theme.OrbitMotion
@@ -312,7 +318,58 @@ fun LoginScreen(
                     lineHeight = 15.sp,
                     textAlign = TextAlign.Center,
                 )
+
+                // Por que esta tela apareceu. Enquanto a sessão anda caindo, isto é o que
+                // conta a história — toque pra copiar e mandar.
+                DiagnosticoSessao()
             }
+        }
+    }
+}
+
+/** Diário da sessão (ver AuthDiag) — recolhido por padrão, toque abre; segundo toque copia. */
+@Composable
+private fun DiagnosticoSessao() {
+    val agora by AuthDiag.agora.collectAsState()
+    val anterior = remember { AuthDiag.anterior }
+    val clipboard = LocalClipboardManager.current
+    var aberto by remember { mutableStateOf(false) }
+
+    val texto = buildString {
+        if (agora.isNotBlank()) append("ABERTURA DE AGORA\n").append(agora)
+        if (anterior.isNotBlank()) {
+            if (isNotEmpty()) append("\n\n")
+            append("ABERTURA ANTERIOR\n").append(anterior)
+        }
+    }
+    if (texto.isBlank()) return
+
+    Spacer(Modifier.height(18.dp))
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .clickable {
+                if (aberto) clipboard.setText(AnnotatedString(texto)) else aberto = true
+            }
+            .padding(10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            if (aberto) "Toque de novo pra copiar" else "Por que pediram login? Toque aqui",
+            color = OrbitTokens.textLow,
+            fontSize = 11.sp,
+            textAlign = TextAlign.Center,
+        )
+        if (aberto) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                texto,
+                color = OrbitTokens.textMid,
+                fontSize = 10.sp,
+                lineHeight = 14.sp,
+                fontFamily = FontFamily.Monospace,
+            )
         }
     }
 }

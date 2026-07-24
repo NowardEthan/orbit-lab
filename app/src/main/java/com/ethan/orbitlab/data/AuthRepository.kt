@@ -69,6 +69,10 @@ object AuthRepository {
     fun init(@Suppress("UNUSED_PARAMETER") context: Context) {
         val jaEntrouAqui = PrefsRepository.sessaoUid != null
         val agora = auth.currentUser
+        AuthDiag.anota(
+            "abriu · marcador=${if (jaEntrouAqui) "sim" else "não"} " +
+                "· firebase=${if (agora != null) "conta em mãos" else "vazio"}",
+        )
 
         when {
             // Conta já em mãos: entra direto, sem piscar login.
@@ -80,6 +84,10 @@ object AuthRepository {
                     delay(GRACA_RESTAURO_MS)
                     if (restaurando) {
                         restaurando = false
+                        AuthDiag.anota(
+                            "prazo de ${GRACA_RESTAURO_MS / 1000}s estourou · firebase=" +
+                                if (auth.currentUser != null) "chegou" else "continua vazio",
+                        )
                         // Estourou o prazo: destrava a tela, mas NÃO conclui que ele saiu.
                         // Apagar o marcador aqui era um efeito dominó — uma restauração
                         // lenta apagava a pista e TODA abertura seguinte ia direto pro
@@ -96,9 +104,11 @@ object AuthRepository {
         auth.addAuthStateListener { firebaseAuth ->
             val user = firebaseAuth.currentUser
             if (user != null) {
+                if (_session.value == null) AuthDiag.anota("firebase devolveu a conta")
                 restaurando = false
                 entrou(user)
             } else if (!restaurando) {
+                AuthDiag.anota("firebase avisou: sem conta")
                 _session.value = null
                 _authReady.value = true
             }
@@ -117,31 +127,49 @@ object AuthRepository {
      * desiste e o login normal aparece.
      */
     suspend fun restaurarGoogleSilencioso(activity: Activity): Boolean {
-        auth.currentUser?.let { entrou(it); return true }
-        if (!tinhaSessaoAqui()) return false
-        return try {
-            val opcao = GetGoogleIdOption.Builder()
-                .setServerClientId(FirebaseBootstrap.WEB_CLIENT_ID)
-                .setFilterByAuthorizedAccounts(true)
-                .setAutoSelectEnabled(true)
-                .build()
-            val pedido = GetCredentialRequest.Builder().addCredentialOption(opcao).build()
-            val resposta = CredentialManager.create(activity).getCredential(activity, pedido)
-            val cred = resposta.credential
-            if (cred is CustomCredential &&
-                cred.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
-            ) {
-                val googleId = GoogleIdTokenCredential.createFrom(cred.data)
-                val firebaseCred = GoogleAuthProvider.getCredential(googleId.idToken, null)
-                val user = auth.signInWithCredential(firebaseCred).await().user ?: return false
-                entrou(user)
-                true
-            } else {
-                false
-            }
-        } catch (e: Exception) {
-            false
+        auth.currentUser?.let {
+            AuthDiag.anota("reentrada dispensada · a conta chegou a tempo")
+            entrou(it)
+            return true
         }
+        if (!tinhaSessaoAqui()) {
+            AuthDiag.anota("reentrada pulada · sem marcador (saiu de propósito?)")
+            return false
+        }
+        // 1ª: contas já autorizadas aqui, sem nenhum toque.
+        // 2ª: qualquer conta Google do aparelho — vira uma folha de escolha (1 toque),
+        //     que ainda é bem melhor que refazer o login inteiro.
+        for (soAutorizadas in listOf(true, false)) {
+            val etapa = if (soAutorizadas) "silenciosa" else "escolha de conta"
+            try {
+                val opcao = GetGoogleIdOption.Builder()
+                    .setServerClientId(FirebaseBootstrap.WEB_CLIENT_ID)
+                    .setFilterByAuthorizedAccounts(soAutorizadas)
+                    .setAutoSelectEnabled(true)
+                    .build()
+                val pedido = GetCredentialRequest.Builder().addCredentialOption(opcao).build()
+                val resposta = CredentialManager.create(activity).getCredential(activity, pedido)
+                val cred = resposta.credential
+                if (cred is CustomCredential &&
+                    cred.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
+                ) {
+                    val googleId = GoogleIdTokenCredential.createFrom(cred.data)
+                    val firebaseCred = GoogleAuthProvider.getCredential(googleId.idToken, null)
+                    val user = auth.signInWithCredential(firebaseCred).await().user
+                    if (user != null) {
+                        AuthDiag.anota("reentrada $etapa deu certo")
+                        entrou(user)
+                        return true
+                    }
+                    AuthDiag.anota("reentrada $etapa: Firebase aceitou sem usuário")
+                } else {
+                    AuthDiag.anota("reentrada $etapa: credencial de outro tipo")
+                }
+            } catch (e: Exception) {
+                AuthDiag.anota("reentrada $etapa falhou · ${e.javaClass.simpleName}: ${e.message?.take(90)}")
+            }
+        }
+        return false
     }
 
     private fun entrou(user: FirebaseUser) {
@@ -275,6 +303,7 @@ object AuthRepository {
 
     suspend fun sair() {
         restaurando = false
+        AuthDiag.anota("saiu no botão")
         auth.signOut()
         saiu()
     }

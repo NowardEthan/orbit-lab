@@ -13,6 +13,7 @@ object PrefsRepository {
     private const val PREFS = "orbitlab_prefs"
     private const val KEY_VIBRACAO = "orbit.lab.vibracao"
     private const val KEY_SESSAO_UID = "orbit.lab.sessao.uid"
+    private const val KEY_AUTH_DIAG = "orbit.lab.sessao.diag"
 
     private lateinit var prefs: SharedPreferences
 
@@ -47,6 +48,14 @@ object PrefsRepository {
             val ed = prefs.edit()
             if (value.isNullOrBlank()) ed.remove(KEY_SESSAO_UID) else ed.putString(KEY_SESSAO_UID, value)
             ed.apply()
+        }
+
+    /** Diário da última abertura (ver [AuthDiag]) — some quando os dados são limpos. */
+    var authDiag: String?
+        get() = if (::prefs.isInitialized) prefs.getString(KEY_AUTH_DIAG, null) else null
+        set(value) {
+            if (!::prefs.isInitialized) return
+            prefs.edit().putString(KEY_AUTH_DIAG, value.orEmpty()).apply()
         }
 
     fun setVibracao(enabled: Boolean) {
