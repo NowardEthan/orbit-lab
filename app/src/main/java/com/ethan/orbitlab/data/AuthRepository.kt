@@ -3,6 +3,7 @@ package com.ethan.orbitlab.data
 import android.app.Activity
 import android.content.Context
 import com.ethan.orbitlab.data.firebase.FirebaseBootstrap
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.firebase.auth.FirebaseAuth
@@ -57,8 +58,8 @@ object AuthRepository {
     private val _authReady = MutableStateFlow(false)
     val authReady: StateFlow<Boolean> = _authReady.asStateFlow()
 
-    /** Tempo que damos ao Firebase pra ler a conta do disco antes de assumir «deslogado». */
-    private const val GRACA_RESTAURO_MS = 5_000L
+    /** Tempo que damos ao Firebase pra ler a conta do disco antes de mostrar o login. */
+    private const val GRACA_RESTAURO_MS = 8_000L
 
     /** Enquanto true, `currentUser == null` significa «ainda restaurando», não «saiu». */
     private var restaurando = false
@@ -79,7 +80,11 @@ object AuthRepository {
                     delay(GRACA_RESTAURO_MS)
                     if (restaurando) {
                         restaurando = false
-                        if (auth.currentUser == null) saiu()
+                        // Estourou o prazo: destrava a tela, mas NÃO conclui que ele saiu.
+                        // Apagar o marcador aqui era um efeito dominó — uma restauração
+                        // lenta apagava a pista e TODA abertura seguinte ia direto pro
+                        // login. Só sair de verdade limpa o marcador.
+                        if (auth.currentUser == null) _authReady.value = true
                     }
                 }
             }
@@ -94,8 +99,48 @@ object AuthRepository {
                 restaurando = false
                 entrou(user)
             } else if (!restaurando) {
-                saiu()
+                _session.value = null
+                _authReady.value = true
             }
+        }
+    }
+
+    /** Já houve conta neste aparelho? (marcador local, sobrevive ao processo) */
+    fun tinhaSessaoAqui(): Boolean = PrefsRepository.sessaoUid != null
+
+    /**
+     * Reentra sozinho na conta Google já autorizada neste aparelho.
+     *
+     * Quando o Firebase perde a sessão guardada (o app é morto no meio, o cache é
+     * limpo, o token vence), a conta do Google continua autorizada aqui — dá pra voltar
+     * sem pedir nada a ele. Só usa credencial já concedida: se precisar de interação,
+     * desiste e o login normal aparece.
+     */
+    suspend fun restaurarGoogleSilencioso(activity: Activity): Boolean {
+        auth.currentUser?.let { entrou(it); return true }
+        if (!tinhaSessaoAqui()) return false
+        return try {
+            val opcao = GetGoogleIdOption.Builder()
+                .setServerClientId(FirebaseBootstrap.WEB_CLIENT_ID)
+                .setFilterByAuthorizedAccounts(true)
+                .setAutoSelectEnabled(true)
+                .build()
+            val pedido = GetCredentialRequest.Builder().addCredentialOption(opcao).build()
+            val resposta = CredentialManager.create(activity).getCredential(activity, pedido)
+            val cred = resposta.credential
+            if (cred is CustomCredential &&
+                cred.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
+            ) {
+                val googleId = GoogleIdTokenCredential.createFrom(cred.data)
+                val firebaseCred = GoogleAuthProvider.getCredential(googleId.idToken, null)
+                val user = auth.signInWithCredential(firebaseCred).await().user ?: return false
+                entrou(user)
+                true
+            } else {
+                false
+            }
+        } catch (e: Exception) {
+            false
         }
     }
 

@@ -1,5 +1,6 @@
 package com.ethan.orbitlab.shell
 
+import android.app.Activity
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
@@ -49,6 +50,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
@@ -96,8 +98,22 @@ private enum class OrbitTab(
 fun OrbitShell() {
     val authReady by AuthRepository.authReady.collectAsState()
     val session by AuthRepository.session.collectAsState()
+    val activity = LocalContext.current as? Activity
 
-    if (!authReady) {
+    // Sessão sumiu mas a conta Google segue autorizada aqui: reentra sozinho antes de
+    // pedir login. Uma tentativa por abertura — se não der, cai na tela de login.
+    var reentrando by remember { mutableStateOf(AuthRepository.tinhaSessaoAqui()) }
+    LaunchedEffect(authReady, session) {
+        if (!authReady || session != null || !reentrando) return@LaunchedEffect
+        if (activity == null) {
+            reentrando = false
+            return@LaunchedEffect
+        }
+        AuthRepository.restaurarGoogleSilencioso(activity)
+        reentrando = false
+    }
+
+    if (!authReady || (session == null && reentrando)) {
         Box(
             Modifier.fillMaxSize().background(OrbitTokens.ink1),
             contentAlignment = Alignment.Center,
