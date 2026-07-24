@@ -90,6 +90,24 @@ object AuthDiag {
         )
     }
 
+    /**
+     * Força o AndroidKeyStore a ligar e mede quanto custou.
+     *
+     * `load(null)` bloqueia até o serviço do KeyStore responder. Chamado antes do primeiro
+     * toque no Firebase Auth, garante que a chave-mestra que descriptografa a conta guardada
+     * já esteja acessível quando o SDK for ler. Se o custo aparecer alto no diário, era mesmo
+     * o KeyStore chegando atrasado; se vier ~0ms e a conta ainda faltar, a causa é outra.
+     */
+    fun aquecerKeystore() {
+        val ini = SystemClock.elapsedRealtime()
+        val res = runCatching {
+            val ks = java.security.KeyStore.getInstance("AndroidKeyStore")
+            ks.load(null)
+            "ok (${ks.size()} chaves, ${SystemClock.elapsedRealtime() - ini}ms)"
+        }.getOrElse { "falhou · ${it.javaClass.simpleName}" }
+        anota("keystore aquecido: $res")
+    }
+
     private const val TIQUE_MS = 200L
     private const val VIGIA_MS = 15_000L
 

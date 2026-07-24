@@ -96,6 +96,16 @@ object AuthRepository {
     fun init(context: Context) {
         appCtx = context.applicationContext
         AuthDiag.radiografarCofre(appCtx, "na abertura")
+
+        // Acorda o cofre de hardware ANTES do Firebase tocar no Auth. O usuário guardado
+        // vem criptografado (há um StorageCryptoKeyset no disco) e a chave-mestra mora no
+        // AndroidKeyStore. O diário mostrou o Firebase abrindo vazio no +0.0s e a conta só
+        // voltando pela reentrada, segundos depois — a leitura é síncrona no primeiro
+        // getInstance(), então se o KeyStore ainda não «acordou» nesse instante, a
+        // descriptografia falha calada e o SDK cacheia «sem conta» pro resto da vida do
+        // processo. load(null) é bloqueante: espera o serviço do KeyStore ligar.
+        AuthDiag.aquecerKeystore()
+
         val jaEntrouAqui = PrefsRepository.sessaoUid != null
         // Quanto custa acordar o Firebase Auth — é aqui que ele começa a ler o disco.
         val relogio = SystemClock.elapsedRealtime()
