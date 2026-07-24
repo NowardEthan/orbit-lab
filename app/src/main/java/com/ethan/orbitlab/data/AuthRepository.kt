@@ -58,8 +58,14 @@ object AuthRepository {
     private val _authReady = MutableStateFlow(false)
     val authReady: StateFlow<Boolean> = _authReady.asStateFlow()
 
-    /** Tempo que damos ao Firebase pra ler a conta do disco antes de mostrar o login. */
-    private const val GRACA_RESTAURO_MS = 8_000L
+    /**
+     * Tempo que damos ao Firebase pra ler a conta do disco antes de mostrar o login.
+     *
+     * Curto de propósito: o SDK carrega o usuário guardado ao criar o [FirebaseAuth], então
+     * se ele não veio no primeiro instante, esperar não o faz aparecer. Os 8s de antes eram
+     * 8s de tela parada à toa — a reentrada é que resolve, e ela corre em paralelo.
+     */
+    private const val GRACA_RESTAURO_MS = 1_500L
 
     /** Enquanto true, `currentUser == null` significa «ainda restaurando», não «saiu». */
     private var restaurando = false
@@ -141,6 +147,7 @@ object AuthRepository {
         //     que ainda é bem melhor que refazer o login inteiro.
         for (soAutorizadas in listOf(true, false)) {
             val etapa = if (soAutorizadas) "silenciosa" else "escolha de conta"
+            AuthDiag.anota("reentrada $etapa começou")
             try {
                 val opcao = GetGoogleIdOption.Builder()
                     .setServerClientId(FirebaseBootstrap.WEB_CLIENT_ID)

@@ -102,9 +102,12 @@ fun OrbitShell() {
 
     // Sessão sumiu mas a conta Google segue autorizada aqui: reentra sozinho antes de
     // pedir login. Uma tentativa por abertura — se não der, cai na tela de login.
+    //
+    // Começa JÁ, sem esperar o prazo do Firebase: os dois correm em paralelo e quem chegar
+    // primeiro vale. Esperar em série era somar o tempo morto ao tempo da reentrada.
     var reentrando by remember { mutableStateOf(AuthRepository.tinhaSessaoAqui()) }
-    LaunchedEffect(authReady, session) {
-        if (!authReady || session != null || !reentrando) return@LaunchedEffect
+    LaunchedEffect(session) {
+        if (session != null || !reentrando) return@LaunchedEffect
         if (activity == null) {
             reentrando = false
             return@LaunchedEffect

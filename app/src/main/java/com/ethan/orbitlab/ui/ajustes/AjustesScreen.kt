@@ -47,8 +47,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -56,6 +58,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.ethan.orbitlab.BuildConfig
 import com.ethan.orbitlab.R
+import com.ethan.orbitlab.data.AuthDiag
 import com.ethan.orbitlab.data.AuthProvider
 import com.ethan.orbitlab.data.AuthRepository
 import com.ethan.orbitlab.data.PrefsRepository
@@ -94,6 +97,19 @@ fun AjustesScreen(
     }
 
     val vibracao by PrefsRepository.vibracao.collectAsState()
+    val diagAgora by AuthDiag.agora.collectAsState()
+    val clipboard = LocalClipboardManager.current
+    var diarioCopiado by remember { mutableStateOf(false) }
+    val diarioSessao = remember(diagAgora) {
+        buildString {
+            if (diagAgora.isNotBlank()) append("ABERTURA DE AGORA\n").append(diagAgora)
+            val antes = AuthDiag.anterior
+            if (antes.isNotBlank()) {
+                if (isNotEmpty()) append("\n\n")
+                append("ABERTURA ANTERIOR\n").append(antes)
+            }
+        }
+    }
     val manifest by UpdatesRepository.manifest.collectAsState()
     val updateAvailable = remember(manifest) {
         val m = manifest ?: return@remember false
@@ -242,6 +258,23 @@ fun AjustesScreen(
                 iconeBg = OrbitTokens.surfaceRaised,
                 iconeTint = OrbitTokens.textMid,
             )
+            // Diário de bordo da abertura (ver AuthDiag). Fica aqui porque quando a
+            // reentrada dá certo ele nunca chega à tela de login, onde o diário também aparece.
+            if (diarioSessao.isNotBlank()) {
+                Divisoria()
+                LinhaAjuste(
+                    icone = Icons.Rounded.Info,
+                    titulo = "Diário da sessão",
+                    subtitulo = if (diarioCopiado) "Copiado — cola aqui pro Claude" else "Por que a abertura demorou / pediu login",
+                    trailing = if (diarioCopiado) "Ok" else "Copiar",
+                    iconeBg = OrbitTokens.surfaceRaised,
+                    iconeTint = OrbitTokens.textMid,
+                    onClick = {
+                        clipboard.setText(AnnotatedString(diarioSessao))
+                        diarioCopiado = true
+                    },
+                )
+            }
         }
 
         BotaoSair(onClick = { confirmarSair = true })
