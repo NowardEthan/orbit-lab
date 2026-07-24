@@ -72,21 +72,30 @@ object AuthRepository {
     /**
      * Tempo que damos ao Firebase pra devolver a conta guardada antes do plano B.
      *
-     * O SDK lê essa conta do disco de forma ASSÍNCRONA — o diário do aparelho dele mostrou
-     * ela chegando aos 6,3s, pelo listener, em duas aberturas seguidas. Ou seja: esperar é
-     * mesmo o caminho. O 1,5s de antes vinha de uma leitura minha errada (achei que o SDK
-     * carregava a conta na hora de criar o [FirebaseAuth]); na prática ele só desistia cedo,
-     * mostrava login por 5s e disparava o Credential Manager à toa — duas entradas correndo
-     * juntas pela mesma conta.
+     * Curto porque o diário provou que ele NUNCA devolve: com 10s de paciência, o registro
+     * do aparelho dele diz «firebase=continua vazio» aos 10s e a conta só aparece junto com
+     * o «reentrada deu certo» — ou seja, o que fazia o listener acordar era o nosso próprio
+     * login, não um restauro. Aquele «devolveu a conta aos 6,3s» de antes era a reentrada
+     * daquela abertura terminando, e eu li como restauro.
+     *
+     * Então esperar é tempo morto: acordar o Auth custa ~30ms, e o que ele tem pra dizer,
+     * diz na hora. Sobra um fio de prazo pro dia em que o cofre voltar a funcionar.
      */
-    private const val PACIENCIA_RESTAURO_MS = 10_000L
+    private const val PACIENCIA_RESTAURO_MS = 800L
 
     /** Enquanto true, `currentUser == null` significa «ainda restaurando», não «saiu». */
     private var restaurando = false
 
     private val escopo = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
-    fun init(@Suppress("UNUSED_PARAMETER") context: Context) {
+    private lateinit var appCtx: Context
+
+    /** Uma radiografia por abertura: interessa a primeira entrada, não cada recomposição. */
+    private var radiografouDepois = false
+
+    fun init(context: Context) {
+        appCtx = context.applicationContext
+        AuthDiag.radiografarCofre(appCtx, "na abertura")
         val jaEntrouAqui = PrefsRepository.sessaoUid != null
         // Quanto custa acordar o Firebase Auth — é aqui que ele começa a ler o disco.
         val relogio = SystemClock.elapsedRealtime()
@@ -110,7 +119,7 @@ object AuthRepository {
                         restaurando = false
                         val chegou = auth.currentUser != null
                         AuthDiag.anota(
-                            "paciência de ${PACIENCIA_RESTAURO_MS / 1000}s acabou · firebase=" +
+                            "paciência de ${PACIENCIA_RESTAURO_MS}ms acabou · firebase=" +
                                 if (chegou) "chegou" else "continua vazio",
                         )
                         // Acabou a paciência: passa a vez pro plano B, mas NÃO conclui que
@@ -219,6 +228,16 @@ object AuthRepository {
         _restauroExpirou.value = false
         _session.value = user.toSession()
         _authReady.value = true
+        // Radiografa o cofre uns segundos DEPOIS de entrar: é a única forma de saber se o
+        // Firebase escreveu a conta em disco. Se escreveu aqui e na próxima abertura o cofre
+        // aparece vazio, alguém está limpando; se nem aqui escreveu, o problema é a escrita.
+        if (!radiografouDepois && ::appCtx.isInitialized) {
+            radiografouDepois = true
+            escopo.launch {
+                delay(3_000)
+                AuthDiag.radiografarCofre(appCtx, "3s depois de entrar")
+            }
+        }
     }
 
     private fun saiu() {
