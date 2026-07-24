@@ -1,6 +1,8 @@
 package com.ethan.orbitlab.data.firebase
 
 import android.content.Context
+import android.os.SystemClock
+import com.ethan.orbitlab.data.AuthDiag
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 
@@ -15,6 +17,10 @@ object FirebaseBootstrap {
 
     fun init(context: Context) {
         if (FirebaseApp.getApps(context).isNotEmpty()) return
+        // Cronometrado porque este app inicializa o Firebase à mão (sem google-services.json,
+        // o provider automático dele não roda): se o arranque daqui custar segundos, o atraso
+        // da conta guardada começa antes mesmo do Auth entrar na história.
+        val relogio = SystemClock.elapsedRealtime()
         val options = FirebaseOptions.Builder()
             .setProjectId(PROJECT_ID)
             .setApplicationId("1:1068126871324:android:51217dcd0047b3cf3564d9")
@@ -22,5 +28,6 @@ object FirebaseBootstrap {
             .setStorageBucket("luna-8787d.firebasestorage.app")
             .build()
         FirebaseApp.initializeApp(context.applicationContext, options)
+        AuthDiag.anota("firebase app criado em ${SystemClock.elapsedRealtime() - relogio}ms")
     }
 }

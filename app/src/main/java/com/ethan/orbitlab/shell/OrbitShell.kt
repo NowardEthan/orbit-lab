@@ -104,20 +104,24 @@ fun OrbitShell() {
     // Sessão sumiu mas a conta Google segue autorizada aqui: reentra sozinho antes de
     // pedir login. Uma tentativa por abertura — se não der, cai na tela de login.
     //
-    // Começa JÁ, sem esperar o prazo do Firebase: os dois correm em paralelo e quem chegar
-    // primeiro vale. Esperar em série era somar o tempo morto ao tempo da reentrada.
-    var reentrando by remember { mutableStateOf(AuthRepository.tinhaSessaoAqui()) }
-    LaunchedEffect(session) {
-        if (session != null || !reentrando) return@LaunchedEffect
+    // Plano B, não corrida: só entra em cena quando a paciência com o Firebase acaba. Rodar
+    // os dois juntos (como em 0.7.5) fazia duas entradas disputarem a mesma conta e ainda
+    // punha uma folha do Google na frente dele enquanto a conta guardada já vinha chegando.
+    val expirou by AuthRepository.restauroExpirou.collectAsState()
+    var reentrando by remember { mutableStateOf(false) }
+    LaunchedEffect(expirou, session) {
+        if (!expirou || session != null) return@LaunchedEffect
         if (activity == null) {
-            reentrando = false
+            AuthRepository.desistiuDoRestauro()
             return@LaunchedEffect
         }
-        AuthRepository.restaurarGoogleSilencioso(activity)
+        reentrando = true
+        val deuCerto = AuthRepository.restaurarGoogleSilencioso(activity)
         reentrando = false
+        if (!deuCerto) AuthRepository.desistiuDoRestauro()
     }
 
-    if (!authReady || (session == null && reentrando)) {
+    if (!authReady) {
         Box(
             Modifier.fillMaxSize().background(OrbitTokens.ink1),
             contentAlignment = Alignment.Center,
@@ -131,7 +135,9 @@ fun OrbitShell() {
             }
             if (demorou) {
                 Text(
-                    "Recuperando sua sessão…",
+                    // Muda quando entra o plano B: esperar sem saber que a coisa andou é o
+                    // que faz 6 segundos parecerem trinta.
+                    if (reentrando) "Reentrando na sua conta…" else "Recuperando sua sessão…",
                     color = OrbitTokens.textMid,
                     fontSize = 13.sp,
                 )

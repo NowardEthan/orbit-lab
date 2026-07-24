@@ -2,6 +2,7 @@ package com.ethan.orbitlab.data
 
 import android.app.Activity
 import android.content.Context
+import android.os.SystemClock
 import com.ethan.orbitlab.data.firebase.FirebaseBootstrap
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
@@ -18,6 +19,7 @@ import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.GetCredentialException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -59,13 +61,25 @@ object AuthRepository {
     val authReady: StateFlow<Boolean> = _authReady.asStateFlow()
 
     /**
-     * Tempo que damos ao Firebase pra ler a conta do disco antes de mostrar o login.
+     * O Firebase não devolveu a conta no prazo — hora do plano B (reentrada pelo Google).
      *
-     * Curto de propósito: o SDK carrega o usuário guardado ao criar o [FirebaseAuth], então
-     * se ele não veio no primeiro instante, esperar não o faz aparecer. Os 8s de antes eram
-     * 8s de tela parada à toa — a reentrada é que resolve, e ela corre em paralelo.
+     * Fica separado de [authReady] de propósito: expirar o prazo NÃO é motivo pra mostrar
+     * login, é motivo pra tentar outra porta antes de incomodar ninguém.
      */
-    private const val GRACA_RESTAURO_MS = 1_500L
+    private val _restauroExpirou = MutableStateFlow(false)
+    val restauroExpirou: StateFlow<Boolean> = _restauroExpirou.asStateFlow()
+
+    /**
+     * Tempo que damos ao Firebase pra devolver a conta guardada antes do plano B.
+     *
+     * O SDK lê essa conta do disco de forma ASSÍNCRONA — o diário do aparelho dele mostrou
+     * ela chegando aos 6,3s, pelo listener, em duas aberturas seguidas. Ou seja: esperar é
+     * mesmo o caminho. O 1,5s de antes vinha de uma leitura minha errada (achei que o SDK
+     * carregava a conta na hora de criar o [FirebaseAuth]); na prática ele só desistia cedo,
+     * mostrava login por 5s e disparava o Credential Manager à toa — duas entradas correndo
+     * juntas pela mesma conta.
+     */
+    private const val PACIENCIA_RESTAURO_MS = 10_000L
 
     /** Enquanto true, `currentUser == null` significa «ainda restaurando», não «saiu». */
     private var restaurando = false
@@ -74,10 +88,14 @@ object AuthRepository {
 
     fun init(@Suppress("UNUSED_PARAMETER") context: Context) {
         val jaEntrouAqui = PrefsRepository.sessaoUid != null
+        // Quanto custa acordar o Firebase Auth — é aqui que ele começa a ler o disco.
+        val relogio = SystemClock.elapsedRealtime()
         val agora = auth.currentUser
+        val custoAuth = SystemClock.elapsedRealtime() - relogio
         AuthDiag.anota(
             "abriu · marcador=${if (jaEntrouAqui) "sim" else "não"} " +
-                "· firebase=${if (agora != null) "conta em mãos" else "vazio"}",
+                "· firebase=${if (agora != null) "conta em mãos" else "vazio"} " +
+                "· acordar auth ${custoAuth}ms",
         )
 
         when {
@@ -87,18 +105,19 @@ object AuthRepository {
             jaEntrouAqui -> {
                 restaurando = true
                 escopo.launch {
-                    delay(GRACA_RESTAURO_MS)
+                    delay(PACIENCIA_RESTAURO_MS)
                     if (restaurando) {
                         restaurando = false
+                        val chegou = auth.currentUser != null
                         AuthDiag.anota(
-                            "prazo de ${GRACA_RESTAURO_MS / 1000}s estourou · firebase=" +
-                                if (auth.currentUser != null) "chegou" else "continua vazio",
+                            "paciência de ${PACIENCIA_RESTAURO_MS / 1000}s acabou · firebase=" +
+                                if (chegou) "chegou" else "continua vazio",
                         )
-                        // Estourou o prazo: destrava a tela, mas NÃO conclui que ele saiu.
-                        // Apagar o marcador aqui era um efeito dominó — uma restauração
-                        // lenta apagava a pista e TODA abertura seguinte ia direto pro
-                        // login. Só sair de verdade limpa o marcador.
-                        if (auth.currentUser == null) _authReady.value = true
+                        // Acabou a paciência: passa a vez pro plano B, mas NÃO conclui que
+                        // ele saiu nem mostra login. Apagar o marcador aqui era um efeito
+                        // dominó — uma restauração lenta apagava a pista e TODA abertura
+                        // seguinte ia direto pro login. Só sair de verdade limpa o marcador.
+                        if (!chegou) _restauroExpirou.value = true
                     }
                 }
             }
@@ -113,12 +132,18 @@ object AuthRepository {
                 if (_session.value == null) AuthDiag.anota("firebase devolveu a conta")
                 restaurando = false
                 entrou(user)
-            } else if (!restaurando) {
+            } else if (!restaurando && !_restauroExpirou.value) {
                 AuthDiag.anota("firebase avisou: sem conta")
                 _session.value = null
                 _authReady.value = true
             }
         }
+    }
+
+    /** Plano B também não deu conta: agora sim faz sentido pedir login. */
+    fun desistiuDoRestauro() {
+        AuthDiag.anota("sem restauro possível · vai pro login")
+        _authReady.value = true
     }
 
     /** Já houve conta neste aparelho? (marcador local, sobrevive ao processo) */
@@ -133,11 +158,6 @@ object AuthRepository {
      * desiste e o login normal aparece.
      */
     suspend fun restaurarGoogleSilencioso(activity: Activity): Boolean {
-        auth.currentUser?.let {
-            AuthDiag.anota("reentrada dispensada · a conta chegou a tempo")
-            entrou(it)
-            return true
-        }
         if (!tinhaSessaoAqui()) {
             AuthDiag.anota("reentrada pulada · sem marcador (saiu de propósito?)")
             return false
@@ -146,6 +166,13 @@ object AuthRepository {
         // 2ª: qualquer conta Google do aparelho — vira uma folha de escolha (1 toque),
         //     que ainda é bem melhor que refazer o login inteiro.
         for (soAutorizadas in listOf(true, false)) {
+            // Conferido a cada volta: o Firebase pode ter chegado com a conta enquanto a
+            // tentativa anterior rodava, e aí não há o que reentrar.
+            auth.currentUser?.let {
+                AuthDiag.anota("reentrada dispensada · a conta chegou")
+                entrou(it)
+                return true
+            }
             val etapa = if (soAutorizadas) "silenciosa" else "escolha de conta"
             AuthDiag.anota("reentrada $etapa começou")
             try {
@@ -172,6 +199,14 @@ object AuthRepository {
                 } else {
                     AuthDiag.anota("reentrada $etapa: credencial de outro tipo")
                 }
+            } catch (e: CancellationException) {
+                // Não é falha: a tela que hospeda a tentativa saiu de cena — quase sempre
+                // porque a conta chegou e o app trocou o splash pelo shell.
+                AuthDiag.anota(
+                    "reentrada $etapa abortada · " +
+                        if (auth.currentUser != null) "a conta chegou" else "a tela saiu de cena",
+                )
+                throw e
             } catch (e: Exception) {
                 AuthDiag.anota("reentrada $etapa falhou · ${e.javaClass.simpleName}: ${e.message?.take(90)}")
             }
@@ -181,12 +216,14 @@ object AuthRepository {
 
     private fun entrou(user: FirebaseUser) {
         PrefsRepository.sessaoUid = user.uid
+        _restauroExpirou.value = false
         _session.value = user.toSession()
         _authReady.value = true
     }
 
     private fun saiu() {
         PrefsRepository.sessaoUid = null
+        _restauroExpirou.value = false
         // Sair zera o «onde eu estava»: quem entrar depois não cai na conversa do anterior.
         PrefsRepository.ultimaConversa = null
         PrefsRepository.ultimaAba = null
