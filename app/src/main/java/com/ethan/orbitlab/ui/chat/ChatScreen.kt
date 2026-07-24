@@ -234,7 +234,7 @@ fun ChatScreen(conversaId: String, onBack: () -> Unit) {
                     val origem = if (lunaDirect) "OpenRouter" else "servidor Luna"
                     ChatRepository.enviarMensagem(
                         conversaId = conversaId,
-                        texto = "Erro ao falar com o $origem: ${e.message ?: "desconhecido"}",
+                        texto = "Erro ao falar com o $origem: ${detalheFalha(e)}",
                         isLuna = true,
                         messageId = lunaMsgId,
                         persistirNuvem = false,
@@ -740,6 +740,24 @@ private fun ChatTimeline(
                 }
             }
         }
+    }
+}
+
+/**
+ * Detalhe legível de uma falha.
+ *
+ * `e.message` cru às vezes é inútil ("Success", vindo de erro nativo com errno zerado) ou
+ * vazio — nesses casos o nome da exceção diz mais do que a mensagem.
+ */
+private fun detalheFalha(e: Throwable): String {
+    val msg = e.message?.trim()?.takeIf {
+        it.isNotEmpty() && !it.equals("Success", ignoreCase = true)
+    }
+    val causa = e.cause?.takeIf { it !== e }
+    return when {
+        msg != null -> msg
+        causa != null -> "${e.javaClass.simpleName} ← ${detalheFalha(causa)}"
+        else -> e.javaClass.simpleName
     }
 }
 

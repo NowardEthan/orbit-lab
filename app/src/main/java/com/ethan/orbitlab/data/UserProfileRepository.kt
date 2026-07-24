@@ -2,6 +2,7 @@ package com.ethan.orbitlab.data
 
 import android.content.Context
 import android.net.Uri
+import com.ethan.orbitlab.data.firebase.ChatMediaUpload
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.UserProfileChangeRequest
@@ -205,11 +206,8 @@ object UserProfileRepository {
             }
             val pathKind = if (kind == ProfileImageKind.AVATAR) "avatar" else "cover"
             val path = "users/$uid/profile/$pathKind.$ext"
-            val ref = storage.reference.child(path)
-            withContext(Dispatchers.IO) {
-                ref.putFile(uri).await()
-            }
-            val url = ref.downloadUrl.await().toString()
+            // Mesmo caminho do anexo do chat: token explícito, com teimosia (ver ChatMediaUpload).
+            val url = ChatMediaUpload.subirArquivo(context, path, uri, mime)
             val patch = when (kind) {
                 ProfileImageKind.AVATAR -> mapOf(
                     "avatarUrl" to url,
