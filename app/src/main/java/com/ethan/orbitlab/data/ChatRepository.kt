@@ -271,6 +271,20 @@ object ChatRepository {
         return _conversas.value.find { it.id == id }
     }
 
+    /**
+     * Texto de uma resposta REAL da Luna já presente na conversa para [messageId], ou null.
+     *
+     * Anti-geração-dupla: se o servidor gravou a resposta no Firestore e o listener já a
+     * trouxe, o retry adota ESSA em vez de repetir a chamada (que faria a Luna responder de
+     * novo e reescrever a fala por cima). Ignora balão de erro (não é resposta) e vazio.
+     */
+    fun respostaJaChegou(conversaId: String, messageId: String?): String? {
+        if (messageId.isNullOrBlank()) return null
+        val msg = getConversa(conversaId)?.mensagens?.find { it.id == messageId } ?: return null
+        if (!msg.isLuna || msg.erro) return null
+        return msg.texto.takeIf { it.isNotBlank() }
+    }
+
     /** Renomeia a conversa (título gerado pela Luna) — otimista na UI + grava na nuvem. */
     fun renomearConversa(conversaId: String, titulo: String) {
         val limpo = titulo.trim()

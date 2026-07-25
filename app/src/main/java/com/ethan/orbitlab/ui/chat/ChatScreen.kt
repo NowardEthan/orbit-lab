@@ -1317,12 +1317,12 @@ private fun ChatInputArea(
         texto.isNotBlank() || anexos.isNotEmpty() || messageReference != null
 
     // Composer num cartão único (estilo Claude): o campo em cima, os botões dentro
-    // embaixo. A borda e os cantos são do cartão; ele cresce pra cima conforme escreve.
+    // embaixo. O formato vem do background/border — SEM .clip(): o clip mascararia o
+    // balão de "arraste pra travar", que sobe pra fora do cartão durante a gravação.
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(ComposerFieldShape)
-            .background(OrbitTokens.surface)
+            .background(OrbitTokens.surface, ComposerFieldShape)
             .border(1.dp, OrbitTokens.borderSoft, ComposerFieldShape),
     ) {
     Column(modifier = Modifier.fillMaxWidth().padding(6.dp)) {
@@ -1465,38 +1465,38 @@ private fun ChatInputArea(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-        // Slot fixo do Plus — se remover na gravação, o Compose remonta o mic e cancela o hold
-        if (!gravando) {
-            val plusEnabled = enabled && imageBudget + fileBudget > 0
-            val (plusInteraction, plusPressScale) = rememberOrbitPressScale()
-            Box(
-                Modifier
-                    .size(44.dp)
-                    .graphicsLayer {
-                        scaleX = plusPressScale
-                        scaleY = plusPressScale
-                    }
-                    .clip(CircleShape)
-                    .clickable(
-                        interactionSource = plusInteraction,
-                        indication = null,
-                        enabled = plusEnabled,
-                        onClick = {
-                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            attachAberto = true
-                        },
-                    ),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    Icons.Filled.Add,
-                    contentDescription = "Anexos",
-                    tint = if (anexos.isNotEmpty()) OrbitTokens.accentText else OrbitTokens.textHigh,
-                    modifier = Modifier.size(24.dp),
-                )
-            }
-        } else {
-            Spacer(Modifier.size(44.dp))
+        // «+» SEMPRE na árvore (identidade estável). Na gravação ele só fica invisível e
+        // sem toque — não é removido: se saísse da árvore, o mic ao lado remontaria e
+        // cancelaria o hold. Sem placeholder fantasma, sem a fragilidade de antes.
+        val plusEnabled = enabled && !gravando && imageBudget + fileBudget > 0
+        val (plusInteraction, plusPressScale) = rememberOrbitPressScale()
+        Box(
+            Modifier
+                .size(44.dp)
+                .graphicsLayer {
+                    val s = if (gravando) 0f else plusPressScale
+                    scaleX = s
+                    scaleY = s
+                    alpha = if (gravando) 0f else 1f
+                }
+                .clip(CircleShape)
+                .clickable(
+                    interactionSource = plusInteraction,
+                    indication = null,
+                    enabled = plusEnabled,
+                    onClick = {
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        attachAberto = true
+                    },
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Filled.Add,
+                contentDescription = "Anexos",
+                tint = if (anexos.isNotEmpty()) OrbitTokens.accentText else OrbitTokens.textHigh,
+                modifier = Modifier.size(24.dp),
+            )
         }
 
         Spacer(Modifier.weight(1f))

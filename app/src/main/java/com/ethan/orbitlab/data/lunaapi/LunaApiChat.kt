@@ -233,8 +233,15 @@ object LunaApiChat {
                     is LunaApiClient.StreamEvent.Error -> Unit
                 }
             }
+            // Só repete se o servidor NÃO deu sinal de ter recebido (sem TTFB e sem nenhuma
+            // fase) E a resposta ainda não chegou pelo Firestore. Se ele já começou a gerar
+            // e a conexão caiu no meio, repetir faria a Luna responder DUAS vezes — a 2ª
+            // reescrevia a 1ª (foi o que aconteceu de manhã). Aí a gente mostra o erro + botão.
+            val semSinalDoServidor = result.ttfbMs == null && result.phasesMs.isEmpty()
+            val jaChegou = com.ethan.orbitlab.data.ChatRepository
+                .respostaJaChegou(conversaId, lunaMessageId) != null
             val podeRepetir = result.error != null && respostaBuf.isEmpty() &&
-                erroTransitorio(result.error)
+                semSinalDoServidor && !jaChegou && erroTransitorio(result.error)
             if (podeRepetir && tentativa < maxTentativas) {
                 LunaApiClient.evictConnections()
                 mainHandler.post { onEstado(LunaStreamEstado.Raciocinando("")) }
@@ -251,6 +258,16 @@ object LunaApiChat {
             .ifBlank { null }
 
         if (result.error != null && result.text.isBlank()) {
+            // A resposta real pode ter chegado pelo Firestore enquanto a conexão caía —
+            // adota ela em vez de pintar um erro por cima (senão apagaria a fala da Luna).
+            com.ethan.orbitlab.data.ChatRepository
+                .respostaJaChegou(conversaId, lunaMessageId)?.let { texto ->
+                    return LunaStreamResultado(
+                        reasoning = "",
+                        reasoningDuracao = "${dur}s",
+                        resposta = texto,
+                    )
+                }
             LatenciaProbe.record(
                 caminho = "paia_stream",
                 totalMs = totalMs,
