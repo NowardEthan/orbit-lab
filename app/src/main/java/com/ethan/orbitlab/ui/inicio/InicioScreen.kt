@@ -1,5 +1,8 @@
 package com.ethan.orbitlab.ui.inicio
 
+import android.Manifest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -21,10 +24,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Chat
+import androidx.compose.material.icons.rounded.Air
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Umbrella
+import androidx.compose.material.icons.rounded.WaterDrop
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -58,7 +65,12 @@ import coil.compose.AsyncImage
 import com.ethan.orbitlab.data.AuthRepository
 import com.ethan.orbitlab.data.ChatRepository
 import com.ethan.orbitlab.data.Conversa
+import com.ethan.orbitlab.data.PrefsRepository
 import com.ethan.orbitlab.data.UserProfileRepository
+import com.ethan.orbitlab.data.local.LocalLab
+import com.ethan.orbitlab.data.local.LocationRepository
+import com.ethan.orbitlab.data.local.emojiWMO
+import kotlin.math.roundToInt
 import com.ethan.orbitlab.ui.theme.OrbitMetrics
 import com.ethan.orbitlab.ui.theme.OrbitTokens
 import com.ethan.orbitlab.ui.theme.orbitPressable
@@ -97,6 +109,22 @@ fun InicioScreen(
     var downloading by remember { mutableStateOf(false) }
     var progress by remember { mutableFloatStateOf(0f) }
 
+    val localizacaoAtiva by PrefsRepository.localizacaoAtiva.collectAsState()
+    val clima by LocationRepository.atual.collectAsState()
+    val climaCarregando by LocationRepository.carregando.collectAsState()
+    val permClima = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { concessoes ->
+        if (concessoes.values.any { it }) {
+            PrefsRepository.setLocalizacaoAtiva(true)
+            LocationRepository.atualizarEmBackground(context, forcar = true)
+        }
+    }
+    // Ao abrir o Início: se o clima está ligado, atualiza em 2º plano (respeita o frescor de 10 min).
+    LaunchedEffect(localizacaoAtiva) {
+        if (localizacaoAtiva) LocationRepository.atualizarEmBackground(context)
+    }
+
     LaunchedEffect(temNovidade) {
         if (temNovidade) onMarkNovidadesVistas()
     }
@@ -129,6 +157,25 @@ fun InicioScreen(
                 avatarUrl = profile.avatarUrl,
                 onAbrirNovidades = onAbrirNovidades,
                 temNovidade = temNovidade,
+            )
+            ClimaSecao(
+                ativo = localizacaoAtiva,
+                local = clima,
+                carregando = climaCarregando,
+                onAtivar = {
+                    if (LocationRepository.temPermissao(context)) {
+                        PrefsRepository.setLocalizacaoAtiva(true)
+                        LocationRepository.atualizarEmBackground(context, forcar = true)
+                    } else {
+                        permClima.launch(
+                            arrayOf(
+                                Manifest.permission.ACCESS_FINE_LOCATION,
+                                Manifest.permission.ACCESS_COARSE_LOCATION,
+                            ),
+                        )
+                    }
+                },
+                onAtualizar = { LocationRepository.atualizarEmBackground(context, forcar = true) },
             )
             if (updateAvailable && !apkUrl.isNullOrBlank()) {
                 UpdateBanner(
@@ -180,6 +227,175 @@ private fun saudacaoDoDia(): String {
         h in 12..18 -> "Boa tarde"
         else -> "Boa noite"
     }
+}
+
+@Composable
+private fun ClimaSecao(
+    ativo: Boolean,
+    local: LocalLab?,
+    carregando: Boolean,
+    onAtivar: () -> Unit,
+    onAtualizar: () -> Unit,
+) {
+    val shape = RoundedCornerShape(OrbitMetrics.radiusCard)
+
+    // Convite (desligado) ou espera (ligado, mas ainda sem o primeiro fix).
+    if (!ativo || local?.clima == null) {
+        val buscandoAgora = ativo && local?.clima == null
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(shape)
+                .background(OrbitTokens.surface)
+                .border(1.dp, OrbitTokens.borderSoft, shape)
+                .orbitPressable(onClick = if (ativo) onAtualizar else onAtivar)
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("🌤️", fontSize = 26.sp)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "Clima no seu lugar",
+                    color = OrbitTokens.textHigh,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    if (buscandoAgora) "Buscando o tempo agora…"
+                    else "Veja o tempo agora e dê à Luna o seu lugar.",
+                    color = OrbitTokens.textMid,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                )
+            }
+            if (!ativo) {
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    "Ativar",
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(OrbitMetrics.radiusPill))
+                        .background(OrbitTokens.accent)
+                        .padding(horizontal = 14.dp, vertical = 7.dp),
+                )
+            }
+        }
+        return
+    }
+
+    val c = local.clima
+    val (topo, base) = climaGradiente(c.codigo)
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(Brush.linearGradient(listOf(topo, base)))
+            .border(1.dp, OrbitTokens.borderSoft, shape)
+            .orbitPressable(onClick = onAtualizar)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                Icons.Rounded.LocationOn,
+                contentDescription = null,
+                tint = OrbitTokens.textMid,
+                modifier = Modifier.size(14.dp),
+            )
+            Spacer(Modifier.width(4.dp))
+            Text(
+                lugarLabel(local),
+                color = OrbitTokens.textMid,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            if (carregando) {
+                Text("atualizando…", color = OrbitTokens.textLow, fontSize = 11.sp)
+            }
+        }
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(emojiWMO(c.codigo), fontSize = 44.sp)
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    c.tempC?.let { "${it.roundToInt()}°" } ?: "--°",
+                    color = OrbitTokens.textHigh,
+                    fontSize = 40.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = (-1).sp,
+                )
+                Text(
+                    subtituloClima(c),
+                    color = OrbitTokens.textMid,
+                    fontSize = 13.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+            if (c.maxC != null || c.minC != null) {
+                val max = c.maxC?.let { "↑${it.roundToInt()}°" }
+                val min = c.minC?.let { "↓${it.roundToInt()}°" }
+                StatClima(texto = listOfNotNull(max, min).joinToString("  "))
+            }
+            c.chuvaProb?.let { StatClima(icone = Icons.Rounded.Umbrella, texto = "$it%") }
+            c.umidade?.let { StatClima(icone = Icons.Rounded.WaterDrop, texto = "$it%") }
+            c.ventoKmh?.let { StatClima(icone = Icons.Rounded.Air, texto = "${it.roundToInt()} km/h") }
+        }
+    }
+}
+
+@Composable
+private fun StatClima(
+    texto: String,
+    icone: androidx.compose.ui.graphics.vector.ImageVector? = null,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        if (icone != null) {
+            Icon(
+                icone,
+                contentDescription = null,
+                tint = OrbitTokens.textLow,
+                modifier = Modifier.size(14.dp),
+            )
+            Spacer(Modifier.width(4.dp))
+        }
+        Text(texto, color = OrbitTokens.textMid, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+    }
+}
+
+private fun lugarLabel(local: LocalLab): String {
+    val partes = listOfNotNull(
+        local.cidade?.takeIf { it.isNotBlank() },
+        local.uf?.takeIf { it.isNotBlank() },
+    )
+    return if (partes.isNotEmpty()) partes.joinToString(", ") else "Seu lugar"
+}
+
+private fun subtituloClima(c: com.ethan.orbitlab.data.local.ClimaLab): String {
+    val desc = c.descricao?.takeIf { it.isNotBlank() }
+    val sensacao = c.sensacaoC?.let { s ->
+        c.tempC?.let { t -> if (kotlin.math.abs(s - t) >= 2) "sensação ${s.roundToInt()}°" else null }
+    }
+    return listOfNotNull(desc, sensacao).joinToString(" · ").ifBlank { "Tempo agora" }
+}
+
+/** Fundo do card levemente tingido pelo tempo — quente no sol, frio na chuva, neutro no resto. */
+private fun climaGradiente(codigo: Int?): Pair<Color, Color> = when (codigo) {
+    0, 1 -> Color(0xFF2E2A1E) to Color(0xFF181A1F) // sol — âmbar discreto
+    in 51..67, in 80..82, in 95..99 -> Color(0xFF1C2531) to Color(0xFF15181E) // chuva — azul
+    in 71..77, 85, 86 -> Color(0xFF232A32) to Color(0xFF171B20) // neve — azul claro
+    else -> Color(0xFF24272F) to Color(0xFF181A1F) // nuvem/neblina — grafite
 }
 
 @Composable

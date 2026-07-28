@@ -12,11 +12,14 @@ import kotlinx.coroutines.flow.asStateFlow
 object PrefsRepository {
     private const val PREFS = "orbitlab_prefs"
     private const val KEY_VIBRACAO = "orbit.lab.vibracao"
+    private const val KEY_PESQUISA_PROFUNDA = "orbit.lab.pesquisa.profunda"
     private const val KEY_SESSAO_UID = "orbit.lab.sessao.uid"
     private const val KEY_AUTH_DIAG = "orbit.lab.sessao.diag"
     private const val KEY_ULTIMA_ABA = "orbit.lab.lugar.aba"
     private const val KEY_ULTIMA_CONVERSA = "orbit.lab.lugar.conversa"
     private const val KEY_ANCORA = "orbit.lab.lugar.ancora"
+    private const val KEY_LOCALIZACAO = "orbit.lab.localizacao.ativa"
+    private const val KEY_LOCAL_SNAPSHOT = "orbit.lab.localizacao.snapshot"
 
     private lateinit var prefs: SharedPreferences
 
@@ -32,10 +35,28 @@ object PrefsRepository {
     private val _vibracao = MutableStateFlow(true)
     val vibracao: StateFlow<Boolean> = _vibracao.asStateFlow()
 
+    /**
+     * Modo pesquisa profunda — opt-in, DESLIGADO por default. Ligado, a Luna cruza as
+     * fontes (uma chamada extra ao modelo) antes de escrever; isso custa latência, então
+     * fica na mão do usuário. Desligado, o chat comum segue leve como sempre.
+     */
+    private val _pesquisaProfunda = MutableStateFlow(false)
+    val pesquisaProfunda: StateFlow<Boolean> = _pesquisaProfunda.asStateFlow()
+
+    /**
+     * Compartilhar localização + clima com a Luna — opt-in, DESLIGADO por default. Ligado,
+     * o app capta o GPS, resolve cidade/uf e busca o clima; isso dá à Luna o «onde» (antes
+     * ela só tinha o «quando»). Desligado, nada de local sai do aparelho.
+     */
+    private val _localizacaoAtiva = MutableStateFlow(false)
+    val localizacaoAtiva: StateFlow<Boolean> = _localizacaoAtiva.asStateFlow()
+
     fun init(context: Context) {
         if (::prefs.isInitialized) return
         prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         _vibracao.value = prefs.getBoolean(KEY_VIBRACAO, true)
+        _pesquisaProfunda.value = prefs.getBoolean(KEY_PESQUISA_PROFUNDA, false)
+        _localizacaoAtiva.value = prefs.getBoolean(KEY_LOCALIZACAO, false)
     }
 
     /**
@@ -104,9 +125,26 @@ object PrefsRepository {
         prefs.edit().putBoolean(KEY_VIBRACAO, enabled).apply()
     }
 
+    fun setPesquisaProfunda(enabled: Boolean) {
+        _pesquisaProfunda.value = enabled
+        if (::prefs.isInitialized) prefs.edit().putBoolean(KEY_PESQUISA_PROFUNDA, enabled).apply()
+    }
+
+    fun setLocalizacaoAtiva(enabled: Boolean) {
+        _localizacaoAtiva.value = enabled
+        if (::prefs.isInitialized) prefs.edit().putBoolean(KEY_LOCALIZACAO, enabled).apply()
+    }
+
+    /** Último local/clima captado (JSON) — pra Luna ter o «onde» sem esperar um fix novo. */
+    var localSnapshot: String?
+        get() = texto(KEY_LOCAL_SNAPSHOT)
+        set(value) = setTexto(KEY_LOCAL_SNAPSHOT, value)
+
     /** Limpa prefs locais (após «apagar dados»). */
     fun reset() {
         prefs.edit().clear().apply()
         _vibracao.value = true
+        _pesquisaProfunda.value = false
+        _localizacaoAtiva.value = false
     }
 }

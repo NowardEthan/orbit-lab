@@ -11,6 +11,7 @@ import com.ethan.orbitlab.data.AuthRepository
 import com.ethan.orbitlab.data.ChatRepository
 import com.ethan.orbitlab.data.PrefsRepository
 import com.ethan.orbitlab.data.UserProfileRepository
+import com.ethan.orbitlab.data.local.LocationRepository
 import com.ethan.orbitlab.data.updates.UpdatesRepository
 import com.ethan.orbitlab.data.firebase.FirebaseBootstrap
 
@@ -23,6 +24,7 @@ class OrbitApp : Application(), ImageLoaderFactory {
         ChatRepository.bindApp(this)
         ChatRepository.init()
         UserProfileRepository.init()
+        LocationRepository.init(this)
         UpdatesRepository.init(this)
     }
 

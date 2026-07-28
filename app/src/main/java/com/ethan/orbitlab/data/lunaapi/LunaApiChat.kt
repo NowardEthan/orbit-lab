@@ -6,12 +6,23 @@ import com.ethan.orbitlab.data.PrefsRepository
 import com.ethan.orbitlab.data.UserProfileRepository
 import com.ethan.orbitlab.data.firebase.ChatMediaUpload
 import com.ethan.orbitlab.data.latencia.LatenciaProbe
+import com.ethan.orbitlab.data.local.LocationRepository
 import com.ethan.orbitlab.ui.chat.AttachmentKind
 import com.ethan.orbitlab.ui.chat.ComposerAttachment
+import com.ethan.orbitlab.ui.chat.LunaActionProfile
+import com.ethan.orbitlab.ui.chat.LunaActionRun
+import com.ethan.orbitlab.ui.chat.LunaActionRunStatus
+import com.ethan.orbitlab.ui.chat.LunaActionStep
+import com.ethan.orbitlab.ui.chat.LunaActionStepKind
+import com.ethan.orbitlab.ui.chat.LunaActionStepStatus
+import com.ethan.orbitlab.ui.chat.LunaFonteStatus
 import com.ethan.orbitlab.ui.chat.LunaStreamEstado
 import com.ethan.orbitlab.ui.chat.LunaStreamResultado
+import com.ethan.orbitlab.ui.chat.LunaWebFonte
 import com.ethan.orbitlab.ui.chat.ThreadReference
+import com.ethan.orbitlab.ui.chat.ehFerramentaDeWeb
 import com.ethan.orbitlab.ui.chat.formatMessageWithReference
+import com.ethan.orbitlab.ui.chat.toolMeta
 import android.os.Handler
 import android.os.Looper
 import org.json.JSONArray
@@ -49,6 +60,35 @@ object LunaApiChat {
         anexos.firstOrNull()?.kind == AttachmentKind.IMAGE -> "Enviando a foto…"
         anexos.firstOrNull()?.kind == AttachmentKind.VIDEO -> "Enviando o vídeo…"
         else -> "Enviando o arquivo…"
+    }
+
+    /** Argumento legível de um evento `acao` — o que a pessoa vê no passo (query, url…). */
+    private fun extrairArgAcao(ferramenta: String, argumentos: JSONObject?): String {
+        if (argumentos == null) return ""
+        val bruto = when (ferramenta) {
+            "web_search" -> argumentos.optString("query")
+            "ler_url" -> argumentos.optString("url")
+            "consultar_atlas" -> argumentos.optString("termo").ifBlank { argumentos.optString("query") }
+            else -> argumentos.keys().asSequence().firstOrNull()
+                ?.let { argumentos.optString(it) }.orEmpty()
+        }
+        return bruto.trim()
+    }
+
+    /** Fontes que voltaram no `fim_ferramenta` (web_search / ler_url) — viram chips clicáveis. */
+    private fun parseFontesAcao(ferramenta: String, arr: JSONArray?): List<LunaWebFonte> {
+        if (arr == null) return emptyList()
+        return (0 until arr.length()).mapNotNull { i ->
+            val o = arr.optJSONObject(i) ?: return@mapNotNull null
+            val url = o.optString("url").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            LunaWebFonte(
+                id = "f-$ferramenta-$i",
+                title = o.optString("title").ifBlank { url },
+                url = url,
+                domain = runCatching { android.net.Uri.parse(url).host }.getOrNull().orEmpty(),
+                status = LunaFonteStatus.CITADA,
+            )
+        }
     }
 
     suspend fun responder(
@@ -164,6 +204,8 @@ object LunaApiChat {
             put("timeZone", TimeZone.getDefault().id)
             put("reasoningEnabled", PrefsRepository.reasoningEnabled.value)
             put("reasoningEffort", "medium")
+            put("pesquisaProfunda", PrefsRepository.pesquisaProfunda.value)
+            LocationRepository.paraJson()?.let { put("local", it) }
             if (nome.isNotBlank()) put("userDisplayName", nome.take(64))
             if (attachmentsJson.length() > 0) put("attachments", attachmentsJson)
             if (documentsJson.length() > 0) put("documents", documentsJson)
@@ -177,22 +219,116 @@ object LunaApiChat {
         val reasoningBuf = StringBuilder()
         var faseAtual = ""
 
+        // Timeline de ações ao vivo: cada tool call do servidor (evento `acao`) nasce como um
+        // passo RUNNING no `inicio_ferramenta` e fecha DONE/ERROR no `fim_ferramenta`. É o que
+        // acende o painel de pesquisa que já existe — antes a gente só ignorava esses eventos.
+        val acaoSteps = mutableListOf<LunaActionStep>()
+
+        fun montarRun(status: LunaActionRunStatus): LunaActionRun? {
+            if (acaoSteps.isEmpty()) return null
+            val usouWeb = acaoSteps.any { it.ferramenta?.let(::ehFerramentaDeWeb) == true }
+            // Ao fechar o turno, nenhum passo pode ficar preso em "…" (o fim_ferramenta pode
+            // não ter chegado, e o passo Escrevendo nasce RUNNING). Vira DONE de fato.
+            val steps = if (status == LunaActionRunStatus.RUNNING) {
+                acaoSteps.toList()
+            } else {
+                acaoSteps.map { s ->
+                    if (s.status != LunaActionStepStatus.RUNNING) return@map s
+                    s.copy(
+                        status = LunaActionStepStatus.DONE,
+                        label = if (s.kind == LunaActionStepKind.WRITE) "Resposta escrita" else s.label,
+                    )
+                }
+            }
+            return LunaActionRun(
+                id = "live-$lunaMessageId",
+                title = if (usouWeb) "Pesquisa" else "Ferramentas",
+                status = status,
+                steps = steps,
+                profile = if (usouWeb) LunaActionProfile.DEEP_RESEARCH else LunaActionProfile.TASK,
+            )
+        }
+
+        /** Aplica um evento `acao` (inicio/fim) na timeline viva. */
+        fun aplicarAcao(json: JSONObject) {
+            val tipo = json.optString("tipo")
+            val ferramenta = json.optString("ferramenta").ifBlank { return }
+            val arg = extrairArgAcao(ferramenta, json.optJSONObject("argumentos"))
+            val meta = toolMeta(ferramenta)
+            if (tipo == "inicio_ferramenta") {
+                acaoSteps += LunaActionStep(
+                    id = "acao-${acaoSteps.size}",
+                    label = meta.live(arg),
+                    detail = arg.takeIf { it.isNotBlank() },
+                    status = LunaActionStepStatus.RUNNING,
+                    kind = meta.kind,
+                    queries = listOfNotNull(arg.takeIf { it.isNotBlank() && meta.kind == com.ethan.orbitlab.ui.chat.LunaActionStepKind.SEARCH }),
+                    ferramenta = ferramenta,
+                )
+            } else if (tipo == "fim_ferramenta") {
+                val sucesso = json.optBoolean("sucesso", true)
+                val fontes = parseFontesAcao(ferramenta, json.optJSONArray("fontes"))
+                // Fecha o último passo aberto dessa ferramenta (pareia inicio↔fim).
+                val idx = acaoSteps.indexOfLast {
+                    it.ferramenta == ferramenta && it.status == LunaActionStepStatus.RUNNING
+                }
+                if (idx >= 0) {
+                    val aberto = acaoSteps[idx]
+                    acaoSteps[idx] = aberto.copy(
+                        label = if (sucesso) meta.done(arg.ifBlank { aberto.detail.orEmpty() }) else aberto.label,
+                        status = if (sucesso) LunaActionStepStatus.DONE else LunaActionStepStatus.ERROR,
+                        sources = fontes.ifEmpty { aberto.sources },
+                        citations = if (fontes.isNotEmpty()) {
+                            fontes.mapIndexed { ci, f ->
+                                com.ethan.orbitlab.ui.chat.LunaCitacao(
+                                    id = "c-$idx-$ci", index = ci + 1, sourceId = f.id, title = f.title, url = f.url,
+                                )
+                            }
+                        } else {
+                            aberto.citations
+                        },
+                    )
+                }
+            }
+        }
+
+        /**
+         * Cap honesto do roteiro: no instante em que o texto começa a sair, ela ESTÁ escrevendo.
+         * Só entra quando houve pesquisa (passo de web) e uma vez só — sem chamada LLM extra e
+         * sem inventar etapa. Não persiste (actionRunToFirestore só guarda passos de ferramenta):
+         * fica como affordance ao vivo, e o histórico mostra o rastro de buscas/leituras já pronto.
+         */
+        fun marcarEscrevendo() {
+            val temWeb = acaoSteps.any { it.ferramenta?.let(::ehFerramentaDeWeb) == true }
+            if (!temWeb) return
+            if (acaoSteps.any { it.kind == LunaActionStepKind.WRITE }) return
+            acaoSteps += LunaActionStep(
+                id = "acao-escrevendo",
+                label = "Escrevendo a resposta",
+                status = LunaActionStepStatus.RUNNING,
+                kind = LunaActionStepKind.WRITE,
+            )
+        }
+
         fun emitirUi() {
             val texto = respostaBuf.toString()
             val reasoning = reasoningBuf.toString()
             val durMs = System.currentTimeMillis() - t0
             val durLabel = "${(durMs / 1000.0).roundToInt().coerceAtLeast(1)}s"
+            val run = montarRun(LunaActionRunStatus.RUNNING)
             val estado = if (texto.isNotEmpty()) {
                 LunaStreamEstado.Respondendo(
                     reasoning = reasoning,
                     reasoningDuracao = durLabel,
                     respostaParcial = texto,
+                    actionRun = run,
                 )
             } else {
                 // Raciocínio real (se houver) vira a caixa; a fase é só o rótulo do "Pensando…".
                 // Antes a fase entrava no parcial e virava uma caixa de raciocínio fantasma.
                 LunaStreamEstado.Raciocinando(
                     parcial = reasoning,
+                    actionRun = run,
                     fase = if (faseAtual.isNotBlank()) rotuloFase(faseAtual) else "",
                 )
             }
@@ -209,6 +345,7 @@ object LunaApiChat {
             respostaBuf.setLength(0)
             reasoningBuf.setLength(0)
             faseAtual = ""
+            acaoSteps.clear()
             result = LunaApiClient.chatStream(idToken, body) { event ->
                 when (event) {
                     is LunaApiClient.StreamEvent.Status -> {
@@ -220,15 +357,16 @@ object LunaApiChat {
                         emitirUi()
                     }
                     is LunaApiClient.StreamEvent.Content -> {
+                        // Primeiro pedaço de texto = ela parou de buscar e começou a redigir.
+                        if (respostaBuf.isEmpty()) marcarEscrevendo()
                         respostaBuf.append(event.delta)
                         emitirUi()
                     }
                     is LunaApiClient.StreamEvent.Acao -> {
-                        // L1: só marca atividade; UI de tools fica pra depois
-                        if (respostaBuf.isEmpty() && reasoningBuf.isEmpty()) {
-                            faseAtual = "writing"
-                            emitirUi()
-                        }
+                        // Acende a timeline ao vivo: o passo nasce/fecha e o painel de pesquisa
+                        // (que já existia) reflete cada busca/leitura conforme acontece.
+                        aplicarAcao(event.json)
+                        emitirUi()
                     }
                     is LunaApiClient.StreamEvent.Error -> Unit
                 }
@@ -299,6 +437,7 @@ object LunaApiChat {
             reasoning = reasoning,
             reasoningDuracao = "${dur}s",
             resposta = texto,
+            actionRun = montarRun(LunaActionRunStatus.DONE),
         )
     }
 }

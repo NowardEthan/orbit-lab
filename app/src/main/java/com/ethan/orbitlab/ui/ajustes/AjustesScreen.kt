@@ -1,5 +1,8 @@
 package com.ethan.orbitlab.ui.ajustes
 
+import android.Manifest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -24,8 +27,10 @@ import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.FlashOn
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.material.icons.rounded.TravelExplore
 import androidx.compose.material.icons.rounded.Vibration
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -63,6 +68,7 @@ import com.ethan.orbitlab.data.AuthProvider
 import com.ethan.orbitlab.data.AuthRepository
 import com.ethan.orbitlab.data.PrefsRepository
 import com.ethan.orbitlab.data.UserProfileRepository
+import com.ethan.orbitlab.data.local.LocationRepository
 import com.ethan.orbitlab.data.updates.ApkInstaller
 import com.ethan.orbitlab.data.updates.UpdatesRepository
 import com.ethan.orbitlab.data.updates.isNewer
@@ -97,6 +103,16 @@ fun AjustesScreen(
     }
 
     val vibracao by PrefsRepository.vibracao.collectAsState()
+    val pesquisaProfunda by PrefsRepository.pesquisaProfunda.collectAsState()
+    val localizacaoAtiva by PrefsRepository.localizacaoAtiva.collectAsState()
+    val permLocalizacao = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { concessoes ->
+        if (concessoes.values.any { it }) {
+            PrefsRepository.setLocalizacaoAtiva(true)
+            LocationRepository.atualizarEmBackground(context, forcar = true)
+        }
+    }
     val diagAgora by AuthDiag.agora.collectAsState()
     val clipboard = LocalClipboardManager.current
     var diarioCopiado by remember { mutableStateOf(false) }
@@ -201,6 +217,39 @@ fun AjustesScreen(
                 subtitulo = "Feedback háptico em gestos (long press, etc.)",
                 checado = vibracao,
                 onCheck = { PrefsRepository.setVibracao(it) },
+            )
+            Divisoria()
+            LinhaSwitch(
+                icone = Icons.Rounded.TravelExplore,
+                titulo = "Pesquisa profunda",
+                subtitulo = "A Luna cruza as fontes antes de responder — mais fiel, um pouco mais lento",
+                checado = pesquisaProfunda,
+                onCheck = { PrefsRepository.setPesquisaProfunda(it) },
+            )
+            Divisoria()
+            LinhaSwitch(
+                icone = Icons.Rounded.LocationOn,
+                titulo = "Localização e clima",
+                subtitulo = "Dá à Luna o «onde» e o tempo agora — e mostra o clima no Início",
+                checado = localizacaoAtiva,
+                onCheck = { ligar ->
+                    if (ligar) {
+                        if (LocationRepository.temPermissao(context)) {
+                            PrefsRepository.setLocalizacaoAtiva(true)
+                            LocationRepository.atualizarEmBackground(context, forcar = true)
+                        } else {
+                            permLocalizacao.launch(
+                                arrayOf(
+                                    Manifest.permission.ACCESS_FINE_LOCATION,
+                                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                                ),
+                            )
+                        }
+                    } else {
+                        PrefsRepository.setLocalizacaoAtiva(false)
+                        LocationRepository.limpar()
+                    }
+                },
             )
         }
 
