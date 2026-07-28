@@ -108,6 +108,11 @@ fun toolMeta(ferramenta: String): ToolMeta = when (ferramenta) {
         live = { arg -> if (arg.isBlank()) "Consultando a memória" else "Lembrando de \"$arg\"" },
         done = { arg -> if (arg.isBlank()) "Consultou a memória" else "Lembrou de \"$arg\"" },
     )
+    "verificar_fontes" -> ToolMeta(
+        kind = LunaActionStepKind.VERIFY,
+        live = { "Cruzando as fontes" },
+        done = { "Cruzou as fontes" },
+    )
     else -> ToolMeta(
         kind = LunaActionStepKind.RUN,
         live = { "Usando uma ferramenta" },

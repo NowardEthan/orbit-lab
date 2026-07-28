@@ -1103,7 +1103,16 @@ private fun MessageBubble(
                 .align(if (msg.isLuna) Alignment.CenterStart else Alignment.CenterEnd)
                 .fillMaxWidth(if (msg.isLuna && msg.actionRun != null) 0.96f else 0.82f),
         ) {
-            if (msg.isLuna && msg.actionRun != null) {
+            // Pesquisa profunda: a resposta vira um DOSSIÊ (card de relatório com
+            // assinatura violeta), montado mais abaixo no lugar da bolha comum. Aqui em
+            // cima só entra o strip de ferramentas das tarefas que NÃO são web.
+            val dossieRun = if (msg.isLuna) {
+                msg.actionRun?.takeIf { it.isDeepResearch() }?.toLegacyResearchRun()
+            } else {
+                null
+            }
+
+            if (msg.isLuna && msg.actionRun != null && dossieRun == null) {
                 LunaActionTimeline(
                     run = msg.actionRun,
                     inicialmenteAberto = false,
@@ -1111,7 +1120,7 @@ private fun MessageBubble(
                 Spacer(Modifier.height(8.dp))
             }
 
-            if (mostrarRaciocinio && msg.isLuna && !msg.reasoning.isNullOrBlank()) {
+            if (mostrarRaciocinio && msg.isLuna && !msg.reasoning.isNullOrBlank() && dossieRun == null) {
                 LunaReasoning(
                     texto = msg.reasoning,
                     duracaoLabel = msg.reasoningDuracao,
@@ -1135,7 +1144,13 @@ private fun MessageBubble(
                 if (temTexto || temReferencia) Spacer(Modifier.height(6.dp))
             }
 
-            if (temTexto || temReferencia) {
+            if (dossieRun != null && temTexto) {
+                LunaDossieCard(
+                    run = dossieRun,
+                    resposta = msg.texto,
+                    inicialmenteAberto = false,
+                )
+            } else if (temTexto || temReferencia) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth(if (msg.actionRun != null) 0.88f else 1f)

@@ -284,27 +284,43 @@ fun LunaStreamDraft(
         }
         is LunaStreamEstado.Raciocinando -> {
             val mostrarRaciocinio by PrefsRepository.reasoningEnabled.collectAsState()
-            Column(modifier.fillMaxWidth(0.92f)) {
-                estado.actionRun?.let { run ->
-                    LunaActionTimeline(run = run, inicialmenteAberto = false)
-                    Spacer(Modifier.height(8.dp))
+            // Pesquisa profunda: a Luna trabalha DENTRO do dossiê — a timeline viva no corpo
+            // vai acendendo os passos. É o mesmo card que depois vira o relatório, então não
+            // há troca brusca de visual quando a resposta chega.
+            val dossie = estado.actionRun?.takeIf { it.isDeepResearch() }?.toLegacyResearchRun()
+            if (dossie != null) {
+                Column(modifier.fillMaxWidth(0.96f)) {
+                    LunaDossieCard(
+                        run = dossie,
+                        resposta = "",
+                        streaming = true,
+                        liveLabel = estado.fase.ifBlank { null },
+                        inicialmenteAberto = false,
+                    )
                 }
-                when {
-                    mostrarRaciocinio && estado.parcial.isNotBlank() -> {
-                        Column(modifier.fillMaxWidth(0.85f)) {
-                            LunaReasoning(
-                                texto = estado.parcial,
-                                inicialmenteAberto = true,
-                                expandidoControlado = true,
-                                clicavel = false,
-                                animarTamanho = false,
-                            )
-                        }
+            } else {
+                Column(modifier.fillMaxWidth(0.92f)) {
+                    estado.actionRun?.let { run ->
+                        LunaActionTimeline(run = run, inicialmenteAberto = false)
+                        Spacer(Modifier.height(8.dp))
                     }
-                    // Sempre mostra o indicador enquanto espera o primeiro token — com o
-                    // rótulo da fase (Analisando…/Escrevendo…) quando o servidor manda, senão
-                    // “Pensando…”. A caixa de raciocínio só aparece com raciocínio de verdade.
-                    else -> LunaReasoningPensando(label = estado.fase.ifBlank { "Pensando…" })
+                    when {
+                        mostrarRaciocinio && estado.parcial.isNotBlank() -> {
+                            Column(modifier.fillMaxWidth(0.85f)) {
+                                LunaReasoning(
+                                    texto = estado.parcial,
+                                    inicialmenteAberto = true,
+                                    expandidoControlado = true,
+                                    clicavel = false,
+                                    animarTamanho = false,
+                                )
+                            }
+                        }
+                        // Sempre mostra o indicador enquanto espera o primeiro token — com o
+                        // rótulo da fase (Analisando…/Escrevendo…) quando o servidor manda, senão
+                        // “Pensando…”. A caixa de raciocínio só aparece com raciocínio de verdade.
+                        else -> LunaReasoningPensando(label = estado.fase.ifBlank { "Pensando…" })
+                    }
                 }
             }
         }
@@ -329,6 +345,24 @@ private fun StreamRespostaDraft(
     modifier: Modifier = Modifier,
 ) {
     val mostrarRaciocinio by PrefsRepository.reasoningEnabled.collectAsState()
+
+    // Pesquisa profunda: a resposta se forma DENTRO do dossiê (mesma cara de quando
+    // assenta no histórico), não numa bolha que depois vira card.
+    val dossie = actionRun?.takeIf { it.isDeepResearch() }?.toLegacyResearchRun()
+    if (dossie != null && respostaParcial.isNotBlank()) {
+        BoxWithConstraints(modifier.fillMaxWidth()) {
+            Column(Modifier.widthIn(max = maxWidth * 0.96f)) {
+                LunaDossieCard(
+                    run = dossie,
+                    resposta = respostaParcial,
+                    streaming = true,
+                    inicialmenteAberto = false,
+                )
+            }
+        }
+        return
+    }
+
     val shape = RoundedCornerShape(
         topStart = 4.dp,
         topEnd = OrbitMetrics.radiusCard,
