@@ -202,9 +202,14 @@ object LunaApiChat {
             put("providerId", "auto")
             put("modelKey", "auto")
             put("timeZone", TimeZone.getDefault().id)
+            // Modo técnico liga duas coisas juntas: a Luna responde com mais profundidade e
+            // rigor (diretiva no core) E o raciocínio sobe pra «high». Desligado, tudo segue
+            // no default caloroso/conciso de sempre.
+            val tecnico = PrefsRepository.modoTecnico.value
             put("reasoningEnabled", PrefsRepository.reasoningEnabled.value)
-            put("reasoningEffort", "medium")
+            put("reasoningEffort", if (tecnico) "high" else "medium")
             put("pesquisaProfunda", PrefsRepository.pesquisaProfunda.value)
+            put("modoTecnico", tecnico)
             LocationRepository.paraJson()?.let { put("local", it) }
             if (nome.isNotBlank()) put("userDisplayName", nome.take(64))
             if (attachmentsJson.length() > 0) put("attachments", attachmentsJson)

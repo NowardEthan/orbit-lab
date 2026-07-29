@@ -61,6 +61,7 @@ import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -1223,6 +1224,7 @@ private fun ChatInputArea(
     onClearReference: () -> Unit = {},
 ) {
     val enabled = streamState.value is LunaStreamEstado.Idle
+    val modoTecnico by PrefsRepository.modoTecnico.collectAsState()
     var texto by remember { mutableStateOf("") }
     var anexos by remember { mutableStateOf<List<ComposerAttachment>>(emptyList()) }
     var attachAberto by remember { mutableStateOf(false) }
@@ -1512,6 +1514,42 @@ private fun ChatInputArea(
                 tint = if (anexos.isNotEmpty()) OrbitTokens.accentText else OrbitTokens.textHigh,
                 modifier = Modifier.size(24.dp),
             )
+        }
+
+        // Chip «Modo técnico»: some na gravação (a linha vira controles de áudio) e, ligado,
+        // acende — a Luna passa a responder com mais profundidade/rigor sem ele insistir.
+        if (!gravando) {
+            Spacer(Modifier.width(8.dp))
+            val tecShape = RoundedCornerShape(50)
+            val tecBg = if (modoTecnico) OrbitTokens.accentSoft else Color.Transparent
+            val tecBorda = if (modoTecnico) OrbitTokens.accent.copy(alpha = 0.45f) else OrbitTokens.borderSoft
+            val tecTint = if (modoTecnico) OrbitTokens.accentText else OrbitTokens.textMid
+            Row(
+                Modifier
+                    .clip(tecShape)
+                    .background(tecBg)
+                    .border(1.dp, tecBorda, tecShape)
+                    .clickable(enabled = enabled) {
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        PrefsRepository.setModoTecnico(!modoTecnico)
+                    }
+                    .padding(horizontal = 12.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Rounded.Tune,
+                    contentDescription = null,
+                    tint = tecTint,
+                    modifier = Modifier.size(16.dp),
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    "Técnico",
+                    color = tecTint,
+                    fontSize = 13.sp,
+                    fontWeight = if (modoTecnico) FontWeight.SemiBold else FontWeight.Medium,
+                )
+            }
         }
 
         Spacer(Modifier.weight(1f))

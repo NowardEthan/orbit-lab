@@ -13,6 +13,7 @@ object PrefsRepository {
     private const val PREFS = "orbitlab_prefs"
     private const val KEY_VIBRACAO = "orbit.lab.vibracao"
     private const val KEY_PESQUISA_PROFUNDA = "orbit.lab.pesquisa.profunda"
+    private const val KEY_MODO_TECNICO = "orbit.lab.modo.tecnico"
     private const val KEY_SESSAO_UID = "orbit.lab.sessao.uid"
     private const val KEY_AUTH_DIAG = "orbit.lab.sessao.diag"
     private const val KEY_ULTIMA_ABA = "orbit.lab.lugar.aba"
@@ -44,6 +45,15 @@ object PrefsRepository {
     val pesquisaProfunda: StateFlow<Boolean> = _pesquisaProfunda.asStateFlow()
 
     /**
+     * Modo técnico — opt-in, DESLIGADO por default. A voz calorosa e concisa da Luna é o
+     * default e continua sendo. Ligado, ela responde de primeira com mais profundidade e
+     * rigor (detalhe, termos exatos, estrutura) sem que o usuário precise insistir; o
+     * cliente também sobe o raciocínio pra «high» junto. Fica grudado até desligar.
+     */
+    private val _modoTecnico = MutableStateFlow(false)
+    val modoTecnico: StateFlow<Boolean> = _modoTecnico.asStateFlow()
+
+    /**
      * Compartilhar localização + clima com a Luna — opt-in, DESLIGADO por default. Ligado,
      * o app capta o GPS, resolve cidade/uf e busca o clima; isso dá à Luna o «onde» (antes
      * ela só tinha o «quando»). Desligado, nada de local sai do aparelho.
@@ -56,6 +66,7 @@ object PrefsRepository {
         prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         _vibracao.value = prefs.getBoolean(KEY_VIBRACAO, true)
         _pesquisaProfunda.value = prefs.getBoolean(KEY_PESQUISA_PROFUNDA, false)
+        _modoTecnico.value = prefs.getBoolean(KEY_MODO_TECNICO, false)
         _localizacaoAtiva.value = prefs.getBoolean(KEY_LOCALIZACAO, false)
     }
 
@@ -130,6 +141,11 @@ object PrefsRepository {
         if (::prefs.isInitialized) prefs.edit().putBoolean(KEY_PESQUISA_PROFUNDA, enabled).apply()
     }
 
+    fun setModoTecnico(enabled: Boolean) {
+        _modoTecnico.value = enabled
+        if (::prefs.isInitialized) prefs.edit().putBoolean(KEY_MODO_TECNICO, enabled).apply()
+    }
+
     fun setLocalizacaoAtiva(enabled: Boolean) {
         _localizacaoAtiva.value = enabled
         if (::prefs.isInitialized) prefs.edit().putBoolean(KEY_LOCALIZACAO, enabled).apply()
@@ -145,6 +161,7 @@ object PrefsRepository {
         prefs.edit().clear().apply()
         _vibracao.value = true
         _pesquisaProfunda.value = false
+        _modoTecnico.value = false
         _localizacaoAtiva.value = false
     }
 }
