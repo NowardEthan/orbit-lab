@@ -39,6 +39,18 @@ data class ClimaLab(
     val minC: Double? = null,
     val chuvaProb: Int? = null,
     val chuvaMm: Double? = null,
+    /** Próximos dias (amanhã em diante) — pra Luna responder "vai chover amanhã?". */
+    val previsao: List<DiaPrevisao> = emptyList(),
+)
+
+/** Um dia da previsão adiante. O rótulo ("amanhã", "sábado") já sai calculado no fuso do aparelho. */
+data class DiaPrevisao(
+    val rotulo: String,
+    val maxC: Double? = null,
+    val minC: Double? = null,
+    val chuvaProb: Int? = null,
+    val codigo: Int? = null,
+    val descricao: String? = null,
 )
 
 /** Onde a pessoa está + o tempo lá agora. É o «onde» que faltava à Luna (ela só tinha o «quando»). */
@@ -213,11 +225,13 @@ object LocationRepository {
     // ── Clima (Open-Meteo) ──────────────────────────────────────────────────────
 
     private suspend fun buscarClima(lat: Double, lon: Double): ClimaLab? = withContext(Dispatchers.IO) {
+        // forecast_days=4 pra ela alcançar "amanhã" (e uns dias além); weather_code no daily
+        // dá o tempo predominante de cada dia adiante.
         val url = "https://api.open-meteo.com/v1/forecast" +
             "?latitude=$lat&longitude=$lon" +
             "&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m" +
-            "&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum" +
-            "&timezone=auto&forecast_days=1"
+            "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum" +
+            "&timezone=auto&forecast_days=4"
         try {
             val req = Request.Builder().url(url).header("Accept", "application/json").get().build()
             http.newCall(req).execute().use { resp ->
@@ -226,6 +240,23 @@ object LocationRepository {
                 val cur = json.optJSONObject("current")
                 val daily = json.optJSONObject("daily")
                 val codigo = cur?.optInt("weather_code", -1)?.takeIf { it >= 0 }
+                // Índice 0 = hoje; 1 em diante = amanhã, depois… O rótulo já sai em pt-BR
+                // pra Luna não ter que adivinhar que dia da semana é.
+                val previsao = mutableListOf<DiaPrevisao>()
+                val nDias = daily?.optJSONArray("temperature_2m_max")?.length() ?: 0
+                for (i in 1 until nDias) {
+                    val cod = daily?.intEm("weather_code", i)
+                    previsao.add(
+                        DiaPrevisao(
+                            rotulo = rotuloDia(i),
+                            maxC = daily?.doubleEm("temperature_2m_max", i),
+                            minC = daily?.doubleEm("temperature_2m_min", i),
+                            chuvaProb = daily?.doubleEm("precipitation_probability_max", i)?.let { Math.round(it).toInt() },
+                            codigo = cod,
+                            descricao = cod?.let(::descricaoWMO),
+                        ),
+                    )
+                }
                 ClimaLab(
                     tempC = cur?.optDoubleOrNull("temperature_2m"),
                     sensacaoC = cur?.optDoubleOrNull("apparent_temperature"),
@@ -237,6 +268,7 @@ object LocationRepository {
                     minC = daily?.primeiroDouble("temperature_2m_min"),
                     chuvaProb = daily?.primeiroDouble("precipitation_probability_max")?.let { Math.round(it).toInt() },
                     chuvaMm = daily?.primeiroDouble("precipitation_sum"),
+                    previsao = previsao,
                 )
             }
         } catch (_: Exception) {
@@ -271,6 +303,20 @@ object LocationRepository {
                 c.minC?.let { put("minC", it) }
                 c.chuvaProb?.let { put("chuvaProb", it) }
                 c.chuvaMm?.let { put("chuvaMm", it) }
+                if (c.previsao.isNotEmpty()) {
+                    put("previsao", org.json.JSONArray().apply {
+                        c.previsao.forEach { d ->
+                            put(JSONObject().apply {
+                                put("rotulo", d.rotulo)
+                                d.maxC?.let { put("maxC", it) }
+                                d.minC?.let { put("minC", it) }
+                                d.chuvaProb?.let { put("chuvaProb", it) }
+                                d.codigo?.let { put("codigo", it) }
+                                d.descricao?.let { put("descricao", it) }
+                            })
+                        }
+                    })
+                }
             })
         }
         put("atualizadoEm", l.atualizadoEm)
@@ -290,6 +336,20 @@ object LocationRepository {
                 minC = c.optDoubleOrNull("minC"),
                 chuvaProb = c.optIntOrNull("chuvaProb"),
                 chuvaMm = c.optDoubleOrNull("chuvaMm"),
+                previsao = c.optJSONArray("previsao")?.let { arr ->
+                    (0 until arr.length()).mapNotNull { i ->
+                        val d = arr.optJSONObject(i) ?: return@mapNotNull null
+                        val rotulo = d.optString("rotulo").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                        DiaPrevisao(
+                            rotulo = rotulo,
+                            maxC = d.optDoubleOrNull("maxC"),
+                            minC = d.optDoubleOrNull("minC"),
+                            chuvaProb = d.optIntOrNull("chuvaProb"),
+                            codigo = d.optIntOrNull("codigo"),
+                            descricao = d.optString("descricao").takeIf { it.isNotBlank() },
+                        )
+                    }
+                } ?: emptyList(),
             )
         }
         return LocalLab(
@@ -356,4 +416,28 @@ private fun JSONObject.primeiroDouble(key: String): Double? {
     val arr = optJSONArray(key) ?: return null
     if (arr.length() == 0 || arr.isNull(0)) return null
     return arr.optDouble(0).takeIf { !it.isNaN() }
+}
+
+// Versões indexadas: pegam o dia `i` dos arrays diários do Open-Meteo (0 = hoje).
+private fun JSONObject.doubleEm(key: String, i: Int): Double? {
+    val arr = optJSONArray(key) ?: return null
+    if (i < 0 || i >= arr.length() || arr.isNull(i)) return null
+    return arr.optDouble(i).takeIf { !it.isNaN() }
+}
+
+private fun JSONObject.intEm(key: String, i: Int): Int? {
+    val arr = optJSONArray(key) ?: return null
+    if (i < 0 || i >= arr.length() || arr.isNull(i)) return null
+    return arr.optInt(i)
+}
+
+/** Rótulo em pt-BR do dia a `offset` dias de hoje: 1 → "amanhã", senão o dia da semana. */
+private fun rotuloDia(offset: Int): String {
+    if (offset == 1) return "amanhã"
+    val ptBR = Locale("pt", "BR")
+    val cal = java.util.Calendar.getInstance()
+    cal.add(java.util.Calendar.DAY_OF_YEAR, offset)
+    return cal.getDisplayName(java.util.Calendar.DAY_OF_WEEK, java.util.Calendar.LONG, ptBR)
+        ?.lowercase(ptBR)
+        ?: "daqui a $offset dias"
 }
