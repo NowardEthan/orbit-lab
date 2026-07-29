@@ -86,6 +86,7 @@ object UpdatesRepository {
         if (!force && System.currentTimeMillis() - lastFetchAt < 20_000L) return
         lastFetchAt = System.currentTimeMillis()
         scope.launch {
+            _loading.value = true
             _error.value = false
             try {
                 _manifest.value = ManifestFetcher.fetchManifest()

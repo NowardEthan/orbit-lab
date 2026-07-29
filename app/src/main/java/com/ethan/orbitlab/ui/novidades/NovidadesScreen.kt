@@ -26,8 +26,10 @@ import androidx.compose.material.icons.rounded.ArrowBackIosNew
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Build
 import androidx.compose.material.icons.rounded.BugReport
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -192,9 +194,11 @@ private fun formatNewsDate(raw: String): String {
     return "${parts[2].toIntOrNull() ?: parts[2]} $month"
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NovidadesScreen(onBack: () -> Unit) {
     val manifest by UpdatesRepository.manifest.collectAsState()
+    val carregando by UpdatesRepository.loading.collectAsState()
     val sections = remember(manifest) {
         val remote = UpdatesRepository.newsSections()
         if (remote.isNotEmpty()) sectionsToNotas(remote) else notasDemo
@@ -218,25 +222,31 @@ fun NovidadesScreen(onBack: () -> Unit) {
         ) {
             NovidadesHeader(onBack)
 
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(
-                        start = OrbitMetrics.pagePadding,
-                        end = OrbitMetrics.pagePadding,
-                        top = 8.dp,
-                        bottom = 40.dp,
-                    ),
-                verticalArrangement = Arrangement.spacedBy(OrbitMetrics.sectionGap),
+            PullToRefreshBox(
+                isRefreshing = carregando,
+                onRefresh = { UpdatesRepository.refresh(force = true) },
+                modifier = Modifier.fillMaxSize(),
             ) {
-                Box(Modifier.orbitEnter(0)) {
-                    CardVersaoAtual(atual)
-                }
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(
+                            start = OrbitMetrics.pagePadding,
+                            end = OrbitMetrics.pagePadding,
+                            top = 8.dp,
+                            bottom = 40.dp,
+                        ),
+                    verticalArrangement = Arrangement.spacedBy(OrbitMetrics.sectionGap),
+                ) {
+                    Box(Modifier.orbitEnter(0)) {
+                        CardVersaoAtual(atual)
+                    }
 
-                if (arquivo.isNotEmpty()) {
-                    Box(Modifier.orbitEnter(32)) {
-                        SecaoAnteriores(arquivo)
+                    if (arquivo.isNotEmpty()) {
+                        Box(Modifier.orbitEnter(32)) {
+                            SecaoAnteriores(arquivo)
+                        }
                     }
                 }
             }

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -32,8 +33,12 @@ import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Umbrella
 import androidx.compose.material.icons.rounded.WaterDrop
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -41,6 +46,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import com.ethan.orbitlab.BuildConfig
@@ -67,6 +73,7 @@ import com.ethan.orbitlab.data.ChatRepository
 import com.ethan.orbitlab.data.Conversa
 import com.ethan.orbitlab.data.PrefsRepository
 import com.ethan.orbitlab.data.UserProfileRepository
+import com.ethan.orbitlab.data.local.DiaPrevisao
 import com.ethan.orbitlab.data.local.LocalLab
 import com.ethan.orbitlab.data.local.LocationRepository
 import com.ethan.orbitlab.data.local.emojiWMO
@@ -74,8 +81,12 @@ import kotlin.math.roundToInt
 import com.ethan.orbitlab.ui.theme.OrbitMetrics
 import com.ethan.orbitlab.ui.theme.OrbitTokens
 import com.ethan.orbitlab.ui.theme.orbitPressable
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.util.Calendar
+import java.util.Locale
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InicioScreen(
     onAbrirNovidades: () -> Unit = {},
@@ -112,6 +123,8 @@ fun InicioScreen(
     val localizacaoAtiva by PrefsRepository.localizacaoAtiva.collectAsState()
     val clima by LocationRepository.atual.collectAsState()
     val climaCarregando by LocationRepository.carregando.collectAsState()
+    val scope = rememberCoroutineScope()
+    var refreshManual by remember { mutableStateOf(false) }
     val permClima = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { concessoes ->
@@ -120,9 +133,15 @@ fun InicioScreen(
             LocationRepository.atualizarEmBackground(context, forcar = true)
         }
     }
-    // Ao abrir o Início: se o clima está ligado, atualiza em 2º plano (respeita o frescor de 10 min).
+    // Enquanto o Início está aberto e o clima ligado, o card se atualiza SOZINHO — sem precisar
+    // tocar nele. Dispara ao abrir e depois a cada 10 min (o repositório respeita o frescor lá
+    // dentro, então isto nunca vira uma enxurrada de chamadas de rede).
     LaunchedEffect(localizacaoAtiva) {
-        if (localizacaoAtiva) LocationRepository.atualizarEmBackground(context)
+        if (!localizacaoAtiva) return@LaunchedEffect
+        while (true) {
+            LocationRepository.atualizarEmBackground(context)
+            delay(10 * 60 * 1000L)
+        }
     }
 
     LaunchedEffect(temNovidade) {
@@ -139,6 +158,18 @@ fun InicioScreen(
     Box(modifier = Modifier.fillMaxSize().background(Color.Transparent)) {
         InicioOrbs(idleAtivo = idleAtivo, density = density)
 
+        PullToRefreshBox(
+            isRefreshing = refreshManual,
+            onRefresh = {
+                refreshManual = true
+                scope.launch {
+                    if (localizacaoAtiva) LocationRepository.atualizar(context)
+                    UpdatesRepository.refresh(force = true)
+                    refreshManual = false
+                }
+            },
+            modifier = Modifier.fillMaxSize(),
+        ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -217,6 +248,7 @@ fun InicioScreen(
                 )
             }
         }
+        }
     }
 }
 
@@ -288,17 +320,20 @@ private fun ClimaSecao(
     }
 
     val c = local.clima
-    val (topo, base) = climaGradiente(c.codigo)
-    Column(
+    var mostrarDetalhe by remember { mutableStateOf(false) }
+    val paleta = paletaCeu(c.codigo, horaLocal())
+    Box(
         Modifier
             .fillMaxWidth()
             .clip(shape)
-            .background(Brush.linearGradient(listOf(topo, base)))
             .border(1.dp, OrbitTokens.borderSoft, shape)
-            .orbitPressable(onClick = onAtualizar)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+            .orbitPressable(onClick = { mostrarDetalhe = true }),
     ) {
+        CeuVivoFundo(paleta, Modifier.matchParentSize(), compacto = true)
+        Column(
+            Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 Icons.Rounded.LocationOn,
@@ -352,6 +387,246 @@ private fun ClimaSecao(
             c.umidade?.let { StatClima(icone = Icons.Rounded.WaterDrop, texto = "$it%") }
             c.ventoKmh?.let { StatClima(icone = Icons.Rounded.Air, texto = "${it.roundToInt()} km/h") }
         }
+        }
+    }
+
+    if (mostrarDetalhe) {
+        ClimaDetalheSheet(
+            local = local,
+            onDismiss = { mostrarDetalhe = false },
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ClimaDetalheSheet(
+    local: LocalLab,
+    onDismiss: () -> Unit,
+) {
+    val c = local.clima ?: return
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var refreshing by remember { mutableStateOf(false) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = OrbitTokens.surfaceRaised,
+    ) {
+        // Puxar pra baixo atualiza — sem botão, o gesto natural (igual à tela de Início).
+        PullToRefreshBox(
+            isRefreshing = refreshing,
+            onRefresh = {
+                refreshing = true
+                scope.launch {
+                    LocationRepository.atualizar(context)
+                    refreshing = false
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .navigationBarsPadding()
+                .padding(horizontal = OrbitMetrics.pagePadding)
+                .padding(bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            // Herói imersivo: o Céu Vivo por trás do lugar + temperatura.
+            val paleta = paletaCeu(c.codigo, horaLocal())
+            val heroShape = RoundedCornerShape(20.dp)
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(heroShape)
+                    .border(1.dp, OrbitTokens.borderSoft, heroShape),
+            ) {
+                CeuVivoFundo(paleta, Modifier.matchParentSize(), compacto = false)
+                Column(Modifier.padding(20.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Rounded.LocationOn,
+                            contentDescription = null,
+                            tint = OrbitTokens.textMid,
+                            modifier = Modifier.size(15.dp),
+                        )
+                        Spacer(Modifier.width(5.dp))
+                        Text(
+                            lugarLabel(local),
+                            color = OrbitTokens.textHigh,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(
+                            if (refreshing) "atualizando…" else atualizadoLabel(local.atualizadoEm),
+                            color = OrbitTokens.textLow,
+                            fontSize = 11.sp,
+                        )
+                    }
+                    Spacer(Modifier.height(18.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(emojiWMO(c.codigo), fontSize = 60.sp)
+                        Spacer(Modifier.width(18.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                c.tempC?.let { "${it.roundToInt()}°" } ?: "--°",
+                                color = OrbitTokens.textHigh,
+                                fontSize = 56.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = (-2).sp,
+                            )
+                            Text(
+                                subtituloClima(c),
+                                color = OrbitTokens.textMid,
+                                fontSize = 14.sp,
+                            )
+                        }
+                    }
+                }
+            }
+
+            // "Agora" — grade de detalhes em cartões (2 por linha).
+            val stats = buildList {
+                c.sensacaoC?.let { add("Sensação" to "${it.roundToInt()}°") }
+                c.umidade?.let { add("Umidade" to "$it%") }
+                c.ventoKmh?.let { add("Vento" to "${it.roundToInt()} km/h") }
+                c.chuvaProb?.let { add("Chance de chuva" to "$it%") }
+                if (c.maxC != null || c.minC != null) {
+                    val mx = c.maxC?.let { "${it.roundToInt()}°" } ?: "--"
+                    val mn = c.minC?.let { "${it.roundToInt()}°" } ?: "--"
+                    add("Máx / Mín" to "$mx / $mn")
+                }
+                c.chuvaMm?.let {
+                    if (it > 0) add("Precipitação" to String.format(Locale.getDefault(), "%.1f mm", it))
+                }
+            }
+            if (stats.isNotEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SecaoLabel("AGORA")
+                    stats.chunked(2).forEach { par ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            par.forEach { (rotulo, valor) ->
+                                DetalheStat(rotulo, valor, Modifier.weight(1f))
+                            }
+                            if (par.size == 1) Spacer(Modifier.weight(1f))
+                        }
+                    }
+                }
+            }
+
+            // "Próximos dias" — a previsão que o card não mostra.
+            if (c.previsao.isNotEmpty()) {
+                Column {
+                    SecaoLabel("PRÓXIMOS DIAS")
+                    Spacer(Modifier.height(4.dp))
+                    c.previsao.forEachIndexed { i, dia ->
+                        DiaPrevisaoRow(dia)
+                        if (i < c.previsao.lastIndex) {
+                            Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .height(1.dp)
+                                    .background(OrbitTokens.borderSoft),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        }
+    }
+}
+
+@Composable
+private fun SecaoLabel(texto: String) {
+    Text(
+        texto,
+        color = OrbitTokens.textLow,
+        fontSize = 11.sp,
+        fontWeight = FontWeight.Medium,
+        letterSpacing = 1.5.sp,
+    )
+}
+
+@Composable
+private fun DetalheStat(rotulo: String, valor: String, modifier: Modifier = Modifier) {
+    Column(
+        modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(OrbitTokens.surface)
+            .padding(14.dp),
+    ) {
+        Text(rotulo, color = OrbitTokens.textLow, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+        Spacer(Modifier.height(5.dp))
+        Text(valor, color = OrbitTokens.textHigh, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+@Composable
+private fun DiaPrevisaoRow(dia: DiaPrevisao) {
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(emojiWMO(dia.codigo), fontSize = 24.sp)
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                rotuloCap(dia.rotulo),
+                color = OrbitTokens.textHigh,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+            )
+            dia.descricao?.takeIf { it.isNotBlank() }?.let {
+                Text(
+                    it,
+                    color = OrbitTokens.textLow,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        dia.chuvaProb?.let {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Rounded.Umbrella,
+                    contentDescription = null,
+                    tint = OrbitTokens.textLow,
+                    modifier = Modifier.size(13.dp),
+                )
+                Spacer(Modifier.width(3.dp))
+                Text("$it%", color = OrbitTokens.textMid, fontSize = 13.sp)
+            }
+            Spacer(Modifier.width(14.dp))
+        }
+        val mx = dia.maxC?.let { "↑${it.roundToInt()}°" }
+        val mn = dia.minC?.let { "↓${it.roundToInt()}°" }
+        Text(
+            listOfNotNull(mx, mn).joinToString("  "),
+            color = OrbitTokens.textMid,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
+
+private fun rotuloCap(r: String): String =
+    r.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
+
+private fun atualizadoLabel(epochMs: Long): String {
+    val min = (System.currentTimeMillis() - epochMs) / 60000L
+    return when {
+        min < 1 -> "atualizado agora"
+        min < 60 -> "atualizado há $min min"
+        min < 1440 -> "atualizado há ${min / 60} h"
+        else -> "atualizado há ${min / 1440} d"
     }
 }
 
@@ -388,14 +663,6 @@ private fun subtituloClima(c: com.ethan.orbitlab.data.local.ClimaLab): String {
         c.tempC?.let { t -> if (kotlin.math.abs(s - t) >= 2) "sensação ${s.roundToInt()}°" else null }
     }
     return listOfNotNull(desc, sensacao).joinToString(" · ").ifBlank { "Tempo agora" }
-}
-
-/** Fundo do card levemente tingido pelo tempo — quente no sol, frio na chuva, neutro no resto. */
-private fun climaGradiente(codigo: Int?): Pair<Color, Color> = when (codigo) {
-    0, 1 -> Color(0xFF2E2A1E) to Color(0xFF181A1F) // sol — âmbar discreto
-    in 51..67, in 80..82, in 95..99 -> Color(0xFF1C2531) to Color(0xFF15181E) // chuva — azul
-    in 71..77, 85, 86 -> Color(0xFF232A32) to Color(0xFF171B20) // neve — azul claro
-    else -> Color(0xFF24272F) to Color(0xFF181A1F) // nuvem/neblina — grafite
 }
 
 @Composable
