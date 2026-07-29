@@ -44,7 +44,7 @@ import com.ethan.orbitlab.ui.theme.OrbitTokens
  */
 private object Md {
     val gap = 3.dp
-    val gapTitulo = 6.dp
+    val gapTitulo = 10.dp
     val rail = 2.dp
     val radius = 6.dp
     val body = 15.sp
@@ -141,7 +141,7 @@ private fun MdTitulo(bloco: BlocoMd.Titulo) {
         color = OrbitTokens.textHigh,
         fontSize = when (bloco.nivel) {
             1 -> 17.sp
-            2 -> 15.sp
+            2 -> 16.sp
             else -> 14.sp
         },
         fontWeight = FontWeight.SemiBold,
@@ -291,6 +291,14 @@ private sealed class BlocoMd {
     data object Divisor : BlocoMd()
 }
 
+/**
+ * Linha inteira em negrito — a Luna usa isso como título de seção (ex.: `**1. finalidade**`),
+ * ainda mais no Modo técnico. Sem isto o título grudava no parágrafo seguinte e não respirava.
+ * O `(?:(?!\*\*).)+` garante um único span de negrito (não pega `**a** texto **b**`), e o `:?`
+ * absorve dois-pontos no fim (`**Resumo:**`).
+ */
+private val RE_TITULO_NEGRITO = Regex("""^\*\*((?:(?!\*\*).)+?)\*\*:?$""")
+
 private fun parseBlocosMarkdown(fonte: String): List<BlocoMd> {
     val linhas = fonte.replace("\r\n", "\n").lines()
     val out = mutableListOf<BlocoMd>()
@@ -333,6 +341,12 @@ private fun parseBlocosMarkdown(fonte: String): List<BlocoMd> {
                 i++
             }
 
+            RE_TITULO_NEGRITO.matches(trim) -> {
+                val texto = RE_TITULO_NEGRITO.find(trim)!!.groupValues[1].trim()
+                out += BlocoMd.Titulo(2, texto)
+                i++
+            }
+
             trim.startsWith(">") -> {
                 val buf = StringBuilder()
                 while (i < linhas.size) {
@@ -372,6 +386,7 @@ private fun parseBlocosMarkdown(fonte: String): List<BlocoMd> {
                     if (t.isEmpty()) break
                     if (t == "---" || t == "***" || t == "___") break
                     if (t.startsWith("#") || t.startsWith(">") || t.startsWith("```") ||
+                        RE_TITULO_NEGRITO.matches(t) ||
                         t.matches(Regex("""^[-*]\s+.+""")) || t.matches(Regex("""^\d+\.\s+.+"""))
                     ) {
                         break
