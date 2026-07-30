@@ -1,6 +1,6 @@
 package com.ethan.orbitlab.ui.novidades
 
-import androidx.compose.foundation.Canvas
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -26,6 +26,8 @@ import androidx.compose.material.icons.rounded.ArrowBackIosNew
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Build
 import androidx.compose.material.icons.rounded.BugReport
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.NotificationsNone
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -33,24 +35,28 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import com.ethan.orbitlab.BuildConfig
-import com.ethan.orbitlab.data.updates.OrbitNewsSection
-import com.ethan.orbitlab.data.updates.OrbitNewsTag
-import com.ethan.orbitlab.data.updates.UpdatesRepository
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ethan.orbitlab.BuildConfig
 import com.ethan.orbitlab.R
+import com.ethan.orbitlab.data.updates.OrbitNewsSection
+import com.ethan.orbitlab.data.updates.OrbitNewsTag
+import com.ethan.orbitlab.data.updates.UpdatesRepository
 import com.ethan.orbitlab.ui.theme.OrbitFill
 import com.ethan.orbitlab.ui.theme.OrbitFills
 import com.ethan.orbitlab.ui.theme.OrbitMetrics
@@ -70,76 +76,39 @@ enum class TipoMudanca(
     CORRECAO("Correção", OrbitFills.luz, Icons.Rounded.BugReport),
 }
 
-data class Mudanca(val tipo: TipoMudanca, val texto: String)
+/** Uma novidade dentro de uma versão: seu tipo, título e o corpo já quebrado em parágrafos. */
+data class NotaItem(
+    val tipo: TipoMudanca,
+    val titulo: String,
+    val paragrafos: List<String>,
+)
 
 data class VersaoNota(
     val versao: String,
     val data: String,
-    val titulo: String,
-    val resumo: String,
-    val mudancas: List<Mudanca>,
     val accent: OrbitFill,
     val atual: Boolean = false,
+    val itens: List<NotaItem>,
 )
+
+/** Quebra o corpo (ensaio com \n\n entre parágrafos) numa lista limpa, sem vazios. */
+private fun paragrafosDe(corpo: String): List<String> =
+    corpo.split("\n\n", "\n")
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
 
 private val notasDemo = listOf(
     VersaoNota(
-        versao = "0.5.0",
-        data = "19 jul",
-        titulo = "Visual Orbit unificado",
-        resumo = "Início, Conversas, Perfil, Ajustes e Chat no mesmo idioma visual — logo, cards e assinatura Aura Blue.",
-        accent = OrbitFills.accent,
-        atual = true,
-        mudancas = listOf(
-            Mudanca(TipoMudanca.MELHORIA, "Todas as abas alinhadas ao padrão dark com acentos pontuais."),
-            Mudanca(TipoMudanca.MELHORIA, "Chat mais fluido: stream, markdown e scroll ao enviar."),
-            Mudanca(TipoMudanca.NOVO, "Central de Novidades no mesmo visual do restante do lab."),
-        ),
-    ),
-    VersaoNota(
-        versao = "0.4.0",
-        data = "19 jul",
-        titulo = "Ajustes chegou",
-        resumo = "Controle da conta e um lugar pra ver o que muda no OrbitLab.",
-        accent = OrbitFills.lua,
-        mudancas = listOf(
-            Mudanca(TipoMudanca.NOVO, "Tela de Ajustes: conta, Luna, preferências e privacidade."),
-            Mudanca(TipoMudanca.NOVO, "Central de Novidades — histórico de versões do OrbitLab."),
-        ),
-    ),
-    VersaoNota(
-        versao = "0.3.0",
-        data = "18 jul",
-        titulo = "A Luna ganhou voz",
-        resumo = "Falar com o dedo — gravar, travar e cancelar sem sair do chat.",
-        accent = OrbitFills.lua,
-        mudancas = listOf(
-            Mudanca(TipoMudanca.NOVO, "Gravador de áudio: segure o microfone, arraste pra cima pra travar."),
-            Mudanca(TipoMudanca.MELHORIA, "O botão segue o dedo e vibra nos momentos-chave."),
-            Mudanca(TipoMudanca.CORRECAO, "Arraste pra esquerda cancela sem enviar por engano."),
-        ),
-    ),
-    VersaoNota(
-        versao = "0.2.0",
-        data = "18 jul",
-        titulo = "Conversas & Chat",
-        resumo = "A espinha das conversas: lista, busca e o primeiro chat com a Luna.",
-        accent = OrbitFills.online,
-        mudancas = listOf(
-            Mudanca(TipoMudanca.NOVO, "Lista de conversas com busca e seleção múltipla."),
-            Mudanca(TipoMudanca.NOVO, "Chat com a Luna, com balões e histórico."),
-        ),
-    ),
-    VersaoNota(
         versao = "0.1.0",
         data = "17 jul",
-        titulo = "Primeiro respiro",
-        resumo = "O laboratório abre as portas — Início, Perfil e a barra flutuante.",
-        accent = OrbitFills.luz,
-        mudancas = listOf(
-            Mudanca(TipoMudanca.NOVO, "Tela Início com a atmosfera da Luna."),
-            Mudanca(TipoMudanca.NOVO, "Perfil com a Luz e a Lua (gamificação)."),
-            Mudanca(TipoMudanca.NOVO, "A espinha do app: barra de baixo flutuante."),
+        accent = OrbitFills.accent,
+        atual = true,
+        itens = listOf(
+            NotaItem(
+                TipoMudanca.NOVO,
+                "Primeiro respiro",
+                listOf("O laboratório abre as portas — Início, Perfil e a barra flutuante."),
+            ),
         ),
     ),
 )
@@ -148,18 +117,16 @@ private fun sectionsToNotas(sections: List<OrbitNewsSection>): List<VersaoNota> 
     val currentVersion = BuildConfig.VERSION_NAME
     val accents = listOf(OrbitFills.accent, OrbitFills.lua, OrbitFills.online, OrbitFills.luz)
     return sections.mapIndexed { index, section ->
-        val first = section.items.firstOrNull()
         VersaoNota(
             versao = section.version ?: "?",
             data = formatNewsDate(section.date),
-            titulo = first?.title ?: "Novidades",
-            resumo = first?.body.orEmpty(),
             accent = accents[index % accents.size],
             atual = section.version == currentVersion,
-            mudancas = section.items.map { item ->
-                Mudanca(
+            itens = section.items.map { item ->
+                NotaItem(
                     tipo = tagToTipo(item.tag),
-                    texto = item.body.ifBlank { item.title },
+                    titulo = item.title,
+                    paragrafos = paragrafosDe(item.body.ifBlank { item.title }),
                 )
             },
         )
@@ -194,18 +161,24 @@ private fun formatNewsDate(raw: String): String {
     return "${parts[2].toIntOrNull() ?: parts[2]} $month"
 }
 
+// ---- Abas internas ----
+
+private enum class AbaNovidades(val rotulo: String) {
+    ATUALIZACOES("Atualizações"),
+    NOTIFICACOES("Notificações"),
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NovidadesScreen(onBack: () -> Unit) {
     val manifest by UpdatesRepository.manifest.collectAsState()
     val carregando by UpdatesRepository.loading.collectAsState()
-    val sections = remember(manifest) {
+    val notas = remember(manifest) {
         val remote = UpdatesRepository.newsSections()
         if (remote.isNotEmpty()) sectionsToNotas(remote) else notasDemo
     }
-    val notas = sections.ifEmpty { notasDemo }
-    val atual = notas.firstOrNull { it.atual } ?: notas.first()
-    val arquivo = notas.filterNot { it.atual }
+
+    var aba by remember { mutableStateOf(AbaNovidades.ATUALIZACOES) }
 
     Box(
         modifier = Modifier
@@ -222,32 +195,90 @@ fun NovidadesScreen(onBack: () -> Unit) {
         ) {
             NovidadesHeader(onBack)
 
-            PullToRefreshBox(
-                isRefreshing = carregando,
-                onRefresh = { UpdatesRepository.refresh(force = true) },
-                modifier = Modifier.fillMaxSize(),
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                        .padding(
-                            start = OrbitMetrics.pagePadding,
-                            end = OrbitMetrics.pagePadding,
-                            top = 8.dp,
-                            bottom = 40.dp,
-                        ),
-                    verticalArrangement = Arrangement.spacedBy(OrbitMetrics.sectionGap),
-                ) {
-                    Box(Modifier.orbitEnter(0)) {
-                        CardVersaoAtual(atual)
-                    }
+            SeletorAbas(
+                ativa = aba,
+                onSelect = { aba = it },
+                modifier = Modifier
+                    .padding(horizontal = OrbitMetrics.pagePadding)
+                    .padding(top = 14.dp, bottom = 6.dp),
+            )
 
-                    if (arquivo.isNotEmpty()) {
-                        Box(Modifier.orbitEnter(32)) {
-                            SecaoAnteriores(arquivo)
-                        }
-                    }
+            when (aba) {
+                AbaNovidades.ATUALIZACOES -> ListaAtualizacoes(
+                    notas = notas,
+                    carregando = carregando,
+                    onRefresh = { UpdatesRepository.refresh(force = true) },
+                )
+                AbaNovidades.NOTIFICACOES -> NotificacoesVazio()
+            }
+        }
+    }
+}
+
+@Composable
+private fun SeletorAbas(
+    ativa: AbaNovidades,
+    onSelect: (AbaNovidades) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(OrbitMetrics.radiusChip + 4.dp))
+            .background(OrbitTokens.surface)
+            .border(1.dp, OrbitTokens.borderSoft, RoundedCornerShape(OrbitMetrics.radiusChip + 4.dp))
+            .padding(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        AbaNovidades.entries.forEach { item ->
+            val selecionada = item == ativa
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(OrbitMetrics.radiusChip))
+                    .background(if (selecionada) OrbitTokens.accent else Color.Transparent)
+                    .orbitPressable { onSelect(item) }
+                    .padding(vertical = 9.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    item.rotulo,
+                    color = if (selecionada) Color.White else OrbitTokens.textMid,
+                    fontSize = 13.sp,
+                    fontWeight = if (selecionada) FontWeight.SemiBold else FontWeight.Medium,
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ListaAtualizacoes(
+    notas: List<VersaoNota>,
+    carregando: Boolean,
+    onRefresh: () -> Unit,
+) {
+    PullToRefreshBox(
+        isRefreshing = carregando,
+        onRefresh = onRefresh,
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(
+                    start = OrbitMetrics.pagePadding,
+                    end = OrbitMetrics.pagePadding,
+                    top = 8.dp,
+                    bottom = 40.dp,
+                ),
+            verticalArrangement = Arrangement.spacedBy(OrbitMetrics.itemGap),
+        ) {
+            notas.forEachIndexed { index, nota ->
+                Box(Modifier.orbitEnter((index * 12).coerceAtMost(48))) {
+                    VersaoCard(nota)
                 }
             }
         }
@@ -324,7 +355,7 @@ private fun NovidadesHeader(onBack: () -> Unit) {
                 letterSpacing = (-0.3).sp,
             )
             Text(
-                "O que mudou no OrbitLab",
+                "O que mudou e o que a Luna te avisa",
                 color = OrbitTokens.textMid,
                 fontSize = OrbitMetrics.captionSize,
             )
@@ -338,80 +369,164 @@ private fun NovidadesHeader(onBack: () -> Unit) {
     )
 }
 
+/**
+ * O card de uma versão. Recolhível: a atual já nasce aberta; as antigas ficam fechadas,
+ * mostrando só o cabeçalho e os títulos, pra rolar sem virar um paredão. Um toque abre.
+ */
 @Composable
-private fun CardVersaoAtual(nota: VersaoNota) {
+private fun VersaoCard(nota: VersaoNota) {
+    var aberto by remember(nota.versao) { mutableStateOf(nota.atual) }
     val shape = RoundedCornerShape(OrbitMetrics.radiusCard)
-    Box(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(shape)
             .background(OrbitTokens.surface)
-            .border(1.dp, OrbitTokens.borderSoft, shape),
+            .border(
+                1.dp,
+                if (nota.atual) OrbitTokens.accent.copy(alpha = 0.55f) else OrbitTokens.borderSoft,
+                shape,
+            )
+            .orbitPressable { aberto = !aberto }
+            .padding(16.dp),
     ) {
-        AssinaturaAzul(
-            Modifier
-                .align(Alignment.BottomEnd)
-                .size(16.dp),
-        )
-
-        Column(Modifier.padding(18.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(
-                    Modifier
-                        .width(3.dp)
-                        .height(36.dp)
-                        .clip(RoundedCornerShape(2.dp))
-                        .background(OrbitTokens.accent),
-                )
-                Spacer(modifier = Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Text(
-                            "v${nota.versao}",
-                            color = OrbitTokens.textHigh,
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = (-0.4).sp,
-                        )
-                        ChipAgora()
-                    }
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        nota.data,
-                        color = OrbitTokens.textLow,
-                        fontSize = OrbitMetrics.captionSize,
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
+        // Cabeçalho: versão, data, "Agora" e a setinha de recolher.
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(nota.accent.start),
+            )
+            Spacer(Modifier.width(9.dp))
             Text(
-                nota.titulo,
+                "v${nota.versao}",
                 color = OrbitTokens.textHigh,
-                fontSize = 18.sp,
+                fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = (-0.2).sp,
-                lineHeight = 24.sp,
             )
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("·", color = OrbitTokens.textLow, fontSize = 13.sp)
+            Spacer(Modifier.width(8.dp))
             Text(
-                nota.resumo,
-                color = OrbitTokens.textMid,
-                fontSize = OrbitMetrics.bodySize,
-                lineHeight = 20.sp,
+                nota.data,
+                color = OrbitTokens.textLow,
+                fontSize = OrbitMetrics.captionSize,
             )
+            Spacer(Modifier.weight(1f))
+            if (nota.atual) {
+                ChipAgora()
+                Spacer(Modifier.width(8.dp))
+            }
+            Icon(
+                Icons.Rounded.KeyboardArrowDown,
+                contentDescription = if (aberto) "Recolher" else "Abrir",
+                tint = OrbitTokens.textLow,
+                modifier = Modifier
+                    .size(20.dp)
+                    .rotate(if (aberto) 180f else 0f),
+            )
+        }
 
-            Spacer(modifier = Modifier.height(18.dp))
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                nota.mudancas.forEach { MudancaLinha(it) }
+        if (!aberto) {
+            // Recolhido: só os títulos, um por linha, pra dar pra bater o olho.
+            Spacer(Modifier.height(12.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                nota.itens.forEach { item ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(item.tipo.fill.start),
+                        )
+                        Spacer(Modifier.width(9.dp))
+                        Text(
+                            item.titulo,
+                            color = OrbitTokens.textMid,
+                            fontSize = OrbitMetrics.bodySize,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
             }
         }
+
+        AnimatedVisibility(visible = aberto) {
+            Column {
+                Spacer(Modifier.height(6.dp))
+                nota.itens.forEachIndexed { index, item ->
+                    if (index > 0) {
+                        Spacer(Modifier.height(16.dp))
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(1.dp)
+                                .background(OrbitTokens.borderSoft.copy(alpha = 0.5f)),
+                        )
+                        Spacer(Modifier.height(16.dp))
+                    } else {
+                        Spacer(Modifier.height(14.dp))
+                    }
+                    NotaItemView(item)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NotaItemView(item: NotaItem) {
+    Column {
+        TagPill(item.tipo)
+        Spacer(Modifier.height(8.dp))
+        Text(
+            item.titulo,
+            color = OrbitTokens.textHigh,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = (-0.15).sp,
+            lineHeight = 21.sp,
+        )
+        Spacer(Modifier.height(8.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            item.paragrafos.forEach { paragrafo ->
+                Text(
+                    paragrafo,
+                    color = OrbitTokens.textMid,
+                    fontSize = OrbitMetrics.bodySize,
+                    lineHeight = 21.sp,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TagPill(tipo: TipoMudanca) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(OrbitMetrics.radiusChip))
+            .background(tipo.fill.brush)
+            .padding(horizontal = 9.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        Icon(
+            tipo.icone,
+            contentDescription = null,
+            tint = tipo.fill.onFill,
+            modifier = Modifier.size(13.dp),
+        )
+        Text(
+            tipo.rotulo,
+            color = tipo.fill.onFill,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 0.2.sp,
+        )
     }
 }
 
@@ -429,149 +544,46 @@ private fun ChipAgora() {
     )
 }
 
+/** A aba de Notificações ainda não tem conteúdo — mas o berço fica pronto e explicado. */
 @Composable
-private fun MudancaLinha(mudanca: Mudanca) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.Top,
+private fun NotificacoesVazio() {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = OrbitMetrics.pagePadding)
+            .padding(top = 64.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(
-            modifier = Modifier
-                .size(32.dp)
-                .clip(RoundedCornerShape(OrbitMetrics.radiusIcon))
-                .background(mudanca.tipo.fill.brush),
+            Modifier
+                .size(64.dp)
+                .clip(CircleShape)
+                .background(OrbitTokens.surface)
+                .border(1.dp, OrbitTokens.borderSoft, CircleShape),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                mudanca.tipo.icone,
+                Icons.Rounded.NotificationsNone,
                 contentDescription = null,
-                tint = mudanca.tipo.fill.onFill,
-                modifier = Modifier.size(16.dp),
+                tint = OrbitTokens.textMid,
+                modifier = Modifier.size(28.dp),
             )
         }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                mudanca.tipo.rotulo,
-                color = OrbitTokens.textHigh,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                mudanca.texto,
-                color = OrbitTokens.textMid,
-                fontSize = OrbitMetrics.bodySize,
-                lineHeight = 20.sp,
-            )
-        }
-    }
-}
-
-@Composable
-private fun SecaoAnteriores(notas: List<VersaoNota>) {
-    Column {
+        Spacer(Modifier.height(18.dp))
         Text(
-            "ANTERIORES",
-            color = OrbitTokens.textLow,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.SemiBold,
-            letterSpacing = 0.7.sp,
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-        Column(verticalArrangement = Arrangement.spacedBy(OrbitMetrics.itemGap)) {
-            notas.forEachIndexed { index, nota ->
-                Box(Modifier.orbitEnter((index * 12).coerceAtMost(48))) {
-                    CardVersaoArquivo(nota)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun CardVersaoArquivo(nota: VersaoNota) {
-    val shape = RoundedCornerShape(OrbitMetrics.radiusCard)
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(OrbitTokens.surface)
-            .border(1.dp, OrbitTokens.borderSoft, shape)
-            .padding(16.dp),
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Box(
-                Modifier
-                    .size(8.dp)
-                    .clip(CircleShape)
-                    .background(nota.accent.start),
-            )
-            Text(
-                "v${nota.versao}",
-                color = OrbitTokens.textHigh,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
-            )
-            Text("·", color = OrbitTokens.textLow, fontSize = 13.sp)
-            Text(
-                nota.data,
-                color = OrbitTokens.textLow,
-                fontSize = OrbitMetrics.captionSize,
-            )
-        }
-        Spacer(modifier = Modifier.height(10.dp))
-        Text(
-            nota.titulo,
+            "Sem notificações por enquanto",
             color = OrbitTokens.textHigh,
             fontSize = 16.sp,
             fontWeight = FontWeight.SemiBold,
-            letterSpacing = (-0.15).sp,
         )
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(Modifier.height(8.dp))
         Text(
-            nota.resumo,
+            "Quando a Luna tiver algo pra te avisar — um lembrete que você pediu, uma novidade sua — vai aparecer aqui.",
             color = OrbitTokens.textMid,
             fontSize = OrbitMetrics.bodySize,
-            lineHeight = 20.sp,
+            lineHeight = 21.sp,
+            textAlign = TextAlign.Center,
         )
-        Spacer(modifier = Modifier.height(14.dp))
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            nota.mudancas.forEach { mudanca ->
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        mudanca.tipo.rotulo,
-                        color = mudanca.tipo.fill.start,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.width(72.dp),
-                    )
-                    Text(
-                        mudanca.texto,
-                        color = OrbitTokens.textMid,
-                        fontSize = OrbitMetrics.bodySize,
-                        lineHeight = 20.sp,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun AssinaturaAzul(modifier: Modifier = Modifier) {
-    Canvas(modifier) {
-        val path = Path().apply {
-            moveTo(size.width, size.height)
-            lineTo(size.width, size.height * 0.15f)
-            lineTo(size.width * 0.15f, size.height)
-            close()
-        }
-        drawPath(path, color = OrbitTokens.accent)
     }
 }
 
