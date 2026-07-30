@@ -21,6 +21,7 @@ import com.ethan.orbitlab.ui.chat.LunaStreamResultado
 import com.ethan.orbitlab.ui.chat.LunaWebFonte
 import com.ethan.orbitlab.ui.chat.ThreadReference
 import com.ethan.orbitlab.ui.chat.ehFerramentaDeWeb
+import com.ethan.orbitlab.ui.chat.formalizarTecnico
 import com.ethan.orbitlab.ui.chat.formatMessageWithReference
 import com.ethan.orbitlab.ui.chat.toolMeta
 import android.os.Handler
@@ -132,6 +133,14 @@ object LunaApiChat {
             )
         }
 
+        // Modo técnico capturado no ENVIO (não no render): é o modo em que ESTA resposta nasce.
+        // Marca o id agora pra correção de registro rodar depois na exibição, mesmo em reload.
+        val modoTecnico = PrefsRepository.modoTecnico.value
+        if (modoTecnico) PrefsRepository.marcarMensagemTecnica(lunaMessageId)
+        // «Mãos à obra»: força o caminho agêntico no servidor (planejar/documentos/ferramentas
+        // em todo turno). Exclusivo com o técnico — a PrefsRepository garante que só um fica ligado.
+        val modoAgentico = PrefsRepository.modoAgentico.value
+
         val displayMessage = textoUsuario.trim()
         val message = when {
             reference != null -> formatMessageWithReference(displayMessage, reference)
@@ -205,11 +214,14 @@ object LunaApiChat {
             // Modo técnico liga duas coisas juntas: a Luna responde com mais profundidade e
             // rigor (diretiva no core) E o raciocínio sobe pra «high». Desligado, tudo segue
             // no default caloroso/conciso de sempre.
-            val tecnico = PrefsRepository.modoTecnico.value
             put("reasoningEnabled", PrefsRepository.reasoningEnabled.value)
-            put("reasoningEffort", if (tecnico) "high" else "medium")
+            put("reasoningEffort", if (modoTecnico) "high" else "medium")
             put("pesquisaProfunda", PrefsRepository.pesquisaProfunda.value)
-            put("modoTecnico", tecnico)
+            put("modoTecnico", modoTecnico)
+            put("modoAgentico", modoAgentico)
+            // Documentos: só o lab liga. Libera a ferramenta criar_documento (o core é
+            // partilhado com o estável, então a flag é o que a mantém invisível lá fora).
+            put("documentosAtivo", true)
             LocationRepository.paraJson()?.let { put("local", it) }
             if (nome.isNotBlank()) put("userDisplayName", nome.take(64))
             if (attachmentsJson.length() > 0) put("attachments", attachmentsJson)
@@ -223,6 +235,9 @@ object LunaApiChat {
         val respostaBuf = StringBuilder()
         val reasoningBuf = StringBuilder()
         var faseAtual = ""
+        // O rótulo rico que o servidor manda ("Escrevendo o documento…", "Aguardando o provedor…").
+        // Quando vem, ele fala a verdade do passo; senão caímos no rótulo grosseiro por fase.
+        var rotuloAtual = ""
 
         // Timeline de ações ao vivo: cada tool call do servidor (evento `acao`) nasce como um
         // passo RUNNING no `inicio_ferramenta` e fecha DONE/ERROR no `fim_ferramenta`. É o que
@@ -316,7 +331,7 @@ object LunaApiChat {
         }
 
         fun emitirUi() {
-            val texto = respostaBuf.toString()
+            val texto = respostaBuf.toString().let { if (modoTecnico) formalizarTecnico(it) else it }
             val reasoning = reasoningBuf.toString()
             val durMs = System.currentTimeMillis() - t0
             val durLabel = "${(durMs / 1000.0).roundToInt().coerceAtLeast(1)}s"
@@ -334,7 +349,7 @@ object LunaApiChat {
                 LunaStreamEstado.Raciocinando(
                     parcial = reasoning,
                     actionRun = run,
-                    fase = if (faseAtual.isNotBlank()) rotuloFase(faseAtual) else "",
+                    fase = rotuloAtual.ifBlank { if (faseAtual.isNotBlank()) rotuloFase(faseAtual) else "" },
                 )
             }
             mainHandler.post { onEstado(estado) }
@@ -350,11 +365,13 @@ object LunaApiChat {
             respostaBuf.setLength(0)
             reasoningBuf.setLength(0)
             faseAtual = ""
+            rotuloAtual = ""
             acaoSteps.clear()
             result = LunaApiClient.chatStream(idToken, body) { event ->
                 when (event) {
                     is LunaApiClient.StreamEvent.Status -> {
                         faseAtual = event.phase
+                        rotuloAtual = event.label ?: ""
                         if (respostaBuf.isEmpty()) emitirUi()
                     }
                     is LunaApiClient.StreamEvent.Reasoning -> {
@@ -427,7 +444,8 @@ object LunaApiChat {
             )
         }
 
-        val texto = result.text.ifBlank { respostaBuf.toString() }.ifBlank { "…" }
+        val textoBruto = result.text.ifBlank { respostaBuf.toString() }.ifBlank { "…" }
+        val texto = if (modoTecnico) formalizarTecnico(textoBruto) else textoBruto
         val reasoning = result.reasoning.ifBlank { reasoningBuf.toString() }
         LatenciaProbe.record(
             caminho = "paia_stream",

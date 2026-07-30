@@ -1,6 +1,7 @@
 package com.ethan.orbitlab.ui.chat
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,8 +18,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -42,6 +45,16 @@ import com.ethan.orbitlab.ui.theme.OrbitTokens
  * Fluxo contínuo: tipografia próxima, pouca caixa.
  * Quote = só trilho; código = inset leve. Sem “cards” competindo dentro do balão.
  */
+/**
+ * Duas peles do mesmo motor:
+ * - [Chat]: fluxo contínuo dentro do balão, tipografia próxima, pouca caixa.
+ * - [Documento]: pele "premium" da estante — hierarquia de verdade, mais ar,
+ *   e o quote vira card de destaque. Nunca vaza pro chat (é escolhido por quem chama).
+ */
+enum class LunaMarkdownVariante { Chat, Documento }
+
+private val LocalMdVariante = staticCompositionLocalOf { LunaMarkdownVariante.Chat }
+
 private object Md {
     val gap = 3.dp
     val gapTitulo = 10.dp
@@ -51,6 +64,14 @@ private object Md {
     val bodyLine = 21.sp
     val mono = 13.sp
     val monoLine = 18.sp
+}
+
+/** Medidas da pele "documento" — mais generosas, feitas pra leitura longa. */
+private object MdDoc {
+    val gap = 7.dp
+    val gapTitulo = 20.dp
+    val body = 16.sp
+    val bodyLine = 25.sp
 }
 
 /**
@@ -105,28 +126,34 @@ private class MdIncrementalCache {
 fun LunaMarkdown(
     content: String,
     modifier: Modifier = Modifier,
+    variante: LunaMarkdownVariante = LunaMarkdownVariante.Chat,
 ) {
     val cache = remember { MdIncrementalCache() }
     val blocos = remember(content) { cache.update(content) }
+    val doc = variante == LunaMarkdownVariante.Documento
+    val gap = if (doc) MdDoc.gap else Md.gap
+    val gapTitulo = if (doc) MdDoc.gapTitulo else Md.gapTitulo
 
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(Md.gap),
-    ) {
-        blocos.forEachIndexed { index, bloco ->
-            val anterior = blocos.getOrNull(index - 1)
-            val isTail = index == blocos.lastIndex
-            key(if (isTail) "tail-$index" else "blk-$index-${bloco.hashCode()}") {
-                if (bloco is BlocoMd.Titulo && index > 0 && anterior !is BlocoMd.Titulo) {
-                    Spacer(Modifier.height(Md.gapTitulo - Md.gap))
-                }
-                when (bloco) {
-                    is BlocoMd.Titulo -> MdTitulo(bloco)
-                    is BlocoMd.Paragrafo -> MdTexto(bloco.texto)
-                    is BlocoMd.Quote -> MdQuote(bloco.texto)
-                    is BlocoMd.Lista -> MdLista(bloco)
-                    is BlocoMd.Codigo -> MdCodigo(bloco)
-                    is BlocoMd.Divisor -> MdDivisor()
+    CompositionLocalProvider(LocalMdVariante provides variante) {
+        Column(
+            modifier = modifier,
+            verticalArrangement = Arrangement.spacedBy(gap),
+        ) {
+            blocos.forEachIndexed { index, bloco ->
+                val anterior = blocos.getOrNull(index - 1)
+                val isTail = index == blocos.lastIndex
+                key(if (isTail) "tail-$index" else "blk-$index-${bloco.hashCode()}") {
+                    if (bloco is BlocoMd.Titulo && index > 0 && anterior !is BlocoMd.Titulo) {
+                        Spacer(Modifier.height(gapTitulo - gap))
+                    }
+                    when (bloco) {
+                        is BlocoMd.Titulo -> MdTitulo(bloco)
+                        is BlocoMd.Paragrafo -> MdTexto(bloco.texto)
+                        is BlocoMd.Quote -> MdQuote(bloco.texto)
+                        is BlocoMd.Lista -> MdLista(bloco)
+                        is BlocoMd.Codigo -> MdCodigo(bloco)
+                        is BlocoMd.Divisor -> MdDivisor()
+                    }
                 }
             }
         }
@@ -135,7 +162,40 @@ fun LunaMarkdown(
 
 @Composable
 private fun MdTitulo(bloco: BlocoMd.Titulo) {
+    val doc = LocalMdVariante.current == LunaMarkdownVariante.Documento
     val styled = remember(bloco.texto) { estiloInline(bloco.texto) }
+    if (doc) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                text = styled,
+                color = OrbitTokens.textHigh,
+                fontSize = when (bloco.nivel) {
+                    1 -> 25.sp
+                    2 -> 19.sp
+                    else -> 16.sp
+                },
+                fontWeight = if (bloco.nivel == 1) FontWeight.Bold else FontWeight.SemiBold,
+                letterSpacing = (-0.3).sp,
+                lineHeight = when (bloco.nivel) {
+                    1 -> 31.sp
+                    2 -> 25.sp
+                    else -> 22.sp
+                },
+            )
+            // Nível 1 ganha um filete de acento curto — dá o ar de "abertura de seção".
+            if (bloco.nivel == 1) {
+                Box(
+                    Modifier
+                        .padding(top = 1.dp)
+                        .width(34.dp)
+                        .height(3.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(OrbitTokens.accent),
+                )
+            }
+        }
+        return
+    }
     Text(
         text = styled,
         color = OrbitTokens.textHigh,
@@ -155,19 +215,51 @@ private fun MdTitulo(bloco: BlocoMd.Titulo) {
 
 @Composable
 private fun MdTexto(texto: String, italico: Boolean = false) {
+    val doc = LocalMdVariante.current == LunaMarkdownVariante.Documento
     val styled = remember(texto) { estiloInline(texto) }
     Text(
         text = styled,
         color = OrbitTokens.textHigh,
-        fontSize = Md.body,
-        lineHeight = Md.bodyLine,
+        fontSize = if (doc) MdDoc.body else Md.body,
+        lineHeight = if (doc) MdDoc.bodyLine else Md.bodyLine,
         fontStyle = if (italico) FontStyle.Italic else FontStyle.Normal,
     )
 }
 
-/** Quote contínuo — só o trilho, sem card/borda. */
+/**
+ * Quote:
+ * - Chat: só o trilho, sem card/borda (não compete dentro do balão).
+ * - Documento: vira card de destaque — fundo suave, filete de acento, cantos redondos.
+ */
 @Composable
 private fun MdQuote(texto: String) {
+    val doc = LocalMdVariante.current == LunaMarkdownVariante.Documento
+    val styled = remember(texto) { estiloInline(texto) }
+    if (doc) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(IntrinsicSize.Min)
+                .clip(RoundedCornerShape(10.dp))
+                .background(OrbitTokens.accentSoft)
+                .border(1.dp, OrbitTokens.accent.copy(alpha = 0.22f), RoundedCornerShape(10.dp)),
+        ) {
+            Box(
+                Modifier
+                    .width(3.dp)
+                    .fillMaxHeight()
+                    .background(OrbitTokens.accent),
+            )
+            Text(
+                text = styled,
+                color = OrbitTokens.textHigh,
+                fontSize = MdDoc.body,
+                lineHeight = MdDoc.bodyLine,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            )
+        }
+        return
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -180,7 +272,6 @@ private fun MdQuote(texto: String) {
                 .clip(RoundedCornerShape(1.dp))
                 .background(OrbitTokens.accent.copy(alpha = 0.55f)),
         )
-        val styled = remember(texto) { estiloInline(texto) }
         Text(
             text = styled,
             color = OrbitTokens.textMid,
@@ -194,31 +285,34 @@ private fun MdQuote(texto: String) {
 
 @Composable
 private fun MdLista(bloco: BlocoMd.Lista) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    val doc = LocalMdVariante.current == LunaMarkdownVariante.Documento
+    val body = if (doc) MdDoc.body else Md.body
+    val bodyLine = if (doc) MdDoc.bodyLine else Md.bodyLine
+    Column(verticalArrangement = Arrangement.spacedBy(if (doc) 5.dp else 2.dp)) {
         bloco.itens.forEachIndexed { index, item ->
             Row(
-                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                horizontalArrangement = Arrangement.spacedBy(if (doc) 10.dp else 7.dp),
                 verticalAlignment = Alignment.Top,
             ) {
                 Box(
-                    modifier = Modifier.width(14.dp),
+                    modifier = Modifier.width(if (doc) 16.dp else 14.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     if (bloco.ordenada) {
                         Text(
                             text = "${index + 1}.",
-                            color = OrbitTokens.textLow,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Medium,
+                            color = if (doc) OrbitTokens.accentText else OrbitTokens.textLow,
+                            fontSize = if (doc) 15.sp else 13.sp,
+                            fontWeight = if (doc) FontWeight.SemiBold else FontWeight.Medium,
                             modifier = Modifier.padding(top = 2.dp),
                         )
                     } else {
                         Box(
                             Modifier
-                                .padding(top = 8.dp)
-                                .size(3.5.dp)
+                                .padding(top = if (doc) 9.dp else 8.dp)
+                                .size(if (doc) 4.5.dp else 3.5.dp)
                                 .clip(CircleShape)
-                                .background(OrbitTokens.textLow),
+                                .background(if (doc) OrbitTokens.accent else OrbitTokens.textLow),
                         )
                     }
                 }
@@ -226,8 +320,8 @@ private fun MdLista(bloco: BlocoMd.Lista) {
                 Text(
                     text = styled,
                     color = OrbitTokens.textHigh,
-                    fontSize = Md.body,
-                    lineHeight = Md.bodyLine,
+                    fontSize = body,
+                    lineHeight = bodyLine,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -273,12 +367,13 @@ private fun MdCodigo(bloco: BlocoMd.Codigo) {
 
 @Composable
 private fun MdDivisor() {
+    val doc = LocalMdVariante.current == LunaMarkdownVariante.Documento
     Box(
         Modifier
             .fillMaxWidth()
-            .padding(vertical = 2.dp)
+            .padding(vertical = if (doc) 6.dp else 2.dp)
             .height(1.dp)
-            .background(OrbitTokens.borderSoft.copy(alpha = 0.35f)),
+            .background(OrbitTokens.borderSoft.copy(alpha = if (doc) 0.5f else 0.35f)),
     )
 }
 

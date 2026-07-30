@@ -14,6 +14,7 @@ object PrefsRepository {
     private const val KEY_VIBRACAO = "orbit.lab.vibracao"
     private const val KEY_PESQUISA_PROFUNDA = "orbit.lab.pesquisa.profunda"
     private const val KEY_MODO_TECNICO = "orbit.lab.modo.tecnico"
+    private const val KEY_MODO_AGENTICO = "orbit.lab.modo.agentico"
     private const val KEY_SESSAO_UID = "orbit.lab.sessao.uid"
     private const val KEY_AUTH_DIAG = "orbit.lab.sessao.diag"
     private const val KEY_ULTIMA_ABA = "orbit.lab.lugar.aba"
@@ -21,8 +22,18 @@ object PrefsRepository {
     private const val KEY_ANCORA = "orbit.lab.lugar.ancora"
     private const val KEY_LOCALIZACAO = "orbit.lab.localizacao.ativa"
     private const val KEY_LOCAL_SNAPSHOT = "orbit.lab.localizacao.snapshot"
+    private const val KEY_TECNICO_IDS = "orbit.lab.tecnico.msgids"
+    private const val MAX_TECNICO_IDS = 500
 
     private lateinit var prefs: SharedPreferences
+
+    /**
+     * Ids das mensagens que nasceram no Modo técnico. Marcador local (o servidor grava o texto
+     * cru e o listener do Firestore sobrescreve o texto local a cada snapshot, então corrigir o
+     * texto guardado não sobrevive ao reload). Com o id aqui, a correção de registro roda na
+     * EXIBIÇÃO — à prova de sync e não-destrutiva. LinkedHashSet pra podar o mais antigo primeiro.
+     */
+    private val idsTecnico = LinkedHashSet<String>()
 
     /** Raciocínio SEMPRE visível — não é mais opção do usuário. */
     val reasoningEnabled: StateFlow<Boolean> = MutableStateFlow(true).asStateFlow()
@@ -54,6 +65,16 @@ object PrefsRepository {
     val modoTecnico: StateFlow<Boolean> = _modoTecnico.asStateFlow()
 
     /**
+     * Modo «Mãos à obra» — opt-in, DESLIGADO por default. Ligado, força o caminho agêntico em
+     * TODO turno (o servidor recebe `modoAgentico`): a Luna pode planejar, criar/editar documento
+     * e mexer nas ferramentas sem depender do detector de palavra-chave. Custa um pouco mais de
+     * latência, por isso fica na mão do usuário. É EXCLUSIVO com o técnico — ligar um desliga o
+     * outro (o seletor é escolha-uma).
+     */
+    private val _modoAgentico = MutableStateFlow(false)
+    val modoAgentico: StateFlow<Boolean> = _modoAgentico.asStateFlow()
+
+    /**
      * Compartilhar localização + clima com a Luna — opt-in, DESLIGADO por default. Ligado,
      * o app capta o GPS, resolve cidade/uf e busca o clima; isso dá à Luna o «onde» (antes
      * ela só tinha o «quando»). Desligado, nada de local sai do aparelho.
@@ -67,8 +88,26 @@ object PrefsRepository {
         _vibracao.value = prefs.getBoolean(KEY_VIBRACAO, true)
         _pesquisaProfunda.value = prefs.getBoolean(KEY_PESQUISA_PROFUNDA, false)
         _modoTecnico.value = prefs.getBoolean(KEY_MODO_TECNICO, false)
+        _modoAgentico.value = prefs.getBoolean(KEY_MODO_AGENTICO, false)
         _localizacaoAtiva.value = prefs.getBoolean(KEY_LOCALIZACAO, false)
+        idsTecnico.clear()
+        idsTecnico.addAll(prefs.getStringSet(KEY_TECNICO_IDS, emptySet()).orEmpty())
     }
+
+    /** Marca que [id] é uma resposta do Modo técnico (pra corrigir o registro na exibição). */
+    fun marcarMensagemTecnica(id: String) {
+        if (id.isBlank() || !idsTecnico.add(id)) return
+        while (idsTecnico.size > MAX_TECNICO_IDS) {
+            val it = idsTecnico.iterator()
+            if (it.hasNext()) { it.next(); it.remove() } else break
+        }
+        if (::prefs.isInitialized) {
+            prefs.edit().putStringSet(KEY_TECNICO_IDS, LinkedHashSet(idsTecnico)).apply()
+        }
+    }
+
+    /** [id] nasceu no Modo técnico? (então a exibição passa o corretor de registro nela). */
+    fun mensagemEhTecnica(id: String): Boolean = id in idsTecnico
 
     /**
      * Uid da última conta que entrou — marcador de «já tem sessão neste aparelho».
@@ -143,7 +182,26 @@ object PrefsRepository {
 
     fun setModoTecnico(enabled: Boolean) {
         _modoTecnico.value = enabled
-        if (::prefs.isInitialized) prefs.edit().putBoolean(KEY_MODO_TECNICO, enabled).apply()
+        // Exclusivo com «Mãos à obra»: ligar o técnico apaga o agêntico (o seletor é escolha-uma).
+        if (enabled) _modoAgentico.value = false
+        if (::prefs.isInitialized) {
+            prefs.edit()
+                .putBoolean(KEY_MODO_TECNICO, enabled)
+                .apply { if (enabled) putBoolean(KEY_MODO_AGENTICO, false) }
+                .apply()
+        }
+    }
+
+    fun setModoAgentico(enabled: Boolean) {
+        _modoAgentico.value = enabled
+        // Exclusivo com o técnico: ligar o agêntico apaga o técnico.
+        if (enabled) _modoTecnico.value = false
+        if (::prefs.isInitialized) {
+            prefs.edit()
+                .putBoolean(KEY_MODO_AGENTICO, enabled)
+                .apply { if (enabled) putBoolean(KEY_MODO_TECNICO, false) }
+                .apply()
+        }
     }
 
     fun setLocalizacaoAtiva(enabled: Boolean) {
@@ -162,6 +220,8 @@ object PrefsRepository {
         _vibracao.value = true
         _pesquisaProfunda.value = false
         _modoTecnico.value = false
+        _modoAgentico.value = false
         _localizacaoAtiva.value = false
+        idsTecnico.clear()
     }
 }

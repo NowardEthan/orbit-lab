@@ -178,7 +178,7 @@ object LunaApiClient {
     }
 
     sealed class StreamEvent {
-        data class Status(val phase: String) : StreamEvent()
+        data class Status(val phase: String, val label: String? = null) : StreamEvent()
         data class Reasoning(val delta: String) : StreamEvent()
         data class Content(val delta: String) : StreamEvent()
         data class Acao(val json: JSONObject) : StreamEvent()
@@ -314,9 +314,10 @@ object LunaApiClient {
                         when (eventName) {
                             "status" -> {
                                 val phase = json.optString("phase").trim()
+                                val label = json.optString("label").trim()
                                 if (phase.isNotEmpty()) {
                                     phaseMarks.putIfAbsent(phase, elapsed)
-                                    onEvent(StreamEvent.Status(phase))
+                                    onEvent(StreamEvent.Status(phase, label.ifEmpty { null }))
                                 }
                             }
                             "reasoning" -> {

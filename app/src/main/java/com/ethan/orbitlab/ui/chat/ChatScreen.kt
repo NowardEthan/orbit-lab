@@ -56,6 +56,8 @@ import androidx.compose.material.icons.rounded.ChatBubbleOutline
 import androidx.compose.material.icons.rounded.IosShare
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.Handyman
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Mic
@@ -65,6 +67,7 @@ import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
@@ -111,12 +114,15 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import com.ethan.orbitlab.R
 import com.ethan.orbitlab.data.ChatRepository
+import com.ethan.orbitlab.data.firebase.DocumentoUi
+import com.ethan.orbitlab.data.firebase.FirestoreDocumentos
 import com.ethan.orbitlab.data.Mensagem
 import com.ethan.orbitlab.data.PrefsRepository
 import com.ethan.orbitlab.data.lunaMessageIdForUser
 import com.ethan.orbitlab.data.newUserMessageId
 import com.ethan.orbitlab.data.lunaapi.LunaApiChat
 import com.ethan.orbitlab.data.openrouter.LunaDirectChat
+import com.google.firebase.auth.FirebaseAuth
 import com.ethan.orbitlab.ui.theme.OrbitFills
 import com.ethan.orbitlab.ui.theme.OrbitMetrics
 import com.ethan.orbitlab.ui.theme.OrbitMotion
@@ -165,6 +171,24 @@ fun ChatScreen(conversaId: String, onBack: () -> Unit) {
     var actionSheetMsg by remember { mutableStateOf<Mensagem?>(null) }
     var exportAberto by remember { mutableStateOf(false) }
     var buscaAberta by remember { mutableStateOf(false) }
+    // Documentos desta conversa (a estante) — escutados do Firestore, desenhados como cartões no
+    // fio. `docReader` guarda o documento aberto no leitor.
+    var documentos by remember(conversaId) { mutableStateOf<List<DocumentoUi>>(emptyList()) }
+    var docReader by remember { mutableStateOf<DocumentoUi?>(null) }
+    DisposableEffect(conversaId) {
+        val uid = FirebaseAuth.getInstance().currentUser?.uid
+        if (uid == null) {
+            documentos = emptyList()
+            onDispose { }
+        } else {
+            val reg = FirestoreDocumentos.subscribeDaConversa(
+                uid = uid,
+                conversaId = conversaId,
+                onChange = { documentos = it },
+            )
+            onDispose { reg.remove() }
+        }
+    }
     // Id da mensagem pra rolar até / destacar após tocar num resultado da busca.
     var scrollAlvo by remember { mutableStateOf<String?>(null) }
     var destaqueId by remember { mutableStateOf<String?>(null) }
@@ -364,6 +388,8 @@ fun ChatScreen(conversaId: String, onBack: () -> Unit) {
                 ChatTimeline(
                     conversaId = conversaId,
                     historico = historico,
+                    documentos = documentos,
+                    onAbrirDocumento = { docReader = it },
                     streamState = streamState,
                     ocultarMessageId = streamLunaMsgId,
                     scrollParaId = scrollAlvo,
@@ -415,6 +441,13 @@ fun ChatScreen(conversaId: String, onBack: () -> Unit) {
                 titulo = conversaAtual.titulo,
                 mensagens = historico,
                 onDismiss = { exportAberto = false },
+            )
+        }
+
+        docReader?.let { doc ->
+            DocumentoReaderSheet(
+                doc = doc,
+                onDismiss = { docReader = null },
             )
         }
 
@@ -687,6 +720,8 @@ private fun AssinaturaAzul(modifier: Modifier = Modifier) {
 private fun ChatTimeline(
     conversaId: String,
     historico: List<Mensagem>,
+    documentos: List<DocumentoUi> = emptyList(),
+    onAbrirDocumento: (DocumentoUi) -> Unit = {},
     streamState: MutableState<LunaStreamEstado>,
     ocultarMessageId: String? = null,
     scrollParaId: String? = null,
@@ -814,6 +849,21 @@ private fun ChatTimeline(
         return
     }
 
+    // Cada documento se ancora à ÚLTIMA mensagem cujo relógio é <= o dele — ou seja, cai logo
+    // depois da mensagem da Luna que o criou. Como documento e mensagem compartilham o mesmo
+    // relógio (ms), o cartão sobrevive ao reload sem precisar amarrar id pelo SSE. Sem âncora
+    // (relógio faltando/anterior a tudo) o cartão vai pro fim, pra nunca sumir.
+    val documentosPorMensagem = remember(mensagensVisiveis, documentos) {
+        val mapa = HashMap<Int, MutableList<DocumentoUi>>()
+        val ultimoIdx = mensagensVisiveis.lastIndex
+        documentos.forEach { doc ->
+            val idx = mensagensVisiveis.indexOfLast { it.timestamp <= doc.createdAtMs }
+                .let { if (it < 0) ultimoIdx else it }
+            mapa.getOrPut(idx) { mutableListOf() }.add(doc)
+        }
+        mapa
+    }
+
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize(),
@@ -858,31 +908,40 @@ private fun ChatTimeline(
                 animationSpec = spring(dampingRatio = 0.62f, stiffness = Spring.StiffnessMedium),
                 label = "cresceMensagem",
             )
-            Box(
-                modifier = Modifier
-                    .animateItem(fadeInSpec = null, fadeOutSpec = null)
-                    .fillMaxWidth()
-                    .graphicsLayer {
-                        alpha = brilho
-                        scaleX = crescer
-                        scaleY = crescer
-                        transformOrigin = TransformOrigin(
-                            pivotFractionX = if (msg.isLuna) 0f else 1f,
-                            pivotFractionY = 0.5f,
-                        )
-                    }
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(corPulso)
-                    .padding(vertical = 2.dp),
+            // Documentos ancorados a esta mensagem — desenhados como cartões logo abaixo dela.
+            val docsAqui = documentosPorMensagem[index].orEmpty()
+            Column(
+                modifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                MessageBubble(
-                    msg = msg,
-                    // Só a última bolha entra animada — abrir a conversa não faz o histórico
-                    // inteiro dançar; quem envia/recebe agora é que ganha a chegada com vida.
-                    animarEntrada = index == mensagensVisiveis.lastIndex,
-                    onLongPress = { onMessageLongPress(msg) },
-                    onReferenciarMedia = { att -> onReferenciarMedia(msg, att) },
-                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .graphicsLayer {
+                            alpha = brilho
+                            scaleX = crescer
+                            scaleY = crescer
+                            transformOrigin = TransformOrigin(
+                                pivotFractionX = if (msg.isLuna) 0f else 1f,
+                                pivotFractionY = 0.5f,
+                            )
+                        }
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(corPulso)
+                        .padding(vertical = 2.dp),
+                ) {
+                    MessageBubble(
+                        msg = msg,
+                        // Só a última bolha entra animada — abrir a conversa não faz o histórico
+                        // inteiro dançar; quem envia/recebe agora é que ganha a chegada com vida.
+                        animarEntrada = index == mensagensVisiveis.lastIndex,
+                        onLongPress = { onMessageLongPress(msg) },
+                        onReferenciarMedia = { att -> onReferenciarMedia(msg, att) },
+                    )
+                }
+                docsAqui.forEach { doc ->
+                    DocumentoCard(doc = doc, onAbrir = onAbrirDocumento)
+                }
             }
         }
         if (streamAtivo) {
@@ -1187,7 +1246,14 @@ private fun MessageBubble(
                         }
                         if (temTexto) {
                             if (msg.isLuna) {
-                                LunaMarkdown(content = msg.texto)
+                                // Modo técnico: conserta o registro (abertura casual + caixa-baixa)
+                                // na exibição — o texto gravado no Firestore fica intacto.
+                                val conteudo = if (PrefsRepository.mensagemEhTecnica(msg.id)) {
+                                    formalizarTecnico(msg.texto)
+                                } else {
+                                    msg.texto
+                                }
+                                LunaMarkdown(content = conteudo)
                             } else {
                                 Text(
                                     text = msg.texto,
@@ -1225,9 +1291,16 @@ private fun ChatInputArea(
 ) {
     val enabled = streamState.value is LunaStreamEstado.Idle
     val modoTecnico by PrefsRepository.modoTecnico.collectAsState()
+    val modoAgentico by PrefsRepository.modoAgentico.collectAsState()
+    val modoAtivo = when {
+        modoAgentico -> ModoLunaOpcao.MaosAObra
+        modoTecnico -> ModoLunaOpcao.Tecnico
+        else -> ModoLunaOpcao.Conversa
+    }
     var texto by remember { mutableStateOf("") }
     var anexos by remember { mutableStateOf<List<ComposerAttachment>>(emptyList()) }
     var attachAberto by remember { mutableStateOf(false) }
+    var modoSheetAberto by remember { mutableStateOf(false) }
     var recordState by remember { mutableStateOf(RecordState.Idle) }
     var dragOffset by remember { mutableStateOf(Offset.Zero) }
     var segundos by remember { mutableIntStateOf(0) }
@@ -1306,6 +1379,22 @@ private fun ChatInputArea(
             anexos = imagens + arquivos
             attachAberto = false
         },
+    )
+
+    LunaModeSheet(
+        visible = modoSheetAberto,
+        modoAtivo = modoAtivo,
+        onSelect = { opcao ->
+            when (opcao) {
+                ModoLunaOpcao.Conversa -> {
+                    PrefsRepository.setModoTecnico(false)
+                    PrefsRepository.setModoAgentico(false)
+                }
+                ModoLunaOpcao.Tecnico -> PrefsRepository.setModoTecnico(true)
+                ModoLunaOpcao.MaosAObra -> PrefsRepository.setModoAgentico(true)
+            }
+        },
+        onDismiss = { modoSheetAberto = false },
     )
 
     Column(
@@ -1516,14 +1605,26 @@ private fun ChatInputArea(
             )
         }
 
-        // Chip «Modo técnico»: some na gravação (a linha vira controles de áudio) e, ligado,
-        // acende — a Luna passa a responder com mais profundidade/rigor sem ele insistir.
+        // Botão de modo: some na gravação (a linha vira controles de áudio). Mostra o modo
+        // ATIVO (ícone + nome) e abre o seletor — Técnico/Mãos à obra acesos em accent, Conversa
+        // quieto, pra dar num relance qual está ligado. O chevron avisa que abre um menu, não alterna.
         if (!gravando) {
             Spacer(Modifier.width(8.dp))
+            val modoAceso = modoAtivo != ModoLunaOpcao.Conversa
             val tecShape = RoundedCornerShape(50)
-            val tecBg = if (modoTecnico) OrbitTokens.accentSoft else Color.Transparent
-            val tecBorda = if (modoTecnico) OrbitTokens.accent.copy(alpha = 0.45f) else OrbitTokens.borderSoft
-            val tecTint = if (modoTecnico) OrbitTokens.accentText else OrbitTokens.textMid
+            val tecBg = if (modoAceso) OrbitTokens.accentSoft else Color.Transparent
+            val tecBorda = if (modoAceso) OrbitTokens.accent.copy(alpha = 0.45f) else OrbitTokens.borderSoft
+            val tecTint = if (modoAceso) OrbitTokens.accentText else OrbitTokens.textMid
+            val modoIcone = when (modoAtivo) {
+                ModoLunaOpcao.Tecnico -> Icons.Rounded.Tune
+                ModoLunaOpcao.MaosAObra -> Icons.Rounded.Handyman
+                ModoLunaOpcao.Conversa -> Icons.Rounded.ChatBubbleOutline
+            }
+            val modoRotulo = when (modoAtivo) {
+                ModoLunaOpcao.Tecnico -> "Técnico"
+                ModoLunaOpcao.MaosAObra -> "Mãos à obra"
+                ModoLunaOpcao.Conversa -> "Conversa"
+            }
             Row(
                 Modifier
                     .clip(tecShape)
@@ -1531,23 +1632,29 @@ private fun ChatInputArea(
                     .border(1.dp, tecBorda, tecShape)
                     .clickable(enabled = enabled) {
                         haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        PrefsRepository.setModoTecnico(!modoTecnico)
+                        modoSheetAberto = true
                     }
-                    .padding(horizontal = 12.dp, vertical = 7.dp),
+                    .padding(start = 12.dp, end = 8.dp, top = 7.dp, bottom = 7.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
-                    Icons.Rounded.Tune,
+                    modoIcone,
                     contentDescription = null,
                     tint = tecTint,
                     modifier = Modifier.size(16.dp),
                 )
                 Spacer(Modifier.width(6.dp))
                 Text(
-                    "Técnico",
+                    modoRotulo,
                     color = tecTint,
                     fontSize = 13.sp,
-                    fontWeight = if (modoTecnico) FontWeight.SemiBold else FontWeight.Medium,
+                    fontWeight = if (modoAceso) FontWeight.SemiBold else FontWeight.Medium,
+                )
+                Icon(
+                    Icons.Rounded.ExpandMore,
+                    contentDescription = "Trocar modo",
+                    tint = tecTint.copy(alpha = 0.7f),
+                    modifier = Modifier.size(15.dp),
                 )
             }
         }

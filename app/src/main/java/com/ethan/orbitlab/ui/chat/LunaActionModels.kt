@@ -15,6 +15,7 @@ enum class LunaActionProfile {
 enum class LunaActionStepKind {
     REASON,
     PLAN,
+    CHECK,
     READ,
     SEARCH,
     VISION,
@@ -113,6 +114,41 @@ fun toolMeta(ferramenta: String): ToolMeta = when (ferramenta) {
         live = { "Cruzando as fontes" },
         done = { "Cruzou as fontes" },
     )
+    "planejar" -> ToolMeta(
+        kind = LunaActionStepKind.PLAN,
+        live = { "Traçando o plano" },
+        done = { "Traçou o plano" },
+    )
+    "concluir_passo" -> ToolMeta(
+        kind = LunaActionStepKind.CHECK,
+        live = { "Concluindo um passo" },
+        done = { arg -> if (arg.isBlank()) "Passo concluído" else "Passo $arg concluído" },
+    )
+    "adicionar_passo" -> ToolMeta(
+        kind = LunaActionStepKind.PLAN,
+        live = { "Anotando um passo" },
+        done = { "Passo adicionado" },
+    )
+    "criar_documento" -> ToolMeta(
+        kind = LunaActionStepKind.WRITE,
+        live = { "Escrevendo o documento" },
+        done = { "Documento escrito" },
+    )
+    "editar_documento" -> ToolMeta(
+        kind = LunaActionStepKind.WRITE,
+        live = { "Revisando o documento" },
+        done = { "Documento revisado" },
+    )
+    "ler_documento" -> ToolMeta(
+        kind = LunaActionStepKind.SUMMARIZE,
+        live = { "Lendo o documento" },
+        done = { "Leu o documento" },
+    )
+    "listar_documentos" -> ToolMeta(
+        kind = LunaActionStepKind.MEMORY,
+        live = { "Abrindo a estante" },
+        done = { "Olhou a estante" },
+    )
     else -> ToolMeta(
         kind = LunaActionStepKind.RUN,
         live = { "Usando uma ferramenta" },
@@ -128,6 +164,7 @@ fun ehFerramentaDeWeb(ferramenta: String): Boolean {
 fun LunaActionStepKind.icone(): String = when (this) {
     LunaActionStepKind.REASON -> "◎"
     LunaActionStepKind.PLAN -> "◈"
+    LunaActionStepKind.CHECK -> "✓"
     LunaActionStepKind.READ -> "⊟"
     LunaActionStepKind.SEARCH -> "⌕"
     LunaActionStepKind.VISION -> "▣"
