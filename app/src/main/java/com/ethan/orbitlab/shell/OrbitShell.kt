@@ -184,15 +184,19 @@ fun OrbitShell() {
     }
     val notificacoesCount = remember(manifest, seenSignature, seenLoaded, updateAvailable) {
         if (!seenLoaded) return@remember 0
-        var count = 0
-        if (updateAvailable) count += 1
-        val topNews = manifest?.news?.firstOrNull()?.id.orEmpty()
-        val sig = manifest?.let { "${it.latestVersion}::$topNews" }
-        if (sig != null && sig != seenSignature) {
-            val unseenCount = manifest?.news?.size ?: 1
-            count += unseenCount.coerceAtLeast(1)
+        val news = manifest?.news.orEmpty()
+        // Quantas news são MAIS NOVAS que a última que você viu. A assinatura guardada é
+        // "versão::idDaNewsDoTopo"; o índice desse id na lista atual = quantos itens entraram
+        // desde então. Antes o badge somava news.size (o histórico INTEIRO) toda vez que a
+        // assinatura mudava — a cada release "reapareciam todas", como se não salvasse o "já vi".
+        val seenTopId = seenSignature?.substringAfter("::", "")?.takeIf { it.isNotEmpty() }
+        val unseen = when {
+            news.isEmpty() -> 0
+            seenTopId == null -> news.size // nunca abriu Novidades → tudo é novo
+            else -> news.indexOfFirst { it.id == seenTopId }.let { if (it >= 0) it else news.size }
         }
-        count
+        // Update pendente mas nenhuma news nova (raro): ao menos 1, pra o sino não ficar mudo.
+        if (unseen == 0 && updateAvailable) 1 else unseen
     }
     val temNovidade = notificacoesCount > 0
     val conversas by ChatRepository.conversas.collectAsState()
