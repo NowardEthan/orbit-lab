@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -103,6 +104,13 @@ private fun serializarBloco(bloco: BlocoMd): String = when (bloco) {
         val lang = bloco.linguagem.orEmpty()
         "```$lang\n${bloco.texto}\n```"
     }
+    is BlocoMd.Tabela -> buildString {
+        append("| ").append(bloco.cabecalho.joinToString(" | ")).append(" |\n")
+        append("| ").append(bloco.cabecalho.joinToString(" | ") { "---" }).append(" |")
+        bloco.linhas.forEach { linha ->
+            append("\n| ").append(linha.joinToString(" | ")).append(" |")
+        }
+    }
     is BlocoMd.Divisor -> "---"
 }
 
@@ -177,6 +185,7 @@ fun LunaMarkdown(
                         is BlocoMd.Lista -> MdLista(bloco)
                         is BlocoMd.Checklist -> MdChecklist(bloco, baseCheck[index], onToggleCheck)
                         is BlocoMd.Codigo -> MdCodigo(bloco)
+                        is BlocoMd.Tabela -> MdTabela(bloco)
                         is BlocoMd.Divisor -> MdDivisor()
                     }
                 }
@@ -527,6 +536,79 @@ private fun MdDivisor() {
     )
 }
 
+/**
+ * Tabela GFM. Colunas em peso igual (não estoura a largura, o texto quebra) — o caso comum de
+ * 2–4 colunas fica limpo. Cabeçalho em card, filetes finos separando linhas e colunas.
+ */
+@Composable
+private fun MdTabela(bloco: BlocoMd.Tabela) {
+    val nCols = maxOf(
+        bloco.cabecalho.size,
+        bloco.linhas.maxOfOrNull { it.size } ?: 0,
+    ).coerceAtLeast(1)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .border(1.dp, OrbitTokens.borderSoft, RoundedCornerShape(12.dp)),
+    ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .background(OrbitTokens.surface)
+                .height(IntrinsicSize.Min),
+        ) {
+            for (c in 0 until nCols) {
+                if (c > 0) DivisorVertical()
+                CelulaTabela(bloco.cabecalho.getOrElse(c) { "" }, cabecalho = true)
+            }
+        }
+        bloco.linhas.forEach { linha ->
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(OrbitTokens.borderSoft.copy(alpha = 0.5f)),
+            )
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .height(IntrinsicSize.Min),
+            ) {
+                for (c in 0 until nCols) {
+                    if (c > 0) DivisorVertical()
+                    CelulaTabela(linha.getOrElse(c) { "" }, cabecalho = false)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RowScope.CelulaTabela(texto: String, cabecalho: Boolean) {
+    val styled = remember(texto) { estiloInline(texto) }
+    Text(
+        text = styled,
+        color = if (cabecalho) OrbitTokens.textHigh else OrbitTokens.textMid,
+        fontSize = 14.sp,
+        lineHeight = 20.sp,
+        fontWeight = if (cabecalho) FontWeight.SemiBold else FontWeight.Normal,
+        modifier = Modifier
+            .weight(1f)
+            .padding(horizontal = 12.dp, vertical = 9.dp),
+    )
+}
+
+@Composable
+private fun DivisorVertical() {
+    Box(
+        Modifier
+            .width(1.dp)
+            .fillMaxHeight()
+            .background(OrbitTokens.borderSoft.copy(alpha = 0.5f)),
+    )
+}
+
 private sealed class BlocoMd {
     data class Titulo(val nivel: Int, val texto: String) : BlocoMd()
     data class Paragrafo(val texto: String) : BlocoMd()
@@ -534,6 +616,7 @@ private sealed class BlocoMd {
     data class Lista(val ordenada: Boolean, val itens: List<String>) : BlocoMd()
     data class Checklist(val itens: List<ItemCheck>) : BlocoMd()
     data class Codigo(val texto: String, val linguagem: String?) : BlocoMd()
+    data class Tabela(val cabecalho: List<String>, val linhas: List<List<String>>) : BlocoMd()
     data object Divisor : BlocoMd()
 }
 
@@ -541,6 +624,13 @@ data class ItemCheck(val texto: String, val marcado: Boolean)
 
 /** Uma linha vira item de checklist quando é `- [ ] …` ou `- [x] …` (também `*`). */
 private val RE_CHECK = Regex("""^[-*]\s+\[([ xX])]\s+(.*)$""")
+
+/** A linha-separador de uma tabela GFM: `| --- | :--: | ---: |` (pipes e alinhamento opcionais). */
+private val RE_TABELA_SEP = Regex("""^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?$""")
+
+/** Quebra uma linha de tabela em células, tirando os pipes das pontas. */
+private fun celulasTabela(linha: String): List<String> =
+    linha.trim().removePrefix("|").removeSuffix("|").split("|").map { it.trim() }
 
 /**
  * Linha inteira em negrito — a Luna usa isso como título de seção (ex.: `**1. finalidade**`),
@@ -611,6 +701,22 @@ private fun parseBlocosMarkdown(fonte: String): List<BlocoMd> {
                 out += BlocoMd.Quote(buf.toString())
             }
 
+            // Tabela GFM: linha com `|` seguida de uma linha-separador (`| --- | --- |`).
+            // A linha-separador é a assinatura — sem ela, um `|` solto continua sendo texto.
+            i + 1 < linhas.size && trim.contains("|") &&
+                RE_TABELA_SEP.matches(linhas[i + 1].trim()) -> {
+                val cabecalho = celulasTabela(trim)
+                i += 2 // pula cabeçalho + separador
+                val corpo = mutableListOf<List<String>>()
+                while (i < linhas.size) {
+                    val t = linhas[i].trim()
+                    if (t.isEmpty() || !t.contains("|")) break
+                    corpo += celulasTabela(t)
+                    i++
+                }
+                out += BlocoMd.Tabela(cabecalho, corpo)
+            }
+
             RE_CHECK.matches(trim) -> {
                 val itens = mutableListOf<ItemCheck>()
                 while (i < linhas.size) {
@@ -647,6 +753,12 @@ private fun parseBlocosMarkdown(fonte: String): List<BlocoMd> {
                     val t = linhas[i].trim()
                     if (t.isEmpty()) break
                     if (t == "---" || t == "***" || t == "___") break
+                    // Início de tabela: linha com `|` cuja seguinte é a linha-separador.
+                    if (t.contains("|") && i + 1 < linhas.size &&
+                        RE_TABELA_SEP.matches(linhas[i + 1].trim())
+                    ) {
+                        break
+                    }
                     if (t.startsWith("#") || t.startsWith(">") || t.startsWith("```") ||
                         RE_TITULO_NEGRITO.matches(t) ||
                         t.matches(Regex("""^[-*]\s+.+""")) || t.matches(Regex("""^\d+\.\s+.+"""))

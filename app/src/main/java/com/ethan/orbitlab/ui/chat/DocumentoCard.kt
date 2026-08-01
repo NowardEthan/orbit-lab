@@ -1215,6 +1215,14 @@ private fun CanoneArtefatoSheet(
         onDismiss()
     }
 
+    // Dialog próprio pra subir por cima do leitor (mesmo motivo do histórico).
+    Dialog(
+        onDismissRequest = { salvarESair() },
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
+        ),
+    ) {
     BackHandler { salvarESair() }
 
     Box(
@@ -1326,6 +1334,7 @@ private fun CanoneArtefatoSheet(
             }
         }
     }
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1358,6 +1367,15 @@ private fun HistoricoArtefatoSheet(
         }
     }
 
+    // Envolto num Dialog próprio pra subir POR CIMA do leitor (que também é um Dialog).
+    // Como Box solto renderizava ATRÁS da janela do leitor → o histórico/diff ficava invisível.
+    Dialog(
+        onDismissRequest = { if (selecionada != null) selecionada = null else onDismiss() },
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
+        ),
+    ) {
     // Voltar: fecha a pré-visualização antes; depois a tela.
     BackHandler {
         if (selecionada != null) selecionada = null else onDismiss()
@@ -1456,6 +1474,7 @@ private fun HistoricoArtefatoSheet(
             onVoltar = { selecionada = null },
             onRestaurar = { onRestaurar(v) },
         )
+    }
     }
 }
 
