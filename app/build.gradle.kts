@@ -75,8 +75,8 @@ android {
         applicationId = "com.ethan.orbitlab"
         minSdk = 24
         targetSdk = 36
-        versionCode = 3
-        versionName = "0.5.0"
+        versionCode = 72
+        versionName = "0.21.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

@@ -61,7 +61,7 @@ import com.google.firebase.auth.FirebaseAuth
  * ordenados pelo mais mexido, com busca. Tocar num cartão abre o mesmo leitor tela cheia do chat.
  */
 @Composable
-fun EstanteScreen(onBack: () -> Unit) {
+fun EstanteScreen(onBack: (() -> Unit)? = null) {
     val uid = FirebaseAuth.getInstance().currentUser?.uid
 
     var artefatos by remember { mutableStateOf<List<DocumentoUi>>(emptyList()) }
@@ -91,17 +91,16 @@ fun EstanteScreen(onBack: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(OrbitTokens.graphiteBg),
+            .background(Color.Transparent),
     ) {
         AtmosferaEstante()
 
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .statusBarsPadding()
-                .navigationBarsPadding(),
+                .padding(top = 2.dp),
         ) {
-            CabecalhoEstante(onBack = onBack, total = artefatos.size)
+            HeaderEstante(total = artefatos.size)
 
             if (artefatos.isNotEmpty()) {
                 CampoBusca(
@@ -109,7 +108,7 @@ fun EstanteScreen(onBack: () -> Unit) {
                     onValor = { busca = it },
                     modifier = Modifier
                         .padding(horizontal = OrbitMetrics.pagePadding)
-                        .padding(top = 14.dp, bottom = 4.dp),
+                        .padding(top = 8.dp, bottom = 4.dp),
                 )
             }
 
@@ -130,10 +129,10 @@ fun EstanteScreen(onBack: () -> Unit) {
                     contentPadding = PaddingValues(
                         start = OrbitMetrics.pagePadding,
                         end = OrbitMetrics.pagePadding,
-                        top = 10.dp,
-                        bottom = 40.dp,
+                        top = 6.dp,
+                        bottom = 120.dp,
                     ),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     items(filtrados, key = { it.id }) { doc ->
                         CartaoEstante(doc = doc, onClick = { selecionado = doc })
@@ -150,47 +149,31 @@ fun EstanteScreen(onBack: () -> Unit) {
 }
 
 @Composable
-private fun CabecalhoEstante(onBack: () -> Unit, total: Int) {
-    Row(
+private fun HeaderEstante(total: Int) {
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = OrbitMetrics.pagePadding - 6.dp)
-            .padding(top = 4.dp, bottom = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(horizontal = OrbitMetrics.pagePadding)
+            .padding(top = 2.dp),
     ) {
-        OrbitIconButton(
-            icon = Icons.Rounded.ArrowBackIosNew,
-            contentDescription = "Voltar",
-            onClick = onBack,
-            tint = OrbitTokens.textHiN,
-            iconSize = 17.dp,
+        Text(
+            "Estante",
+            color = OrbitTokens.textHiN,
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = (-0.3).sp,
         )
-        Spacer(Modifier.width(6.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                "Meus artefatos",
-                color = OrbitTokens.textHiN,
-                fontSize = OrbitMetrics.titleSize,
-                fontWeight = OrbitMetrics.titleWeight,
-                letterSpacing = (-0.3).sp,
-            )
-            Text(
-                text = when (total) {
-                    0 -> "O que a Luna escreveu pra você"
-                    1 -> "1 artefato"
-                    else -> "$total artefatos"
-                },
-                color = OrbitTokens.textMidN,
-                fontSize = OrbitMetrics.captionSize,
-            )
-        }
+        Spacer(modifier = Modifier.height(1.dp))
+        Text(
+            text = when (total) {
+                0 -> "O que a Luna escreveu pra você"
+                1 -> "1 artefato no seu acervo"
+                else -> "$total artefatos no seu acervo"
+            },
+            color = OrbitTokens.textMidN,
+            fontSize = 12.sp,
+        )
     }
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .height(1.dp)
-            .background(OrbitTokens.graphiteHair),
-    )
 }
 
 @Composable

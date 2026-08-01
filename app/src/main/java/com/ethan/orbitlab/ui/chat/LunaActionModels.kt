@@ -83,26 +83,51 @@ data class ToolMeta(
     val done: (String) -> String,
 )
 
+fun pareceIdHash(texto: String): Boolean {
+    val t = texto.trim()
+    if (t.length !in 12..45) return false
+    if (t.contains(" ") || t.contains("\n") || t.contains("/") || t.contains(".")) return false
+    return t.matches(Regex("^[a-zA-Z0-9_-]+$")) && t.any { it.isDigit() } && t.any { it.isUpperCase() }
+}
+
+fun resolverTituloHumano(idOuTitulo: String): String {
+    val t = idOuTitulo.trim()
+    if (t.isBlank()) return ""
+    // Se contém quebras de linha, tags markdown (#, ##, **), ou é um texto longo, não é um título!
+    if (t.contains("\n") || t.startsWith("#") || t.startsWith("```") || t.length > 50) {
+        val primeiraLinha = t.lineSequence().firstOrNull().orEmpty().trim()
+            .removePrefix("#").removePrefix("#").removePrefix("#").trim()
+        if (primeiraLinha.isNotBlank() && primeiraLinha.length in 3..40 && !primeiraLinha.contains("\n") && !pareceIdHash(primeiraLinha)) {
+            return primeiraLinha
+        }
+        return ""
+    }
+    val cached = com.ethan.orbitlab.data.firebase.FirestoreDocumentos.obterTitulo(t)
+    if (!cached.isNullOrBlank()) return cached
+    if (pareceIdHash(t)) return ""
+    return t
+}
+
 fun toolMeta(ferramenta: String): ToolMeta = when (ferramenta) {
     "web_search" -> ToolMeta(
         kind = LunaActionStepKind.SEARCH,
         live = { arg -> if (arg.isBlank()) "Pesquisando na web" else "Pesquisando \"$arg\"" },
-        done = { arg -> if (arg.isBlank()) "Pesquisa na web" else "Pesquisar \"$arg\"" },
+        done = { arg -> if (arg.isBlank()) "Pesquisa na web" else "Pesquisou \"$arg\"" },
     )
     "ler_url" -> ToolMeta(
         kind = LunaActionStepKind.READ,
         live = { arg -> if (arg.isBlank()) "Lendo o link" else "Lendo $arg" },
-        done = { arg -> if (arg.isBlank()) "Leitura de link" else "Ler $arg" },
+        done = { arg -> if (arg.isBlank()) "Leitura de link" else "Leu $arg" },
     )
     "ver_imagem" -> ToolMeta(
         kind = LunaActionStepKind.VISION,
-        live = { "Olhando a imagem" },
+        live = { "Analisando a imagem" },
         done = { "Analisou a imagem" },
     )
     "ver_video" -> ToolMeta(
         kind = LunaActionStepKind.VIDEO,
-        live = { "Assistindo o vídeo" },
-        done = { "Assistiu o vídeo" },
+        live = { "Analisando o vídeo" },
+        done = { "Analisou o vídeo" },
     )
     "consultar_atlas" -> ToolMeta(
         kind = LunaActionStepKind.MEMORY,
@@ -121,63 +146,87 @@ fun toolMeta(ferramenta: String): ToolMeta = when (ferramenta) {
     )
     "concluir_passo" -> ToolMeta(
         kind = LunaActionStepKind.CHECK,
-        live = { "Concluindo um passo" },
-        done = { arg -> if (arg.isBlank()) "Passo concluído" else "Passo $arg concluído" },
+        live = { "Concluindo o passo" },
+        done = { arg -> if (arg.isBlank()) "Passo concluído" else "Passo \"$arg\" concluído" },
     )
     "adicionar_passo" -> ToolMeta(
         kind = LunaActionStepKind.PLAN,
-        live = { "Anotando um passo" },
+        live = { "Anotando o passo" },
         done = { "Passo adicionado" },
     )
     "criar_artefato" -> ToolMeta(
         kind = LunaActionStepKind.WRITE,
-        live = { "Escrevendo o artefato" },
-        done = { "Artefato escrito" },
+        live = { arg ->
+            val h = resolverTituloHumano(arg)
+            if (h.isBlank()) "Criando o documento" else "Criando \"$h\""
+        },
+        done = { arg ->
+            val h = resolverTituloHumano(arg)
+            if (h.isBlank()) "Documento criado" else "Criou \"$h\""
+        },
     )
     "editar_artefato" -> ToolMeta(
         kind = LunaActionStepKind.WRITE,
-        live = { "Revisando o artefato" },
-        done = { "Artefato revisado" },
+        live = { arg ->
+            val h = resolverTituloHumano(arg)
+            if (h.isBlank()) "Atualizando o documento" else "Atualizando \"$h\""
+        },
+        done = { arg ->
+            val h = resolverTituloHumano(arg)
+            if (h.isBlank()) "Documento atualizado" else "Atualizou \"$h\""
+        },
     )
     "editar_trecho_artefato" -> ToolMeta(
         kind = LunaActionStepKind.WRITE,
-        live = { "Ajustando um trecho" },
-        done = { "Trecho ajustado" },
+        live = { arg ->
+            val h = resolverTituloHumano(arg)
+            if (h.isBlank()) "Ajustando o documento" else "Ajustando \"$h\""
+        },
+        done = { arg ->
+            val h = resolverTituloHumano(arg)
+            if (h.isBlank()) "Documento ajustado" else "Ajustou \"$h\""
+        },
     )
     "ler_artefato" -> ToolMeta(
         kind = LunaActionStepKind.SUMMARIZE,
-        live = { "Lendo o artefato" },
-        done = { "Leu o artefato" },
+        live = { arg ->
+            val h = resolverTituloHumano(arg)
+            if (h.isBlank()) "Lendo o documento" else "Lendo \"$h\""
+        },
+        done = { arg ->
+            val h = resolverTituloHumano(arg)
+            if (h.isBlank()) "Leu o documento" else "Leu \"$h\""
+        },
     )
     "ler_estrutura" -> ToolMeta(
         kind = LunaActionStepKind.SUMMARIZE,
-        live = { "Olhando o índice" },
-        done = { "Viu o índice" },
+        live = { "Consultando a estrutura" },
+        done = { "Consultou a estrutura" },
     )
     "ler_secao" -> ToolMeta(
         kind = LunaActionStepKind.SUMMARIZE,
-        live = { "Abrindo a seção" },
-        done = { "Leu a seção" },
+        live = { arg -> if (arg.isBlank()) "Lendo a seção" else "Lendo \"$arg\"" },
+        done = { arg -> if (arg.isBlank()) "Leu a seção" else "Leu \"$arg\"" },
     )
     "buscar_no_artefato" -> ToolMeta(
         kind = LunaActionStepKind.SUMMARIZE,
-        live = { "Procurando no artefato" },
-        done = { "Buscou no artefato" },
+        live = { arg -> if (arg.isBlank()) "Buscando no documento" else "Buscando por \"$arg\"" },
+        done = { arg -> if (arg.isBlank()) "Buscou no documento" else "Buscou por \"$arg\"" },
     )
     "anotar_canone" -> ToolMeta(
         kind = LunaActionStepKind.MEMORY,
-        live = { "Anotando no cânone" },
-        done = { "Anotou no cânone" },
+        live = { "Guardando anotação" },
+        done = { "Anotou no acervo" },
     )
     "listar_artefatos" -> ToolMeta(
         kind = LunaActionStepKind.MEMORY,
-        live = { "Abrindo a estante" },
-        done = { "Olhou a estante" },
+        live = { "Consultando a estante" },
+        done = { "Consultou a estante" },
     )
     else -> ToolMeta(
         kind = LunaActionStepKind.RUN,
-        live = { "Usando uma ferramenta" },
-        done = { ferramenta.replace('_', ' ') },
+        live = { "Executando ação" },
+        done = { "Ação concluída" },
     )
 }
 

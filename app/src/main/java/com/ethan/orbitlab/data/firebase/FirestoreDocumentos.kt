@@ -19,6 +19,18 @@ import kotlinx.coroutines.tasks.await
  */
 object FirestoreDocumentos {
     private val db: FirebaseFirestore get() = FirebaseFirestore.getInstance()
+    private val tituloCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    fun registrarTitulo(id: String, titulo: String) {
+        if (id.isNotBlank() && titulo.isNotBlank()) {
+            tituloCache[id] = titulo
+        }
+    }
+
+    fun obterTitulo(idOrTitle: String): String? {
+        if (idOrTitle.isBlank()) return null
+        return tituloCache[idOrTitle]
+    }
 
     private fun documentosCol(uid: String) =
         db.collection("users").document(uid).collection("documentos")
@@ -229,12 +241,12 @@ object FirestoreDocumentos {
         val titulo = (data["titulo"] as? String)?.trim().orEmpty()
         val conteudo = (data["conteudo"] as? String).orEmpty()
         if (titulo.isBlank() && conteudo.isBlank()) return null
-        // Artefatos antigos podem não ter `origem`/`updatedBy` — a Luna cria a maioria, então
-        // o padrão é "luna"; quem editou por último herda de `origem` quando o campo falta.
         val origem = (data["origem"] as? String)?.takeIf { it.isNotBlank() } ?: "luna"
+        val tituloFinal = titulo.ifBlank { "Artefato" }
+        registrarTitulo(doc.id, tituloFinal)
         return DocumentoUi(
             id = doc.id,
-            titulo = titulo.ifBlank { "Artefato" },
+            titulo = tituloFinal,
             conteudo = conteudo,
             canone = (data["canone"] as? String).orEmpty(),
             createdAtMs = timestampMs(data["createdAt"]) ?: 0L,

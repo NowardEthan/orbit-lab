@@ -177,6 +177,30 @@ fun InicioScreen(
                     ),
                 verticalArrangement = Arrangement.spacedBy(OrbitMetrics.sectionGap),
             ) {
+                if (updateAvailable && !apkUrl.isNullOrBlank()) {
+                    UpdateBanner(
+                        version = latestVersion,
+                        mandatory = mandatory,
+                        downloading = downloading,
+                        progress = progress,
+                        onUpdate = {
+                            if (downloading) return@UpdateBanner
+                            val url = apkUrl ?: return@UpdateBanner
+                            downloading = true
+                            progress = 0f
+                            ChatRepository.launch {
+                                try {
+                                    ApkInstaller.downloadAndInstall(context, url) { progress = it }
+                                } catch (_: Exception) {
+                                    ApkInstaller.openInBrowser(context, url)
+                                } finally {
+                                    downloading = false
+                                    progress = 0f
+                                }
+                            }
+                        },
+                    )
+                }
                 HeaderSecao(
                     saudacao = saudacao,
                     nome = nome,
@@ -208,30 +232,6 @@ fun InicioScreen(
                     },
                     onAtualizar = { LocationRepository.atualizarEmBackground(context, forcar = true) },
                 )
-                if (updateAvailable && !apkUrl.isNullOrBlank()) {
-                    UpdateBanner(
-                        version = latestVersion,
-                        mandatory = mandatory,
-                        downloading = downloading,
-                        progress = progress,
-                        onUpdate = {
-                            if (downloading) return@UpdateBanner
-                            val url = apkUrl ?: return@UpdateBanner
-                            downloading = true
-                            progress = 0f
-                            ChatRepository.launch {
-                                try {
-                                    ApkInstaller.downloadAndInstall(context, url) { progress = it }
-                                } catch (_: Exception) {
-                                    ApkInstaller.openInBrowser(context, url)
-                                } finally {
-                                    downloading = false
-                                    progress = 0f
-                                }
-                            }
-                        },
-                    )
-                }
             }
         }
 

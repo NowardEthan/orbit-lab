@@ -22,7 +22,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.DeleteForever
-import androidx.compose.material.icons.rounded.FlashOn
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material.icons.rounded.Person
@@ -38,6 +37,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -48,17 +48,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.ethan.orbitlab.BuildConfig
-import com.ethan.orbitlab.R
-import com.ethan.orbitlab.data.AuthDiag
 import com.ethan.orbitlab.data.AuthProvider
 import com.ethan.orbitlab.data.AuthRepository
 import com.ethan.orbitlab.data.PrefsRepository
@@ -73,9 +69,8 @@ import com.ethan.orbitlab.ui.theme.orbitPressable
 import kotlinx.coroutines.launch
 
 /**
- * Ajustes — releitura minimalista (redesign 1.0).
- * Sem cartões emoldurados nem ladrilhos: grupos nus sobre o grafite,
- * separados por fios finos e ar. O azul pastel só pinga onde importa.
+ * Ajustes — design minimalista, compacto e elegante (redesign 1.0).
+ * Organizado por preferências essenciais, sem poluidores ou botões de dev.
  */
 @Composable
 fun AjustesScreen(
@@ -107,19 +102,10 @@ fun AjustesScreen(
             LocationRepository.atualizarEmBackground(context, forcar = true)
         }
     }
-    val diagAgora by AuthDiag.agora.collectAsState()
-    val clipboard = LocalClipboardManager.current
-    var diarioCopiado by remember { mutableStateOf(false) }
-    val diarioSessao = remember(diagAgora) {
-        buildString {
-            if (diagAgora.isNotBlank()) append("ABERTURA DE AGORA\n").append(diagAgora)
-            val antes = AuthDiag.anterior
-            if (antes.isNotBlank()) {
-                if (isNotEmpty()) append("\n\n")
-                append("ABERTURA ANTERIOR\n").append(antes)
-            }
-        }
-    }
+
+    var downloading by remember { mutableStateOf(false) }
+    var progress by remember { mutableFloatStateOf(0f) }
+
     val manifest by UpdatesRepository.manifest.collectAsState()
     val updateAvailable = remember(manifest) {
         val m = manifest ?: return@remember false
@@ -133,9 +119,7 @@ fun AjustesScreen(
             onDismissRequest = { confirmarSair = false },
             title = { Text("Sair da conta?") },
             text = {
-                Text(
-                    "Você volta pra tela de login. As conversas na nuvem continuam salvas nesta Conta Aura.",
-                )
+                Text("Sua sessão será encerrada. Suas conversas permanecem salvas na nuvem.")
             },
             confirmButton = {
                 TextButton(
@@ -167,7 +151,7 @@ fun AjustesScreen(
                 end = OrbitMetrics.pagePadding,
                 bottom = 120.dp,
             ),
-        verticalArrangement = Arrangement.spacedBy(30.dp),
+        verticalArrangement = Arrangement.spacedBy(24.dp),
     ) {
         HeaderAjustes()
 
@@ -186,26 +170,47 @@ fun AjustesScreen(
             onAbrirPerfil = onAbrirPerfil,
         )
 
-        Grupo(
-            titulo = "Modo de resposta",
-            rodape = "A Luna escolhe o modelo a cada mensagem — leve no papo, profundo quando o assunto pede. O raciocínio dela fica sempre à mostra.",
-        ) {
-            Linha(
-                icone = Icons.Rounded.FlashOn,
-                titulo = "Automático",
-                subtitulo = "A Luna decide o modelo por mensagem",
-                clicavel = false,
-            )
+        if (updateAvailable) {
+            val pct = (progress * 100).toInt()
+            Grupo(titulo = "Atualização") {
+                Linha(
+                    icone = Icons.Rounded.Info,
+                    titulo = if (downloading) "Baixando atualização…" else "Nova versão disponível",
+                    subtitulo = when {
+                        downloading -> "Instalando em instantes ($pct%)"
+                        manifest?.latestVersion != null -> "OrbitLab v${manifest?.latestVersion} pronta pra instalar"
+                        else -> "Toque para baixar e instalar"
+                    },
+                    trailing = if (downloading) "$pct%" else "Instalar",
+                    iconeTint = OrbitTokens.bluePastel,
+                    clicavel = !downloading,
+                    onClick = {
+                        val url = manifest?.apkUrl ?: return@Linha
+                        if (downloading) return@Linha
+                        downloading = true
+                        progress = 0f
+                        scope.launch {
+                            try {
+                                ApkInstaller.downloadAndInstall(context, url) { p ->
+                                    progress = p
+                                }
+                            } catch (_: Exception) {
+                                ApkInstaller.openInBrowser(context, url)
+                            } finally {
+                                downloading = false
+                                progress = 0f
+                            }
+                        }
+                    },
+                )
+            }
         }
 
-        Grupo(
-            titulo = "Preferências",
-            rodape = "Só neste aparelho — o lab ainda não sincroniza prefs.",
-        ) {
+        Grupo(titulo = "Preferências") {
             LinhaSwitch(
                 icone = Icons.Rounded.Vibration,
                 titulo = "Vibração",
-                subtitulo = "Feedback háptico em gestos (long press, etc.)",
+                subtitulo = "Feedback háptico nos gestos",
                 checado = vibracao,
                 onCheck = { PrefsRepository.setVibracao(it) },
             )
@@ -213,7 +218,7 @@ fun AjustesScreen(
             LinhaSwitch(
                 icone = Icons.Rounded.TravelExplore,
                 titulo = "Pesquisa profunda",
-                subtitulo = "A Luna cruza as fontes antes de responder — mais fiel, um pouco mais lento",
+                subtitulo = "Luna cruza fontes na web para respostas mais precisas",
                 checado = pesquisaProfunda,
                 onCheck = { PrefsRepository.setPesquisaProfunda(it) },
             )
@@ -221,7 +226,7 @@ fun AjustesScreen(
             LinhaSwitch(
                 icone = Icons.Rounded.LocationOn,
                 titulo = "Localização e clima",
-                subtitulo = "Dá à Luna o «onde» e o tempo agora — e mostra o clima no Início",
+                subtitulo = "Compartilha contexto de local e mostra o clima no Início",
                 checado = localizacaoAtiva,
                 onCheck = { ligar ->
                     if (ligar) {
@@ -244,14 +249,11 @@ fun AjustesScreen(
             )
         }
 
-        Grupo(
-            titulo = "Privacidade e dados",
-            rodape = "A Luna é uma companhia, não uma terapeuta — em crise, o CVV atende no 188.",
-        ) {
+        Grupo(titulo = "Privacidade e dados") {
             Linha(
                 icone = Icons.Rounded.Shield,
                 titulo = "Como a Luna trata seus dados",
-                subtitulo = "O que fica salvo, a IA de terceiros e seus direitos",
+                subtitulo = "Privacidade, modelo e retenção de conversas",
                 iconeTint = OrbitTokens.bluePastel,
                 onClick = { tela = AjustesTela.Privacidade },
             )
@@ -259,60 +261,25 @@ fun AjustesScreen(
             Linha(
                 icone = Icons.Rounded.DeleteForever,
                 titulo = "Apagar meus dados",
-                subtitulo = "Apaga conversas deste lab — sem volta",
+                subtitulo = "Exclui o histórico de conversas neste dispositivo",
                 danger = true,
                 onClick = { tela = AjustesTela.Privacidade },
             )
         }
 
         Grupo(titulo = "Sobre") {
-            if (updateAvailable) {
-                Linha(
-                    icone = Icons.Rounded.Info,
-                    titulo = "Atualização disponível",
-                    subtitulo = manifest?.latestVersion?.let { "OrbitLab v$it pronta pra instalar" },
-                    trailing = "Instalar",
-                    iconeTint = OrbitTokens.bluePastel,
-                    onClick = {
-                        val url = manifest?.apkUrl ?: return@Linha
-                        scope.launch {
-                            try {
-                                ApkInstaller.downloadAndInstall(context, url) {}
-                            } catch (_: Exception) {
-                                ApkInstaller.openInBrowser(context, url)
-                            }
-                        }
-                    },
-                )
-                Divisoria()
-            }
             Linha(
                 icone = Icons.Rounded.Info,
-                titulo = "Versão",
+                titulo = "Versão do OrbitLab",
                 trailing = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
                 clicavel = false,
             )
-            // Diário de bordo da abertura (ver AuthDiag). Fica aqui porque quando a
-            // reentrada dá certo ele nunca chega à tela de login, onde o diário também aparece.
-            if (diarioSessao.isNotBlank()) {
-                Divisoria()
-                Linha(
-                    icone = Icons.Rounded.Info,
-                    titulo = "Diário da sessão",
-                    subtitulo = if (diarioCopiado) "Copiado — cola aqui pro Claude" else "Por que a abertura demorou / pediu login",
-                    trailing = if (diarioCopiado) "Ok" else "Copiar",
-                    onClick = {
-                        clipboard.setText(AnnotatedString(diarioSessao))
-                        diarioCopiado = true
-                    },
-                )
-            }
         }
 
         LinhaSair(onClick = { confirmarSair = true })
 
         Text(
-            "Orbit · Aura",
+            "Orbit · Aura OS",
             color = OrbitTokens.textLowN,
             fontSize = 12.sp,
             modifier = Modifier
@@ -334,12 +301,12 @@ private fun HeaderAjustes() {
             fontWeight = OrbitMetrics.titleWeight,
             letterSpacing = (-0.3).sp,
         )
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(4.dp))
         Text(
-            "Conta, transparência e como a Luna trata seus dados.",
+            "Preferências do app e segurança da sua conta.",
             color = OrbitTokens.textMidN,
-            fontSize = 13.sp,
-            lineHeight = 18.sp,
+            fontSize = OrbitMetrics.captionSize,
+            lineHeight = 16.sp,
         )
     }
 }
@@ -361,7 +328,7 @@ private fun ContaLinha(
     ) {
         Box(
             modifier = Modifier
-                .size(46.dp)
+                .size(44.dp)
                 .clip(CircleShape)
                 .background(OrbitTokens.graphiteRaised),
             contentAlignment = Alignment.Center,
@@ -378,7 +345,7 @@ private fun ContaLinha(
                     Icons.Rounded.Person,
                     contentDescription = null,
                     tint = OrbitTokens.textMidN,
-                    modifier = Modifier.size(24.dp),
+                    modifier = Modifier.size(22.dp),
                 )
             }
         }
@@ -387,7 +354,7 @@ private fun ContaLinha(
             Text(
                 nome,
                 color = OrbitTokens.textHiN,
-                fontSize = 16.sp,
+                fontSize = 15.5.sp,
                 fontWeight = FontWeight.SemiBold,
             )
             Spacer(modifier = Modifier.height(2.dp))
@@ -402,7 +369,7 @@ private fun ContaLinha(
             Icons.Rounded.ChevronRight,
             contentDescription = null,
             tint = OrbitTokens.textLowN,
-            modifier = Modifier.size(22.dp),
+            modifier = Modifier.size(20.dp),
         )
     }
 }
@@ -453,14 +420,14 @@ private fun Linha(
         modifier = Modifier
             .fillMaxWidth()
             .then(if (clicavel) Modifier.orbitPressable(onClick = onClick) else Modifier)
-            .padding(vertical = 14.dp),
+            .padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
             icone,
             contentDescription = null,
             tint = if (danger) OrbitTokens.danger else iconeTint,
-            modifier = Modifier.size(20.dp),
+            modifier = Modifier.size(19.dp),
         )
         Spacer(modifier = Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
@@ -510,14 +477,14 @@ private fun LinhaSwitch(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp),
+            .padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
             icone,
             contentDescription = null,
             tint = OrbitTokens.textMidN,
-            modifier = Modifier.size(20.dp),
+            modifier = Modifier.size(19.dp),
         )
         Spacer(modifier = Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
@@ -559,7 +526,7 @@ private fun Divisoria() {
     Box(
         Modifier
             .fillMaxWidth()
-            .padding(start = 34.dp)
+            .padding(start = 33.dp)
             .height(1.dp)
             .background(OrbitTokens.graphiteHair),
     )
@@ -572,14 +539,14 @@ private fun LinhaSair(onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .orbitPressable(onClick = onClick)
-            .padding(vertical = 12.dp),
+            .padding(vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
             Icons.AutoMirrored.Rounded.Logout,
             contentDescription = null,
             tint = OrbitTokens.danger,
-            modifier = Modifier.size(20.dp),
+            modifier = Modifier.size(19.dp),
         )
         Spacer(modifier = Modifier.width(14.dp))
         Text(

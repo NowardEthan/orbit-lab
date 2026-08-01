@@ -56,6 +56,15 @@ object LunaApiChat {
         else -> "Pensando…"
     }
 
+    private fun pareceCodigoOuPayloadTecnico(texto: String): Boolean {
+        val t = texto.lowercase().trim()
+        return t.startsWith("{") || t.startsWith("[") || t.startsWith("```") ||
+            t.contains("import ") || t.contains("export ") || t.contains("function") ||
+            t.contains("class ") || t.contains("fun ") || t.contains("diff") ||
+            t.contains("<html>") || t.contains("const ") || t.contains("val ") ||
+            t.contains("void ") || t.contains("return ") || t.contains("\n")
+    }
+
     private fun rotuloEnvio(anexos: List<ComposerAttachment>): String = when {
         anexos.size > 1 -> "Enviando os anexos…"
         anexos.firstOrNull()?.kind == AttachmentKind.IMAGE -> "Enviando a foto…"
@@ -63,17 +72,42 @@ object LunaApiChat {
         else -> "Enviando o arquivo…"
     }
 
-    /** Argumento legível de um evento `acao` — o que a pessoa vê no passo (query, url…). */
+    /** Argumento legível de um evento `acao` — o que a pessoa vê no passo (query, título de documento, url…). */
     private fun extrairArgAcao(ferramenta: String, argumentos: JSONObject?): String {
         if (argumentos == null) return ""
         val bruto = when (ferramenta) {
             "web_search" -> argumentos.optString("query")
             "ler_url" -> argumentos.optString("url")
             "consultar_atlas" -> argumentos.optString("termo").ifBlank { argumentos.optString("query") }
-            else -> argumentos.keys().asSequence().firstOrNull()
-                ?.let { argumentos.optString(it) }.orEmpty()
+            "criar_artefato", "editar_artefato", "editar_trecho_artefato", "ler_artefato", "ler_secao", "buscar_no_artefato" -> {
+                val titulo = argumentos.optString("titulo").takeIf { it.isNotBlank() }
+                val alteracao = argumentos.optString("alteracao").takeIf { it.isNotBlank() }
+                val secao = argumentos.optString("secao").takeIf { it.isNotBlank() }
+                val query = argumentos.optString("query").takeIf { it.isNotBlank() }
+                when {
+                    !titulo.isNullOrBlank() && !alteracao.isNullOrBlank() -> "$titulo ($alteracao)"
+                    !titulo.isNullOrBlank() -> titulo
+                    !secao.isNullOrBlank() -> secao
+                    !query.isNullOrBlank() -> query
+                    !alteracao.isNullOrBlank() -> alteracao
+                    else -> ""
+                }
+            }
+            else -> {
+                val chavesPreferenciais = listOf("titulo", "nome", "termo", "query", "url", "secao", "passo")
+                val chave = chavesPreferenciais.firstOrNull { argumentos.has(it) && argumentos.optString(it).isNotBlank() }
+                if (chave != null) argumentos.optString(chave) else ""
+            }
         }
-        return bruto.trim()
+        return limparPayloadHumano(bruto)
+    }
+
+    private fun limparPayloadHumano(texto: String): String {
+        val t = texto.trim()
+        if (t.isBlank()) return ""
+        if (pareceCodigoOuPayloadTecnico(t)) return ""
+        val primeiraLinha = t.lineSequence().firstOrNull().orEmpty().trim()
+        return if (primeiraLinha.length > 70) primeiraLinha.take(67) + "…" else primeiraLinha
     }
 
     /** Fontes que voltaram no `fim_ferramenta` (web_search / ler_url) — viram chips clicáveis. */

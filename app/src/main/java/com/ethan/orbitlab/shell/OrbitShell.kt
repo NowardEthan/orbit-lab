@@ -4,15 +4,20 @@ import android.app.Activity
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import com.ethan.orbitlab.BuildConfig
+import com.ethan.orbitlab.data.updates.isNewer
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -93,6 +98,7 @@ private enum class OrbitTab(
 ) {
     INICIO("Início", Icons.Rounded.Home),
     CONVERSAS("Conversas", Icons.Rounded.Email),
+    ESTANTE("Estante", Icons.AutoMirrored.Rounded.MenuBook),
     PERFIL("Perfil", Icons.Rounded.Person),
     AJUSTES("Ajustes", Icons.Rounded.Settings),
 }
@@ -158,7 +164,6 @@ fun OrbitShell() {
     // Texto digitado no composer do Início: abre uma conversa nova JÁ mandando esta 1ª mensagem.
     var mensagemInicial by remember { mutableStateOf<String?>(null) }
     var novidadesAberto by remember { mutableStateOf(false) }
-    var estanteAberta by remember { mutableStateOf(false) }
 
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -171,12 +176,25 @@ fun OrbitShell() {
     val manifest by UpdatesRepository.manifest.collectAsState()
     val seenSignature by UpdatesRepository.seenSignature.collectAsState()
     val seenLoaded by UpdatesRepository.seenLoaded.collectAsState()
-    val temNovidade = remember(manifest, seenSignature, seenLoaded) {
-        if (!seenLoaded) return@remember false
+    val updateAvailable = remember(manifest) {
+        val m = manifest ?: return@remember false
+        val latestCode = m.latestVersionCode
+        if (latestCode != null) latestCode > BuildConfig.VERSION_CODE
+        else isNewer(m.latestVersion, BuildConfig.VERSION_NAME)
+    }
+    val notificacoesCount = remember(manifest, seenSignature, seenLoaded, updateAvailable) {
+        if (!seenLoaded) return@remember 0
+        var count = 0
+        if (updateAvailable) count += 1
         val topNews = manifest?.news?.firstOrNull()?.id.orEmpty()
         val sig = manifest?.let { "${it.latestVersion}::$topNews" }
-        sig != null && sig != seenSignature
+        if (sig != null && sig != seenSignature) {
+            val unseenCount = manifest?.news?.size ?: 1
+            count += unseenCount.coerceAtLeast(1)
+        }
+        count
     }
+    val temNovidade = notificacoesCount > 0
     val conversas by ChatRepository.conversas.collectAsState()
     val profile by UserProfileRepository.profile.collectAsState()
     val abaStateHolder = rememberSaveableStateHolder()
@@ -204,8 +222,7 @@ fun OrbitShell() {
     val onAba = remember { { tab: OrbitTab -> abaAtual = tab } }
     val onFecharChat = remember { { chatAberto = false } }
     val onFecharNovidades = remember { { novidadesAberto = false } }
-    val onFecharEstante = remember { { estanteAberta = false } }
-    val onAbrirEstante = remember { { estanteAberta = true } }
+    val onAbrirEstante = remember { { abaAtual = OrbitTab.ESTANTE } }
     val onNovaConversa = remember {
         {
             val newId = ChatRepository.criarConversa()
@@ -222,7 +239,7 @@ fun OrbitShell() {
         }
     }
 
-    val temOverlay = chatAberto || novidadesAberto || estanteAberta
+    val temOverlay = chatAberto || novidadesAberto
 
     // Botão 'Voltar' nativo: gaveta primeiro, depois os overlays.
     BackHandler(enabled = drawerState.isOpen || temOverlay) {
@@ -230,7 +247,6 @@ fun OrbitShell() {
             drawerState.isOpen -> scope.launch { drawerState.close() }
             chatAberto -> chatAberto = false
             novidadesAberto -> novidadesAberto = false
-            estanteAberta -> estanteAberta = false
         }
     }
 
@@ -249,7 +265,6 @@ fun OrbitShell() {
                         .substringBefore(' ').ifBlank { "você" },
                     avatarUrl = profile.avatarUrl,
                     onAba = { tab -> onAba(tab); fecharGaveta() },
-                    onEstante = { onAbrirEstante(); fecharGaveta() },
                     onPerfil = { onAbrirPerfil(); fecharGaveta() },
                     onAbrirConversa = { id -> onOpenChat(id); fecharGaveta() },
                     onNovaConversa = { onNovaConversa(); fecharGaveta() },
@@ -261,11 +276,10 @@ fun OrbitShell() {
             abaAtual = abaAtual,
             temOverlay = temOverlay,
             abaStateHolder = abaStateHolder,
-            temNovidade = temNovidade,
+            notificacoesCount = notificacoesCount,
             chatAberto = chatAberto,
             conversaAtivaId = conversaAtivaId,
             novidadesAberto = novidadesAberto,
-            estanteAberta = estanteAberta,
             onAbrirMenu = { scope.launch { drawerState.open() } },
             onAbrirNovidades = onAbrirNovidades,
             onOpenChat = onOpenChat,
@@ -278,7 +292,6 @@ fun OrbitShell() {
             onAbrirPerfil = onAbrirPerfil,
             onFecharChat = onFecharChat,
             onFecharNovidades = onFecharNovidades,
-            onFecharEstante = onFecharEstante,
         )
     }
 }
@@ -288,11 +301,10 @@ private fun ShellConteudo(
     abaAtual: OrbitTab,
     temOverlay: Boolean,
     abaStateHolder: androidx.compose.runtime.saveable.SaveableStateHolder,
-    temNovidade: Boolean,
+    notificacoesCount: Int,
     chatAberto: Boolean,
     conversaAtivaId: String?,
     novidadesAberto: Boolean,
-    estanteAberta: Boolean,
     onAbrirMenu: () -> Unit,
     onAbrirNovidades: () -> Unit,
     onOpenChat: (String) -> Unit,
@@ -305,13 +317,12 @@ private fun ShellConteudo(
     onAbrirPerfil: () -> Unit,
     onFecharChat: () -> Unit,
     onFecharNovidades: () -> Unit,
-    onFecharEstante: () -> Unit,
 ) {
     Box(Modifier.fillMaxSize().background(OrbitTokens.graphiteBg)) {
         Column(Modifier.fillMaxSize()) {
             OrbitTopBar(
                 onAbrirMenu = onAbrirMenu,
-                temNovidade = temNovidade,
+                notificacoesCount = notificacoesCount,
                 onAbrirNovidades = onAbrirNovidades,
             )
             Box(
@@ -334,6 +345,7 @@ private fun ShellConteudo(
                                 onOpenChat = onOpenChat,
                                 onAbrirEstante = onAbrirEstante,
                             )
+                            OrbitTab.ESTANTE -> EstanteScreen()
                             OrbitTab.PERFIL -> PerfilScreen(
                                 onConversarComLuna = onConversarComLuna,
                                 onAbrirConversa = onOpenChat,
@@ -369,15 +381,6 @@ private fun ShellConteudo(
         ) {
             NovidadesScreen(onBack = onFecharNovidades)
         }
-
-        AnimatedVisibility(
-            visible = estanteAberta,
-            enter = OrbitMotion.overlayEnter(),
-            exit = OrbitMotion.overlayExit(),
-            modifier = Modifier.fillMaxSize(),
-        ) {
-            EstanteScreen(onBack = onFecharEstante)
-        }
     }
 }
 
@@ -389,7 +392,7 @@ private fun ShellConteudo(
 @Composable
 private fun OrbitTopBar(
     onAbrirMenu: () -> Unit,
-    temNovidade: Boolean,
+    notificacoesCount: Int,
     onAbrirNovidades: () -> Unit,
 ) {
     Row(
@@ -413,17 +416,30 @@ private fun OrbitTopBar(
                 icon = Icons.Rounded.Notifications,
                 contentDescription = "Novidades",
                 onClick = onAbrirNovidades,
+                tint = if (notificacoesCount > 0) OrbitTokens.textHiN else OrbitTokens.textMidN,
                 iconSize = 21.dp,
             )
-            if (temNovidade) {
+            if (notificacoesCount > 0) {
+                val label = if (notificacoesCount > 99) "99+" else "$notificacoesCount"
                 Box(
-                    Modifier
+                    modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(7.dp)
-                        .size(7.dp)
-                        .clip(CircleShape)
-                        .background(OrbitTokens.bluePastel),
-                )
+                        .offset(x = 2.dp, y = (-1).dp)
+                        .height(16.dp)
+                        .defaultMinSize(minWidth = 16.dp)
+                        .clip(RoundedCornerShape(99.dp))
+                        .background(OrbitTokens.bluePastel)
+                        .padding(horizontal = if (label.length > 1) 5.dp else 2.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = label,
+                        color = OrbitTokens.onBluePastel,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        lineHeight = 10.sp,
+                    )
+                }
             }
         }
     }
@@ -436,7 +452,6 @@ private fun OrbitDrawer(
     nome: String,
     avatarUrl: String?,
     onAba: (OrbitTab) -> Unit,
-    onEstante: () -> Unit,
     onPerfil: () -> Unit,
     onAbrirConversa: (String) -> Unit,
     onNovaConversa: () -> Unit,
@@ -466,7 +481,7 @@ private fun OrbitDrawer(
         ) {
             DrawerNavItem(Icons.Rounded.Home, "Início", atual == OrbitTab.INICIO) { onAba(OrbitTab.INICIO) }
             DrawerNavItem(Icons.Rounded.Email, "Conversas", atual == OrbitTab.CONVERSAS) { onAba(OrbitTab.CONVERSAS) }
-            DrawerNavItem(Icons.AutoMirrored.Rounded.MenuBook, "Estante", false, onEstante)
+            DrawerNavItem(Icons.AutoMirrored.Rounded.MenuBook, "Estante", atual == OrbitTab.ESTANTE) { onAba(OrbitTab.ESTANTE) }
             DrawerNavItem(Icons.Rounded.Person, "Perfil", atual == OrbitTab.PERFIL) { onAba(OrbitTab.PERFIL) }
             DrawerNavItem(Icons.Rounded.Settings, "Ajustes", atual == OrbitTab.AJUSTES) { onAba(OrbitTab.AJUSTES) }
 

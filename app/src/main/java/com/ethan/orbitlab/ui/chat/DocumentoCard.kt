@@ -54,6 +54,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -442,346 +444,367 @@ fun DocumentoReaderSheet(
         editando = false
     }
 
-    // Voltar do sistema: sai da edição (salvando) ou da marcação de trecho antes de fechar a tela.
-    BackHandler {
-        when {
-            editando -> salvarESair()
-            selecionando -> selecionando = false
-            else -> onDismiss()
+    val conteudoLimpo = remember(conteudoLocal, tituloLocal) {
+        val lines = conteudoLocal.lines()
+        if (lines.isNotEmpty()) {
+            val firstLineClean = lines.first().trim().removePrefix("#").trim()
+            val tituloClean = tituloLocal.trim().removePrefix("#").trim()
+            if (firstLineClean.equals(tituloClean, ignoreCase = true) ||
+                (tituloClean.length > 5 && firstLineClean.contains(tituloClean, ignoreCase = true))) {
+                lines.drop(1).dropWhile { it.isBlank() }.joinToString("\n")
+            } else {
+                conteudoLocal
+            }
+        } else {
+            conteudoLocal
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(OrbitTokens.graphiteBg)
-            .orbitEnter(),
+    Dialog(
+        onDismissRequest = {
+            when {
+                editando -> salvarESair()
+                selecionando -> selecionando = false
+                else -> onDismiss()
+            }
+        },
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
+        ),
     ) {
-        AtmosferaArtefato()
-
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .statusBarsPadding()
-                .navigationBarsPadding(),
+                .background(OrbitTokens.graphiteBg)
+                .orbitEnter(),
         ) {
-            // ── Cabeçalho fixo: voltar · identidade · ações ──
-            Row(
+            AtmosferaArtefato()
+
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = OrbitMetrics.pagePadding)
-                    .padding(top = 8.dp, bottom = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .navigationBarsPadding(),
             ) {
-                BotaoIconeChrome(
-                    icone = Icons.Rounded.ArrowBackIosNew,
-                    descricao = "Fechar",
+                // ── Cabeçalho fixo: voltar · identidade · ações ──
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = OrbitMetrics.pagePadding)
+                        .padding(top = 4.dp, bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    when {
-                        editando -> salvarESair()
-                        selecionando -> selecionando = false
-                        else -> onDismiss()
+                    BotaoIconeChrome(
+                        icone = Icons.Rounded.ArrowBackIosNew,
+                        descricao = "Fechar",
+                    ) {
+                        when {
+                            editando -> salvarESair()
+                            selecionando -> selecionando = false
+                            else -> onDismiss()
+                        }
                     }
-                }
-                Spacer(Modifier.width(12.dp))
-                if (editando) {
-                    Text(
-                        text = "Editando",
-                        color = OrbitTokens.textMidN,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                        letterSpacing = (-0.2).sp,
-                        modifier = Modifier.weight(1f),
-                    )
-                    BotaoConcluir { salvarESair() }
-                } else if (selecionando) {
-                    Text(
-                        text = "Marque o trecho",
-                        color = OrbitTokens.textMidN,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                        letterSpacing = (-0.2).sp,
-                        modifier = Modifier.weight(1f),
-                    )
-                } else {
-                    TagArtefato()
-                    Spacer(Modifier.weight(1f))
-                    BotaoEditar { editando = true }
-                    Spacer(Modifier.width(8.dp))
-                    // O menu ⋮ — as ações de folha (estilo Notion).
-                    Box {
-                        BotaoIconeChrome(
-                            icone = Icons.Rounded.MoreVert,
-                            descricao = "Mais ações",
-                        ) { menuAberto = true }
-                        DropdownMenu(
-                            expanded = menuAberto,
-                            onDismissRequest = { menuAberto = false },
-                            shape = RoundedCornerShape(16.dp),
-                            containerColor = OrbitTokens.graphiteRaised,
-                            border = BorderStroke(1.dp, OrbitTokens.graphiteHair),
-                            tonalElevation = 0.dp,
-                            shadowElevation = 14.dp,
-                            offset = DpOffset(0.dp, 6.dp),
-                            modifier = Modifier.width(224.dp),
-                        ) {
-                            ItemMenu("Exportar", Icons.Rounded.FileDownload) {
-                                menuAberto = false
-                                exportarAberto = true
-                            }
-                            ItemMenu("Copiar texto", Icons.Rounded.ContentCopy) {
-                                menuAberto = false
-                                clipboard.setText(AnnotatedString(conteudoLocal))
-                                Toast.makeText(context, "Copiado", Toast.LENGTH_SHORT).show()
-                            }
-                            ItemMenu("Renomear", Icons.Rounded.DriveFileRenameOutline) {
-                                menuAberto = false
-                                renomeando = true
-                            }
-                            ItemMenu("Duplicar", Icons.Rounded.FileCopy) {
-                                menuAberto = false
-                                if (uid != null && !acaoEmCurso) {
-                                    acaoEmCurso = true
-                                    scope.launch {
-                                        val ok = runCatching { FirestoreDocumentos.duplicar(uid, doc.id) }.isSuccess
-                                        acaoEmCurso = false
-                                        Toast.makeText(
-                                            context,
-                                            if (ok) "Artefato duplicado" else "Não consegui duplicar",
-                                            Toast.LENGTH_SHORT,
-                                        ).show()
-                                        if (ok) onDismiss()
+                    Spacer(Modifier.width(12.dp))
+                    if (editando) {
+                        Text(
+                            text = "Editando",
+                            color = OrbitTokens.textMidN,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            letterSpacing = (-0.2).sp,
+                            modifier = Modifier.weight(1f),
+                        )
+                        BotaoConcluir { salvarESair() }
+                    } else if (selecionando) {
+                        Text(
+                            text = "Marque o trecho",
+                            color = OrbitTokens.textMidN,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            letterSpacing = (-0.2).sp,
+                            modifier = Modifier.weight(1f),
+                        )
+                    } else {
+                        TagArtefato()
+                        Spacer(Modifier.weight(1f))
+                        BotaoEditar { editando = true }
+                        Spacer(Modifier.width(8.dp))
+                        // O menu ⋮ — as ações de folha (estilo Notion).
+                        Box {
+                            BotaoIconeChrome(
+                                icone = Icons.Rounded.MoreVert,
+                                descricao = "Mais ações",
+                            ) { menuAberto = true }
+                            DropdownMenu(
+                                expanded = menuAberto,
+                                onDismissRequest = { menuAberto = false },
+                                shape = RoundedCornerShape(16.dp),
+                                containerColor = OrbitTokens.graphiteRaised,
+                                border = BorderStroke(1.dp, OrbitTokens.graphiteHair),
+                                tonalElevation = 0.dp,
+                                shadowElevation = 14.dp,
+                                offset = DpOffset(0.dp, 6.dp),
+                                modifier = Modifier.width(224.dp),
+                            ) {
+                                ItemMenu("Exportar", Icons.Rounded.FileDownload) {
+                                    menuAberto = false
+                                    exportarAberto = true
+                                }
+                                ItemMenu("Copiar texto", Icons.Rounded.ContentCopy) {
+                                    menuAberto = false
+                                    clipboard.setText(AnnotatedString(conteudoLocal))
+                                    Toast.makeText(context, "Copiado", Toast.LENGTH_SHORT).show()
+                                }
+                                ItemMenu("Renomear", Icons.Rounded.DriveFileRenameOutline) {
+                                    menuAberto = false
+                                    renomeando = true
+                                }
+                                ItemMenu("Duplicar", Icons.Rounded.FileCopy) {
+                                    menuAberto = false
+                                    if (uid != null && !acaoEmCurso) {
+                                        acaoEmCurso = true
+                                        scope.launch {
+                                            val ok = runCatching { FirestoreDocumentos.duplicar(uid, doc.id) }.isSuccess
+                                            acaoEmCurso = false
+                                            Toast.makeText(
+                                                context,
+                                                if (ok) "Artefato duplicado" else "Não consegui duplicar",
+                                                Toast.LENGTH_SHORT,
+                                            ).show()
+                                            if (ok) onDismiss()
+                                        }
                                     }
                                 }
-                            }
-                            ItemMenu("Cânone", Icons.Rounded.MenuBook) {
-                                menuAberto = false
-                                canoneAberto = true
-                            }
-                            ItemMenu("Histórico de versões", Icons.Rounded.History) {
-                                menuAberto = false
-                                historicoAberto = true
-                            }
-                            if (onReferenciarTrecho != null) {
-                                ItemMenu("Marcar trecho pra Luna", Icons.Rounded.FormatQuote) {
+                                ItemMenu("Cânone", Icons.Rounded.MenuBook) {
                                     menuAberto = false
-                                    selecionando = true
+                                    canoneAberto = true
                                 }
-                            }
-                            DivisorMenu()
-                            ItemMenu("Apagar", Icons.Rounded.DeleteOutline, perigo = true) {
-                                menuAberto = false
-                                confirmandoApagar = true
+                                ItemMenu("Histórico de versões", Icons.Rounded.History) {
+                                    menuAberto = false
+                                    historicoAberto = true
+                                }
+                                if (onReferenciarTrecho != null) {
+                                    ItemMenu("Marcar trecho pra Luna", Icons.Rounded.FormatQuote) {
+                                        menuAberto = false
+                                        selecionando = true
+                                    }
+                                }
+                                DivisorMenu()
+                                ItemMenu("Apagar", Icons.Rounded.DeleteOutline, perigo = true) {
+                                    menuAberto = false
+                                    confirmandoApagar = true
+                                }
                             }
                         }
                     }
                 }
-            }
-            // Fio-de-cabelo separando o chrome do conteúdo.
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(1.dp)
-                    .background(OrbitTokens.graphiteHair.copy(alpha = 0.65f)),
-            )
+                // Fio-de-cabelo separando o chrome do conteúdo.
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .background(OrbitTokens.graphiteHair.copy(alpha = 0.65f)),
+                )
 
-            // ── Corpo rolável ──
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = OrbitMetrics.pagePadding)
-                    .padding(top = 20.dp, bottom = 36.dp),
-            ) {
-                if (editando) {
-                    // Edição no lugar: título e corpo viram campos sem moldura, com a MESMA
-                    // tipografia do leitor. É o Markdown cru, editável ao vivo bem aqui — vira
-                    // heading/negrito/checkbox quando ele conclui. Fonte-do-texto estilo Obsidian,
-                    // não um formulário à parte.
-                    BasicTextField(
-                        value = tituloLocal,
-                        onValueChange = { tituloLocal = it },
-                        textStyle = TextStyle(
+                // ── Corpo rolável ──
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = OrbitMetrics.pagePadding)
+                        .padding(top = 8.dp, bottom = 36.dp),
+                ) {
+                    if (editando) {
+                        // Edição no lugar: título e corpo viram campos sem moldura, com a MESMA
+                        // tipografia do leitor. É o Markdown cru, editável ao vivo bem aqui — vira
+                        // heading/negrito/checkbox quando ele conclui. Fonte-do-texto estilo Obsidian,
+                        // não um formulário à parte.
+                        BasicTextField(
+                            value = tituloLocal,
+                            onValueChange = { tituloLocal = it },
+                            textStyle = TextStyle(
+                                color = OrbitTokens.textHiN,
+                                fontSize = 26.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = (-0.5).sp,
+                                lineHeight = 32.sp,
+                            ),
+                            cursorBrush = SolidColor(OrbitTokens.bluePastel),
+                            modifier = Modifier.fillMaxWidth(),
+                            decorationBox = { inner ->
+                                if (tituloLocal.isEmpty()) {
+                                    Text(
+                                        text = "Título do artefato",
+                                        color = OrbitTokens.textLowN,
+                                        fontSize = 26.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = (-0.5).sp,
+                                        lineHeight = 32.sp,
+                                    )
+                                }
+                                inner()
+                            },
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Box(
+                            Modifier
+                                .width(44.dp)
+                                .height(3.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(gradienteArtefato),
+                        )
+                        Spacer(Modifier.height(18.dp))
+                        BasicTextField(
+                            value = editorValor,
+                            onValueChange = {
+                                editorValor = it
+                                conteudoLocal = it.text
+                            },
+                            textStyle = TextStyle(
+                                color = OrbitTokens.textHiN,
+                                fontSize = 16.sp,
+                                lineHeight = 26.sp,
+                            ),
+                            cursorBrush = SolidColor(OrbitTokens.bluePastel),
+                            // O verniz: fora da linha do cursor, some com o `##`/`>` e mostra a linha
+                            // já como título/citação. Na linha ativa, os marcadores voltam esmaecidos
+                            // pra editar. É a mágica "live preview" do Obsidian.
+                            visualTransformation = vernizMarkdown(
+                                editorValor.selection.start,
+                                editorValor.selection.end,
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 300.dp),
+                            decorationBox = { inner ->
+                                if (editorValor.text.isEmpty()) {
+                                    Text(
+                                        text = "Escreve aqui em Markdown…",
+                                        color = OrbitTokens.textLowN,
+                                        fontSize = 16.sp,
+                                        lineHeight = 26.sp,
+                                    )
+                                }
+                                inner()
+                            },
+                        )
+                    } else if (selecionando) {
+                        // Marcar trecho: o corpo é a fonte CRUA num campo só-leitura, com o mesmo verniz
+                        // do editor pra parecer renderizado. O que ele arrasta = offsets exatos na fonte.
+                        Text(
+                            text = tituloLocal,
+                            color = OrbitTokens.textHiN,
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = (-0.4).sp,
+                            lineHeight = 28.sp,
+                        )
+                        Spacer(Modifier.height(14.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(OrbitTokens.graphiteSurf)
+                                .border(1.dp, OrbitTokens.graphiteHair, RoundedCornerShape(12.dp))
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                Icons.Rounded.FormatQuote,
+                                contentDescription = null,
+                                tint = OrbitTokens.bluePastel,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                "Arraste sobre o texto pra marcar o trecho que a Luna deve mudar.",
+                                color = OrbitTokens.textMidN,
+                                fontSize = 13.sp,
+                                lineHeight = 18.sp,
+                            )
+                        }
+                        Spacer(Modifier.height(18.dp))
+                        BasicTextField(
+                            value = refValor,
+                            onValueChange = { refValor = it },
+                            readOnly = true,
+                            textStyle = TextStyle(
+                                color = OrbitTokens.textHiN,
+                                fontSize = 16.sp,
+                                lineHeight = 26.sp,
+                            ),
+                            cursorBrush = SolidColor(OrbitTokens.bluePastel),
+                            visualTransformation = vernizMarkdown(
+                                refValor.selection.start,
+                                refValor.selection.end,
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 140.dp),
+                        )
+                    } else {
+                        Text(
+                            text = tituloLocal,
                             color = OrbitTokens.textHiN,
                             fontSize = 26.sp,
                             fontWeight = FontWeight.Bold,
                             letterSpacing = (-0.5).sp,
                             lineHeight = 32.sp,
-                        ),
-                        cursorBrush = SolidColor(OrbitTokens.bluePastel),
-                        modifier = Modifier.fillMaxWidth(),
-                        decorationBox = { inner ->
-                            if (tituloLocal.isEmpty()) {
-                                Text(
-                                    text = "Título do artefato",
-                                    color = OrbitTokens.textLowN,
-                                    fontSize = 26.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = (-0.5).sp,
-                                    lineHeight = 32.sp,
-                                )
-                            }
-                            inner()
-                        },
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    Box(
-                        Modifier
-                            .width(44.dp)
-                            .height(3.dp)
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(gradienteArtefato),
-                    )
-                    Spacer(Modifier.height(18.dp))
-                    BasicTextField(
-                        value = editorValor,
-                        onValueChange = {
-                            editorValor = it
-                            conteudoLocal = it.text
-                        },
-                        textStyle = TextStyle(
-                            color = OrbitTokens.textHiN,
-                            fontSize = 16.sp,
-                            lineHeight = 26.sp,
-                        ),
-                        cursorBrush = SolidColor(OrbitTokens.bluePastel),
-                        // O verniz: fora da linha do cursor, some com o `##`/`>` e mostra a linha
-                        // já como título/citação. Na linha ativa, os marcadores voltam esmaecidos
-                        // pra editar. É a mágica "live preview" do Obsidian.
-                        visualTransformation = vernizMarkdown(
-                            editorValor.selection.start,
-                            editorValor.selection.end,
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 300.dp),
-                        decorationBox = { inner ->
-                            if (editorValor.text.isEmpty()) {
-                                Text(
-                                    text = "Escreve aqui em Markdown…",
-                                    color = OrbitTokens.textLowN,
-                                    fontSize = 16.sp,
-                                    lineHeight = 26.sp,
-                                )
-                            }
-                            inner()
-                        },
-                    )
-                } else if (selecionando) {
-                    // Marcar trecho: o corpo é a fonte CRUA num campo só-leitura, com o mesmo verniz
-                    // do editor pra parecer renderizado. O que ele arrasta = offsets exatos na fonte.
-                    Text(
-                        text = tituloLocal,
-                        color = OrbitTokens.textHiN,
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = (-0.4).sp,
-                        lineHeight = 28.sp,
-                    )
-                    Spacer(Modifier.height(14.dp))
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(OrbitTokens.graphiteSurf)
-                            .border(1.dp, OrbitTokens.graphiteHair, RoundedCornerShape(12.dp))
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            Icons.Rounded.FormatQuote,
-                            contentDescription = null,
-                            tint = OrbitTokens.bluePastel,
-                            modifier = Modifier.size(18.dp),
                         )
-                        Spacer(Modifier.width(10.dp))
-                        Text(
-                            "Arraste sobre o texto pra marcar o trecho que a Luna deve mudar.",
-                            color = OrbitTokens.textMidN,
-                            fontSize = 13.sp,
-                            lineHeight = 18.sp,
+                        Spacer(Modifier.height(6.dp))
+                        Box(
+                            Modifier
+                                .width(36.dp)
+                                .height(2.dp)
+                                .clip(RoundedCornerShape(1.dp))
+                                .background(gradienteArtefato),
                         )
-                    }
-                    Spacer(Modifier.height(18.dp))
-                    BasicTextField(
-                        value = refValor,
-                        onValueChange = { refValor = it },
-                        readOnly = true,
-                        textStyle = TextStyle(
-                            color = OrbitTokens.textHiN,
-                            fontSize = 16.sp,
-                            lineHeight = 26.sp,
-                        ),
-                        cursorBrush = SolidColor(OrbitTokens.bluePastel),
-                        visualTransformation = vernizMarkdown(
-                            refValor.selection.start,
-                            refValor.selection.end,
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 140.dp),
-                    )
-                } else {
-                    Text(
-                        text = tituloLocal,
-                        color = OrbitTokens.textHiN,
-                        fontSize = 26.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = (-0.5).sp,
-                        lineHeight = 32.sp,
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    Box(
-                        Modifier
-                            .width(44.dp)
-                            .height(3.dp)
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(gradienteArtefato),
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    MetaArtefato(doc = doc, conteudo = conteudoLocal)
-                    Spacer(Modifier.height(20.dp))
-                    LunaMarkdown(
-                        content = conteudoLocal,
-                        variante = LunaMarkdownVariante.Documento,
-                        onToggleCheck = if (uid != null) {
-                            { idx ->
-                                val novo = alternarChecklistNoTexto(conteudoLocal, idx)
-                                conteudoLocal = novo
-                                scope.launch {
-                                    runCatching {
-                                        // Marcar item não é reescrita — não versiona (senão cada
-                                        // ☑ vira uma "versão" e enche o histórico de ruído).
-                                        FirestoreDocumentos.atualizar(
-                                            uid, doc.id, tituloLocal, novo, versionar = false,
-                                        )
+                        Spacer(Modifier.height(6.dp))
+                        MetaArtefato(doc = doc, conteudo = conteudoLocal)
+                        Spacer(Modifier.height(10.dp))
+                        LunaMarkdown(
+                            content = conteudoLimpo,
+                            variante = LunaMarkdownVariante.Documento,
+                            onToggleCheck = if (uid != null) {
+                                { idx ->
+                                    val novo = alternarChecklistNoTexto(conteudoLocal, idx)
+                                    conteudoLocal = novo
+                                    scope.launch {
+                                        runCatching {
+                                            // Marcar item não é reescrita — não versiona (senão cada
+                                            // ☑ vira uma "versão" e enche o histórico de ruído).
+                                            FirestoreDocumentos.atualizar(
+                                                uid, doc.id, tituloLocal, novo, versionar = false,
+                                            )
+                                        }
                                     }
                                 }
-                            }
-                        } else {
-                            null
-                        },
-                    )
+                            } else {
+                                null
+                            },
+                        )
+                    }
                 }
             }
-        }
 
-        // ── Barra flutuante de marcar trecho (só no modo seleção) ──
-        if (selecionando && onReferenciarTrecho != null) {
-            BarraReferenciarTrecho(
-                trecho = trechoMarcado,
-                modifier = Modifier.align(Alignment.BottomCenter),
-                onReferenciar = {
-                    val ref = buildArtefatoTrechoReference(doc.id, tituloLocal, trechoMarcado)
-                    if (ref != null) {
-                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        selecionando = false
-                        onReferenciarTrecho(ref)
-                        onDismiss()
-                    }
-                },
-            )
+            // ── Barra flutuante de marcar trecho (só no modo seleção) ──
+            if (selecionando && onReferenciarTrecho != null) {
+                BarraReferenciarTrecho(
+                    trecho = trechoMarcado,
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                    onReferenciar = {
+                        val ref = buildArtefatoTrechoReference(doc.id, tituloLocal, trechoMarcado)
+                        if (ref != null) {
+                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            selecionando = false
+                            onReferenciarTrecho(ref)
+                            onDismiss()
+                        }
+                    },
+                )
+            }
         }
     }
 
@@ -955,29 +978,31 @@ private fun AtmosferaArtefato() {
     }
 }
 
-/** A "cara" do artefato no cabeçalho — pílula com gradiente vivo e texto branco (contraste). */
+/** A "cara" do artefato no cabeçalho — chip grafite discreto com ícone azul pastel. */
 @Composable
 private fun TagArtefato() {
+    val shape = RoundedCornerShape(OrbitMetrics.radiusPill)
     Row(
         modifier = Modifier
-            .clip(RoundedCornerShape(OrbitMetrics.radiusPill))
-            .background(gradienteArtefato)
-            .padding(horizontal = 11.dp, vertical = 6.dp),
+            .clip(shape)
+            .background(OrbitTokens.graphiteSurf)
+            .border(1.dp, OrbitTokens.graphiteHair, shape)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
     ) {
         Icon(
             imageVector = Icons.Rounded.Description,
             contentDescription = null,
-            tint = OrbitTokens.onBluePastel,
+            tint = OrbitTokens.bluePastel,
             modifier = Modifier.size(14.dp),
         )
         Text(
             text = "Artefato",
-            color = OrbitTokens.onBluePastel,
+            color = OrbitTokens.textHiN,
             fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
-            letterSpacing = 0.3.sp,
+            fontWeight = FontWeight.Medium,
+            letterSpacing = 0.1.sp,
         )
     }
 }
@@ -991,7 +1016,7 @@ private fun BotaoIconeChrome(
 ) {
     Box(
         modifier = Modifier
-            .size(38.dp)
+            .size(36.dp)
             .clip(CircleShape)
             .background(OrbitTokens.graphiteSurf)
             .border(1.dp, OrbitTokens.graphiteHair, CircleShape)
@@ -1002,35 +1027,36 @@ private fun BotaoIconeChrome(
             imageVector = icone,
             contentDescription = descricao,
             tint = OrbitTokens.textHiN,
-            modifier = Modifier.size(17.dp),
+            modifier = Modifier.size(16.dp),
         )
     }
 }
 
-/** Botão «Editar» — pílula neutra (chrome), texto claro; a ênfase de cor fica na identidade. */
+/** Botão «Editar» — pílula grafite neutra com ícone em azul pastel. */
 @Composable
 private fun BotaoEditar(onClick: () -> Unit) {
+    val shape = RoundedCornerShape(OrbitMetrics.radiusPill)
     Row(
         modifier = Modifier
-            .clip(RoundedCornerShape(OrbitMetrics.radiusPill))
+            .clip(shape)
             .background(OrbitTokens.graphiteSurf)
-            .border(1.dp, OrbitTokens.graphiteHair, RoundedCornerShape(OrbitMetrics.radiusPill))
+            .border(1.dp, OrbitTokens.graphiteHair, shape)
             .orbitPressable(onClick = onClick)
-            .padding(horizontal = 13.dp, vertical = 8.dp),
+            .padding(horizontal = 12.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
     ) {
         Icon(
             imageVector = Icons.Rounded.Edit,
             contentDescription = null,
-            tint = OrbitTokens.textHiN,
-            modifier = Modifier.size(15.dp),
+            tint = OrbitTokens.bluePastel,
+            modifier = Modifier.size(14.dp),
         )
         Text(
             text = "Editar",
             color = OrbitTokens.textHiN,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold,
+            fontSize = 12.5.sp,
+            fontWeight = FontWeight.Medium,
         )
     }
 }

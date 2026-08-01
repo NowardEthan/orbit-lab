@@ -32,6 +32,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.style.TextOverflow
 import com.ethan.orbitlab.ui.theme.OrbitMotion
 import com.ethan.orbitlab.ui.theme.OrbitTokens
 import com.ethan.orbitlab.ui.theme.orbitPressable
@@ -53,10 +54,16 @@ fun LunaToolTimeline(
 
     var aberto by remember { mutableStateOf(inicialmenteAberto) }
     val rodando = steps.firstOrNull { it.status == LunaActionStepStatus.RUNNING }
-    val resumo = when {
+    val resumoBruto = when {
         rodando != null -> rodando.label
         steps.size == 1 -> steps.first().label
         else -> "${steps.size} passos"
+    }
+    val resumo = remember(resumoBruto) {
+        resumoBruto.lineSequence().firstOrNull().orEmpty()
+            .replace(Regex("[#*_`~]"), "")
+            .trim()
+            .let { if (it.length > 45) it.take(42) + "…" else it }
     }
 
     Column(modifier = modifier.fillMaxWidth()) {
@@ -91,6 +98,8 @@ fun LunaToolTimeline(
                 color = OrbitTokens.textMidN,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
 
@@ -131,6 +140,12 @@ fun LunaToolTimeline(
 private fun LinhaPasso(step: LunaActionStep) {
     val rodando = step.status == LunaActionStepStatus.RUNNING
     val erro = step.status == LunaActionStepStatus.ERROR
+    val labelLimpo = remember(step.label) {
+        step.label.lineSequence().firstOrNull().orEmpty()
+            .replace(Regex("[#*_`~]"), "")
+            .trim()
+            .let { if (it.length > 50) it.take(47) + "…" else it }
+    }
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.Top,
@@ -157,7 +172,7 @@ private fun LinhaPasso(step: LunaActionStep) {
         }
         Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
             Text(
-                step.label,
+                labelLimpo,
                 color = when {
                     rodando -> OrbitTokens.bluePastel
                     erro -> OrbitTokens.danger
@@ -166,16 +181,35 @@ private fun LinhaPasso(step: LunaActionStep) {
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
                 lineHeight = 17.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
-            val detalhe = step.detail
-            if (!detalhe.isNullOrBlank() && detalhe != step.label) {
+            val detalhe = step.detail?.trim()?.takeIf { d ->
+                d.isNotBlank() &&
+                d != step.label &&
+                !eCodigoOuPayloadTecnico(d) &&
+                !pareceIdHash(d) &&
+                !step.label.contains(d, ignoreCase = true)
+            }
+            if (detalhe != null) {
                 Text(
                     detalhe,
                     color = OrbitTokens.textLowN,
                     fontSize = 12.sp,
                     lineHeight = 16.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
     }
+}
+
+private fun eCodigoOuPayloadTecnico(texto: String): Boolean {
+    val t = texto.lowercase().trim()
+    return t.startsWith("{") || t.startsWith("[") || t.startsWith("```") ||
+        t.contains("import ") || t.contains("export ") || t.contains("function") ||
+        t.contains("class ") || t.contains("fun ") || t.contains("diff") ||
+        t.contains("<html>") || t.contains("const ") || t.contains("val ") ||
+        t.contains("void ") || t.contains("return ") || t.contains("\n")
 }
