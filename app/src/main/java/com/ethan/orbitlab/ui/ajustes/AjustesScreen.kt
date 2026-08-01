@@ -3,9 +3,7 @@ package com.ethan.orbitlab.ui.ajustes
 import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,7 +17,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Logout
@@ -49,12 +46,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
@@ -77,11 +72,10 @@ import com.ethan.orbitlab.ui.theme.OrbitTokens
 import com.ethan.orbitlab.ui.theme.orbitPressable
 import kotlinx.coroutines.launch
 
-private val ContaCardBg = Color(0xFFF2F4F8)
-
 /**
- * Ajustes — alinhado ao SettingsScreen do orbit-mobile
- * (transparência, privacidade real, sessão).
+ * Ajustes — releitura minimalista (redesign 1.0).
+ * Sem cartões emoldurados nem ladrilhos: grupos nus sobre o grafite,
+ * separados por fios finos e ar. O azul pastel só pinga onde importa.
  */
 @Composable
 fun AjustesScreen(
@@ -158,7 +152,7 @@ fun AjustesScreen(
                     Text("Cancelar")
                 }
             },
-            containerColor = OrbitTokens.surfaceRaised,
+            containerColor = OrbitTokens.graphiteRaised,
         )
     }
 
@@ -168,16 +162,16 @@ fun AjustesScreen(
             .background(Color.Transparent)
             .verticalScroll(rememberScrollState())
             .padding(
-                top = 24.dp,
+                top = 6.dp,
                 start = OrbitMetrics.pagePadding,
                 end = OrbitMetrics.pagePadding,
                 bottom = 120.dp,
             ),
-        verticalArrangement = Arrangement.spacedBy(OrbitMetrics.sectionGap),
+        verticalArrangement = Arrangement.spacedBy(30.dp),
     ) {
         HeaderAjustes()
 
-        ContaCard(
+        ContaLinha(
             nome = profile.displayName.ifBlank { session?.displayName ?: "Conta" },
             detalhe = buildString {
                 val handle = profile.username.takeIf { it.isNotBlank() }?.let { "@$it" }
@@ -192,22 +186,19 @@ fun AjustesScreen(
             onAbrirPerfil = onAbrirPerfil,
         )
 
-        SecaoAjustes(
+        Grupo(
             titulo = "Modo de resposta",
             rodape = "A Luna escolhe o modelo a cada mensagem — leve no papo, profundo quando o assunto pede. O raciocínio dela fica sempre à mostra.",
-            assinaturaAzul = true,
         ) {
-            LinhaAjuste(
+            Linha(
                 icone = Icons.Rounded.FlashOn,
                 titulo = "Automático",
                 subtitulo = "A Luna decide o modelo por mensagem",
-                iconeBg = OrbitTokens.surfaceRaised,
-                iconeTint = OrbitTokens.textMid,
                 clicavel = false,
             )
         }
 
-        SecaoAjustes(
+        Grupo(
             titulo = "Preferências",
             rodape = "Só neste aparelho — o lab ainda não sincroniza prefs.",
         ) {
@@ -253,41 +244,37 @@ fun AjustesScreen(
             )
         }
 
-        SecaoAjustes(
+        Grupo(
             titulo = "Privacidade e dados",
             rodape = "A Luna é uma companhia, não uma terapeuta — em crise, o CVV atende no 188.",
         ) {
-            LinhaAjuste(
+            Linha(
                 icone = Icons.Rounded.Shield,
                 titulo = "Como a Luna trata seus dados",
                 subtitulo = "O que fica salvo, a IA de terceiros e seus direitos",
-                iconeBg = OrbitTokens.accent.copy(alpha = 0.18f),
-                iconeTint = OrbitTokens.accentText,
+                iconeTint = OrbitTokens.bluePastel,
                 onClick = { tela = AjustesTela.Privacidade },
             )
             Divisoria()
-            LinhaAjuste(
+            Linha(
                 icone = Icons.Rounded.DeleteForever,
                 titulo = "Apagar meus dados",
                 subtitulo = "Apaga conversas deste lab — sem volta",
                 danger = true,
-                iconeBg = OrbitTokens.danger.copy(alpha = 0.18f),
-                iconeTint = OrbitTokens.danger,
                 onClick = { tela = AjustesTela.Privacidade },
             )
         }
 
-        SecaoAjustes(titulo = "Sobre") {
+        Grupo(titulo = "Sobre") {
             if (updateAvailable) {
-                LinhaAjuste(
+                Linha(
                     icone = Icons.Rounded.Info,
                     titulo = "Atualização disponível",
                     subtitulo = manifest?.latestVersion?.let { "OrbitLab v$it pronta pra instalar" },
                     trailing = "Instalar",
-                    iconeBg = OrbitTokens.accent.copy(alpha = 0.18f),
-                    iconeTint = OrbitTokens.accentText,
+                    iconeTint = OrbitTokens.bluePastel,
                     onClick = {
-                        val url = manifest?.apkUrl ?: return@LinhaAjuste
+                        val url = manifest?.apkUrl ?: return@Linha
                         scope.launch {
                             try {
                                 ApkInstaller.downloadAndInstall(context, url) {}
@@ -299,25 +286,21 @@ fun AjustesScreen(
                 )
                 Divisoria()
             }
-            LinhaAjuste(
+            Linha(
                 icone = Icons.Rounded.Info,
                 titulo = "Versão",
                 trailing = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
                 clicavel = false,
-                iconeBg = OrbitTokens.surfaceRaised,
-                iconeTint = OrbitTokens.textMid,
             )
             // Diário de bordo da abertura (ver AuthDiag). Fica aqui porque quando a
             // reentrada dá certo ele nunca chega à tela de login, onde o diário também aparece.
             if (diarioSessao.isNotBlank()) {
                 Divisoria()
-                LinhaAjuste(
+                Linha(
                     icone = Icons.Rounded.Info,
                     titulo = "Diário da sessão",
                     subtitulo = if (diarioCopiado) "Copiado — cola aqui pro Claude" else "Por que a abertura demorou / pediu login",
                     trailing = if (diarioCopiado) "Ok" else "Copiar",
-                    iconeBg = OrbitTokens.surfaceRaised,
-                    iconeTint = OrbitTokens.textMid,
                     onClick = {
                         clipboard.setText(AnnotatedString(diarioSessao))
                         diarioCopiado = true
@@ -326,11 +309,11 @@ fun AjustesScreen(
             }
         }
 
-        BotaoSair(onClick = { confirmarSair = true })
+        LinhaSair(onClick = { confirmarSair = true })
 
         Text(
             "Orbit · Aura",
-            color = OrbitTokens.textLow,
+            color = OrbitTokens.textLowN,
             fontSize = 12.sp,
             modifier = Modifier
                 .fillMaxWidth()
@@ -344,56 +327,43 @@ private enum class AjustesTela { Lista, Privacidade }
 @Composable
 private fun HeaderAjustes() {
     Column {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_orbit_symbol),
-                contentDescription = "Orbit",
-                tint = Color.Unspecified,
-                modifier = Modifier.size(32.dp),
-            )
-            Text(
-                "Ajustes",
-                color = OrbitTokens.textHigh,
-                fontSize = OrbitMetrics.titleSize,
-                fontWeight = OrbitMetrics.titleWeight,
-                letterSpacing = (-0.3).sp,
-            )
-        }
+        Text(
+            "Ajustes",
+            color = OrbitTokens.textHiN,
+            fontSize = OrbitMetrics.titleSize,
+            fontWeight = OrbitMetrics.titleWeight,
+            letterSpacing = (-0.3).sp,
+        )
         Spacer(Modifier.height(6.dp))
         Text(
             "Conta, transparência e como a Luna trata seus dados.",
-            color = OrbitTokens.textMid,
+            color = OrbitTokens.textMidN,
             fontSize = 13.sp,
             lineHeight = 18.sp,
         )
     }
 }
 
+/** Conta no topo — linha nua, sem cartão. O avatar carrega a presença. */
 @Composable
-private fun ContaCard(
+private fun ContaLinha(
     nome: String,
     detalhe: String,
     avatarUrl: String?,
     onAbrirPerfil: () -> Unit,
 ) {
-    val shape = RoundedCornerShape(OrbitMetrics.radiusCard)
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(shape)
-            .background(ContaCardBg)
             .orbitPressable(onClick = onAbrirPerfil)
-            .padding(16.dp),
+            .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             modifier = Modifier
-                .size(48.dp)
+                .size(46.dp)
                 .clip(CircleShape)
-                .background(OrbitTokens.ink1),
+                .background(OrbitTokens.graphiteRaised),
             contentAlignment = Alignment.Center,
         ) {
             if (!avatarUrl.isNullOrBlank()) {
@@ -407,8 +377,8 @@ private fun ContaCard(
                 Icon(
                     Icons.Rounded.Person,
                     contentDescription = null,
-                    tint = ContaCardBg.copy(alpha = 0.55f),
-                    modifier = Modifier.size(26.dp),
+                    tint = OrbitTokens.textMidN,
+                    modifier = Modifier.size(24.dp),
                 )
             }
         }
@@ -416,14 +386,14 @@ private fun ContaCard(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 nome,
-                color = OrbitTokens.ink0,
+                color = OrbitTokens.textHiN,
                 fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.SemiBold,
             )
             Spacer(modifier = Modifier.height(2.dp))
             Text(
                 detalhe,
-                color = OrbitTokens.textLow,
+                color = OrbitTokens.textMidN,
                 fontSize = OrbitMetrics.captionSize,
                 maxLines = 1,
             )
@@ -431,74 +401,50 @@ private fun ContaCard(
         Icon(
             Icons.Rounded.ChevronRight,
             contentDescription = null,
-            tint = OrbitTokens.ink0.copy(alpha = 0.45f),
+            tint = OrbitTokens.textLowN,
             modifier = Modifier.size(22.dp),
         )
     }
 }
 
+/** Grupo nu: rótulo quieto + linhas direto no grafite, sem moldura. */
 @Composable
-private fun SecaoAjustes(
+private fun Grupo(
     titulo: String,
     rodape: String? = null,
-    assinaturaAzul: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
-            titulo,
-            color = OrbitTokens.textMid,
-            fontSize = OrbitMetrics.captionSize,
+            titulo.uppercase(),
+            color = OrbitTokens.textLowN,
+            fontSize = 11.sp,
             fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(bottom = 8.dp, start = 2.dp),
+            letterSpacing = 0.8.sp,
+            modifier = Modifier.padding(bottom = 4.dp, start = 2.dp),
         )
-        val shape = RoundedCornerShape(OrbitMetrics.radiusCard)
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(shape)
-                .background(OrbitTokens.surface)
-                .border(1.dp, OrbitTokens.borderSoft, shape),
-        ) {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                content()
-            }
-            if (assinaturaAzul) {
-                Canvas(
-                    Modifier
-                        .align(Alignment.BottomEnd)
-                        .size(16.dp),
-                ) {
-                    val path = Path().apply {
-                        moveTo(size.width, size.height)
-                        lineTo(size.width, size.height * 0.18f)
-                        lineTo(size.width * 0.18f, size.height)
-                        close()
-                    }
-                    drawPath(path, color = OrbitTokens.accent)
-                }
-            }
+        Column(modifier = Modifier.fillMaxWidth()) {
+            content()
         }
         if (!rodape.isNullOrBlank()) {
             Text(
                 rodape,
-                color = OrbitTokens.textLow,
+                color = OrbitTokens.textLowN,
                 fontSize = 12.sp,
                 lineHeight = 16.sp,
-                modifier = Modifier.padding(top = 8.dp, start = 4.dp, end = 4.dp),
+                modifier = Modifier.padding(top = 8.dp, start = 2.dp, end = 4.dp),
             )
         }
     }
 }
 
 @Composable
-private fun LinhaAjuste(
+private fun Linha(
     icone: ImageVector,
     titulo: String,
     subtitulo: String? = null,
     trailing: String? = null,
-    iconeBg: Color,
-    iconeTint: Color,
+    iconeTint: Color = OrbitTokens.textMidN,
     danger: Boolean = false,
     clicavel: Boolean = true,
     onClick: () -> Unit = {},
@@ -507,15 +453,20 @@ private fun LinhaAjuste(
         modifier = Modifier
             .fillMaxWidth()
             .then(if (clicavel) Modifier.orbitPressable(onClick = onClick) else Modifier)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconeTile(icone, iconeBg, iconeTint)
-        Spacer(modifier = Modifier.width(12.dp))
+        Icon(
+            icone,
+            contentDescription = null,
+            tint = if (danger) OrbitTokens.danger else iconeTint,
+            modifier = Modifier.size(20.dp),
+        )
+        Spacer(modifier = Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 titulo,
-                color = if (danger) OrbitTokens.danger else OrbitTokens.textHigh,
+                color = if (danger) OrbitTokens.danger else OrbitTokens.textHiN,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium,
             )
@@ -523,7 +474,7 @@ private fun LinhaAjuste(
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     subtitulo,
-                    color = OrbitTokens.textLow,
+                    color = OrbitTokens.textLowN,
                     fontSize = OrbitMetrics.captionSize,
                     lineHeight = 16.sp,
                 )
@@ -532,7 +483,7 @@ private fun LinhaAjuste(
         if (trailing != null) {
             Text(
                 trailing,
-                color = OrbitTokens.textMid,
+                color = OrbitTokens.textMidN,
                 fontSize = OrbitMetrics.captionSize,
             )
             Spacer(modifier = Modifier.width(4.dp))
@@ -541,7 +492,7 @@ private fun LinhaAjuste(
             Icon(
                 Icons.Rounded.ChevronRight,
                 contentDescription = null,
-                tint = if (danger) OrbitTokens.danger.copy(alpha = 0.7f) else OrbitTokens.textLow,
+                tint = if (danger) OrbitTokens.danger.copy(alpha = 0.7f) else OrbitTokens.textLowN,
                 modifier = Modifier.size(18.dp),
             )
         }
@@ -559,19 +510,20 @@ private fun LinhaSwitch(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 14.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
+            .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconeTile(
-            icone = icone,
-            bg = OrbitTokens.surfaceRaised,
-            tint = OrbitTokens.textMid,
+        Icon(
+            icone,
+            contentDescription = null,
+            tint = OrbitTokens.textMidN,
+            modifier = Modifier.size(20.dp),
         )
-        Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 titulo,
-                color = OrbitTokens.textHigh,
+                color = OrbitTokens.textHiN,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium,
             )
@@ -579,86 +531,67 @@ private fun LinhaSwitch(
                 Spacer(Modifier.height(2.dp))
                 Text(
                     subtitulo,
-                    color = OrbitTokens.textLow,
+                    color = OrbitTokens.textLowN,
                     fontSize = OrbitMetrics.captionSize,
                     lineHeight = 16.sp,
                 )
             }
         }
+        Spacer(modifier = Modifier.width(8.dp))
         Switch(
             checked = checado,
             onCheckedChange = onCheck,
             colors = SwitchDefaults.colors(
-                checkedThumbColor = Color.White,
-                checkedTrackColor = OrbitTokens.accent,
-                checkedBorderColor = OrbitTokens.accent,
-                uncheckedThumbColor = OrbitTokens.textLow,
-                uncheckedTrackColor = OrbitTokens.surfaceHover,
-                uncheckedBorderColor = OrbitTokens.border,
+                checkedThumbColor = OrbitTokens.onBluePastel,
+                checkedTrackColor = OrbitTokens.bluePastel,
+                checkedBorderColor = OrbitTokens.bluePastel,
+                uncheckedThumbColor = OrbitTokens.textLowN,
+                uncheckedTrackColor = OrbitTokens.graphiteRaised,
+                uncheckedBorderColor = OrbitTokens.graphiteHair,
             ),
         )
     }
 }
 
-@Composable
-private fun IconeTile(
-    icone: ImageVector,
-    bg: Color,
-    tint: Color,
-) {
-    Box(
-        modifier = Modifier
-            .size(OrbitMetrics.iconRow)
-            .clip(RoundedCornerShape(OrbitMetrics.radiusIcon))
-            .background(bg),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(icone, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
-    }
-}
-
+/** Fio fino entre linhas do mesmo grupo, alinhado sob o texto (larga do ícone). */
 @Composable
 private fun Divisoria() {
     Box(
         Modifier
             .fillMaxWidth()
-            .padding(start = 62.dp, end = 14.dp)
+            .padding(start = 34.dp)
             .height(1.dp)
-            .background(OrbitTokens.borderSoft),
+            .background(OrbitTokens.graphiteHair),
     )
 }
 
+/** Sair — linha de texto vermelha, sem caixa (semântica destrutiva quieta). */
 @Composable
-private fun BotaoSair(onClick: () -> Unit) {
-    val shape = RoundedCornerShape(OrbitMetrics.radiusCard)
+private fun LinhaSair(onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(shape)
-            .background(OrbitTokens.surface)
-            .border(1.dp, OrbitTokens.danger.copy(alpha = 0.35f), shape)
             .orbitPressable(onClick = onClick)
-            .padding(vertical = 14.dp),
-        horizontalArrangement = Arrangement.Center,
+            .padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
             Icons.AutoMirrored.Rounded.Logout,
             contentDescription = null,
             tint = OrbitTokens.danger,
-            modifier = Modifier.size(18.dp),
+            modifier = Modifier.size(20.dp),
         )
-        Spacer(modifier = Modifier.width(8.dp))
+        Spacer(modifier = Modifier.width(14.dp))
         Text(
             "Sair da conta",
             color = OrbitTokens.danger,
             fontSize = 14.sp,
-            fontWeight = FontWeight.SemiBold,
+            fontWeight = FontWeight.Medium,
         )
     }
 }
 
-@Preview(showBackground = true, backgroundColor = 0xFF0E1014, widthDp = 380, heightDp = 900)
+@Preview(showBackground = true, backgroundColor = 0xFF17181B, widthDp = 380, heightDp = 900)
 @Composable
 fun AjustesScreenPreview() {
     AjustesScreen()

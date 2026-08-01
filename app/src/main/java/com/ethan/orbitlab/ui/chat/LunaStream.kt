@@ -363,18 +363,9 @@ private fun StreamRespostaDraft(
         return
     }
 
-    val shape = RoundedCornerShape(
-        topStart = 4.dp,
-        topEnd = OrbitMetrics.radiusCard,
-        bottomEnd = OrbitMetrics.radiusCard,
-        bottomStart = OrbitMetrics.radiusCard,
-    )
-
-    BoxWithConstraints(modifier.fillMaxWidth()) {
-        val larguraPainel = maxWidth * 0.92f
-        val larguraBalao = maxWidth * 0.85f
+    Box(modifier.fillMaxWidth()) {
         Column(
-            modifier = Modifier.widthIn(max = larguraPainel),
+            modifier = Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.Start,
         ) {
             actionRun?.let { run ->
@@ -392,27 +383,10 @@ private fun StreamRespostaDraft(
                 )
                 Spacer(Modifier.height(8.dp))
             }
-            Box(
-                modifier = Modifier
-                    .widthIn(max = larguraBalao)
-                    .clip(shape)
-                    .background(OrbitTokens.bubbleLuna)
-                    .border(1.dp, OrbitTokens.borderSoft, shape),
-            ) {
-                Canvas(
-                    Modifier
-                        .align(Alignment.BottomEnd)
-                        .size(12.dp),
-                ) {
-                    val path = Path().apply {
-                        moveTo(size.width, size.height)
-                        lineTo(size.width, size.height * 0.15f)
-                        lineTo(size.width * 0.15f, size.height)
-                        close()
-                    }
-                    drawPath(path, color = OrbitTokens.accent)
-                }
-                Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+            // Enquanto digita, a Luna já aparece em largura total, texto solto (sem bolha) —
+            // pra não haver pulo visual quando a resposta assenta no histórico.
+            Box(modifier = Modifier.fillMaxWidth()) {
+                Column {
                     LunaMarkdown(content = respostaParcial)
                     Spacer(Modifier.height(4.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {

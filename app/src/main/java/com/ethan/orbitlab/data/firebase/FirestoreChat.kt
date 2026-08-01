@@ -298,6 +298,15 @@ object FirestoreChat {
             put("attachmentName", ref.attachmentName)
             ref.uri?.toString()?.let { put("attachmentUri", it) }
         }
+        is ThreadReference.ArtefatoTrecho -> mapOf(
+            "kind" to "artefato",
+            "messageId" to ref.messageId,
+            "role" to "user",
+            "documentoId" to ref.documentoId,
+            "titulo" to ref.titulo,
+            "trecho" to ref.trecho,
+            "excerpt" to ref.excerpt,
+        )
     }
 
     private fun actionRunToFirestore(run: LunaActionRun): List<Map<String, Any>> {
@@ -400,6 +409,17 @@ object FirestoreChat {
         val messageIndex = (m["messageIndex"] as? Number)?.toInt() ?: 0
         val attachmentId = m["attachmentId"] as? String
         val kind = m["kind"] as? String
+        if (kind == "artefato") {
+            val documentoId = m["documentoId"] as? String ?: messageId
+            val trecho = (m["trecho"] as? String).orEmpty()
+            if (trecho.isBlank()) return null
+            return ThreadReference.ArtefatoTrecho(
+                documentoId = documentoId,
+                titulo = (m["titulo"] as? String) ?: "Artefato",
+                trecho = trecho,
+                excerpt = excerpt,
+            )
+        }
         if (kind == "document" || attachmentId != null) {
             return ThreadReference.Image(
                 messageId = messageId,

@@ -80,7 +80,7 @@ fun LunaReasoning(
                     Icons.Rounded.KeyboardArrowRight
                 },
                 contentDescription = if (aberto) "Recolher raciocínio" else "Ver raciocínio",
-                tint = OrbitTokens.textLow,
+                tint = OrbitTokens.textLowN,
                 modifier = Modifier.size(18.dp),
             )
             Text(
@@ -89,14 +89,14 @@ fun LunaReasoning(
                 } else {
                     "Raciocínio"
                 },
-                color = OrbitTokens.textMid,
+                color = OrbitTokens.textMidN,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
             )
             if (duracaoLabel != null) {
                 Text(
                     text = "· $duracaoLabel",
-                    color = OrbitTokens.textLow,
+                    color = OrbitTokens.textLowN,
                     fontSize = 12.sp,
                 )
             }
@@ -113,18 +113,18 @@ fun LunaReasoning(
                     .fillMaxWidth()
                     .height(IntrinsicSize.Min)
                     .clip(RoundedCornerShape(10.dp))
-                    .background(OrbitTokens.ink1)
-                    .border(1.dp, OrbitTokens.borderSoft, RoundedCornerShape(10.dp)),
+                    .background(OrbitTokens.graphiteSurf)
+                    .border(1.dp, OrbitTokens.graphiteHair, RoundedCornerShape(10.dp)),
             ) {
                 Box(
                     Modifier
                         .width(2.5.dp)
                         .fillMaxHeight()
-                        .background(OrbitTokens.accent.copy(alpha = 0.35f)),
+                        .background(OrbitTokens.bluePastel.copy(alpha = 0.45f)),
                 )
                 Text(
                     text = texto,
-                    color = OrbitTokens.textMid,
+                    color = OrbitTokens.textMidN,
                     fontSize = 13.sp,
                     lineHeight = 19.sp,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
@@ -163,13 +163,13 @@ fun LunaReasoningPensando(
                     Modifier
                         .size(6.dp)
                         .clip(CircleShape)
-                        .background(OrbitTokens.accent.copy(alpha = alpha)),
+                        .background(OrbitTokens.bluePastel.copy(alpha = alpha)),
                 )
             }
         }
         Text(
             text = label,
-            color = OrbitTokens.textMid,
+            color = OrbitTokens.textMidN,
             fontSize = 13.sp,
             fontWeight = FontWeight.Medium,
         )

@@ -27,7 +27,11 @@ object OrbitTokens {
     val accent = Color(0xFF4B75F2)
     val accentFlat = Color(0xFF3A5FD4)
     val accentText = Color(0xFF7A9AF5)
-    val accentSoft = Color(0x244B75F2) // só superfícies suaves, NÃO chips
+    @Deprecated(
+        "Anti-padrão de opacidade (accent-sobre-accent). Use contraste: OrbitFills.accent.brush " +
+            "+ onFill pra estados acesos, ou surfaceRaised + ícone saturado pra ladrilhos.",
+    )
+    val accentSoft = Color(0x244B75F2)
 
     val gold = Color(0xFFF5D047)
     val goldFlat = Color(0xFFD89B1A)
@@ -42,4 +46,26 @@ object OrbitTokens {
     val warning = Color(0xFFFFB74D)
     val danger = Color(0xFFEF5350)
     val dangerFlat = Color(0xFFC62828)
+
+    // ── Orbit 1.0 — base grafite neutra + azul pastel ─────────────────────────
+    // Direção do redesign (ver memória orbit-redesign-1-0): larga o violeta/Penumbra,
+    // vai pra um grafite neutro com azul pastel só nos detalhes. Tokens NOVOS,
+    // aplicados só nas superfícies já repaginadas (gaveta, barra de cima, Início)
+    // pra não regredir as telas que ainda não chegaram a vez — as antigas seguem
+    // nos tokens acima até serem migradas capítulo a capítulo.
+    val graphiteBg = Color(0xFF17181B)      // fundo raiz (canvas atrás das telas)
+    val graphiteSurf = Color(0xFF202226)    // cartão / superfície
+    val graphiteRaised = Color(0xFF292C31)  // ladrilho neutro elevado
+    val graphiteHair = Color(0x12FFFFFF)    // filete ~7%
+
+    val bluePastel = Color(0xFF9CC0F0)      // acento pastel (destino ativo, CTA, enviar)
+    val bluePastelDim = Color(0xFF7FA6DC)   // variante mais fechada (fim do degradê)
+    val onBluePastel = Color(0xFF12233A)    // texto/ícone escuro sobre o pastel (contraste)
+
+    val bubbleUser = Color(0xFF2A2D33)      // bolha do usuário no chat (cap. 3), cinza discreto
+
+    // Texto neutro (grafite) — menos azulado que textHigh/Mid/Low
+    val textHiN = Color(0xFFECECEE)
+    val textMidN = Color(0xFF9A9CA2)
+    val textLowN = Color(0xFF6A6C72)
 }

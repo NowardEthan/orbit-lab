@@ -219,7 +219,7 @@ object LunaApiChat {
             put("pesquisaProfunda", PrefsRepository.pesquisaProfunda.value)
             put("modoTecnico", modoTecnico)
             put("modoAgentico", modoAgentico)
-            // Documentos: só o lab liga. Libera a ferramenta criar_documento (o core é
+            // Artefatos: só o lab liga. Libera a ferramenta criar_artefato (o core é
             // partilhado com o estável, então a flag é o que a mantém invisível lá fora).
             put("documentosAtivo", true)
             LocationRepository.paraJson()?.let { put("local", it) }

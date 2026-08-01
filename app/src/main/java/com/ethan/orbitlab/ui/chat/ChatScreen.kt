@@ -123,7 +123,7 @@ import com.ethan.orbitlab.data.newUserMessageId
 import com.ethan.orbitlab.data.lunaapi.LunaApiChat
 import com.ethan.orbitlab.data.openrouter.LunaDirectChat
 import com.google.firebase.auth.FirebaseAuth
-import com.ethan.orbitlab.ui.theme.OrbitFills
+import com.ethan.orbitlab.ui.theme.OrbitIconButton
 import com.ethan.orbitlab.ui.theme.OrbitMetrics
 import com.ethan.orbitlab.ui.theme.OrbitMotion
 import com.ethan.orbitlab.ui.theme.OrbitTokens
@@ -144,7 +144,6 @@ enum class RecordState { Idle, Recording, Locked }
 private val localeBr = Locale("pt", "BR")
 /** Raio = metade da altura mínima (48) → pílula em 1 linha; multi-linha vira retângulo arredondado. */
 private val ComposerFieldShape = RoundedCornerShape(24.dp)
-private val SendIdleBg = Color(0xFFF2F4F8)
 private const val ComposerMaxLines = 6
 
 private fun formatHoraMensagem(timestamp: Long): String =
@@ -158,7 +157,12 @@ private fun formatTimer(totalSegundos: Int): String {
 }
 
 @Composable
-fun ChatScreen(conversaId: String, onBack: () -> Unit) {
+fun ChatScreen(
+    conversaId: String,
+    onBack: () -> Unit,
+    mensagemInicial: String? = null,
+    onMensagemInicialConsumida: () -> Unit = {},
+) {
     val conversa by ChatRepository.observarConversa(conversaId).collectAsState(initial = null)
     val context = LocalContext.current
     val appContext = remember(context) { context.applicationContext }
@@ -175,6 +179,8 @@ fun ChatScreen(conversaId: String, onBack: () -> Unit) {
     // fio. `docReader` guarda o documento aberto no leitor.
     var documentos by remember(conversaId) { mutableStateOf<List<DocumentoUi>>(emptyList()) }
     var docReader by remember { mutableStateOf<DocumentoUi?>(null) }
+    // A estante da conversa (lista dos artefatos) — aberta pela pílula flutuante do canto.
+    var estanteAberta by remember { mutableStateOf(false) }
     DisposableEffect(conversaId) {
         val uid = FirebaseAuth.getInstance().currentUser?.uid
         if (uid == null) {
@@ -303,6 +309,16 @@ fun ChatScreen(conversaId: String, onBack: () -> Unit) {
         }
     }
 
+    // Veio do composer do Início: esta conversa nasceu com um texto pra mandar. Dispara UMA vez,
+    // só se a conversa ainda está vazia (não reenviar ao reabrir), e some da mão da tela em seguida.
+    LaunchedEffect(conversaId, mensagemInicial) {
+        val inicial = mensagemInicial?.trim().orEmpty()
+        if (inicial.isEmpty()) return@LaunchedEffect
+        val jaTemMensagens = !ChatRepository.getConversa(conversaId)?.mensagens.isNullOrEmpty()
+        onMensagemInicialConsumida()
+        if (!jaTemMensagens) onSend(inicial, emptyList(), null)
+    }
+
     // Retomar sem duplicar: se a última é uma mensagem SUA sem resposta (saiu do app e a
     // resposta se perdeu), ou um erro da Luna, refaz a resposta pra AQUELA mensagem — sem
     // reenviar a fala do usuário. A Luna vê a mensagem uma vez só, como você pediu. 🌙
@@ -364,7 +380,7 @@ fun ChatScreen(conversaId: String, onBack: () -> Unit) {
 
     val conversaAtual = conversa
     if (conversaAtual == null) {
-        Box(Modifier.fillMaxSize().background(OrbitTokens.ink1))
+        Box(Modifier.fillMaxSize().background(OrbitTokens.graphiteBg))
     } else {
         val historico = conversaAtual.mensagens
 
@@ -372,7 +388,7 @@ fun ChatScreen(conversaId: String, onBack: () -> Unit) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(OrbitTokens.ink1)
+                .background(OrbitTokens.graphiteBg)
                 .statusBarsPadding()
                 .navigationBarsPadding()
                 .imePadding(),
@@ -388,8 +404,6 @@ fun ChatScreen(conversaId: String, onBack: () -> Unit) {
                 ChatTimeline(
                     conversaId = conversaId,
                     historico = historico,
-                    documentos = documentos,
-                    onAbrirDocumento = { docReader = it },
                     streamState = streamState,
                     ocultarMessageId = streamLunaMsgId,
                     scrollParaId = scrollAlvo,
@@ -411,6 +425,20 @@ fun ChatScreen(conversaId: String, onBack: () -> Unit) {
                         }
                     },
                 )
+
+                // Acesso flutuante à estante — só aparece quando há artefato nesta conversa.
+                if (documentos.isNotEmpty()) {
+                    EstanteFabConversa(
+                        quantidade = documentos.size,
+                        onClick = {
+                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            estanteAberta = true
+                        },
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(top = 8.dp, end = 12.dp),
+                    )
+                }
             }
 
             ChatInputArea(
@@ -444,10 +472,25 @@ fun ChatScreen(conversaId: String, onBack: () -> Unit) {
             )
         }
 
+        if (estanteAberta) {
+            EstanteConversaSheet(
+                documentos = documentos,
+                onAbrir = { doc ->
+                    estanteAberta = false
+                    docReader = doc
+                },
+                onDismiss = { estanteAberta = false },
+            )
+        }
+
         docReader?.let { doc ->
             DocumentoReaderSheet(
                 doc = doc,
                 onDismiss = { docReader = null },
+                onReferenciarTrecho = { ref ->
+                    messageReference = ref
+                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                },
             )
         }
 
@@ -518,125 +561,55 @@ private fun ChatHeader(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = OrbitMetrics.pagePadding)
-                .padding(top = 8.dp, bottom = 12.dp),
+                .padding(horizontal = OrbitMetrics.pagePadding - 6.dp)
+                .padding(top = 2.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(
-                modifier = Modifier
-                    .size(OrbitMetrics.iconBtn)
-                    .clip(CircleShape)
-                    .background(OrbitTokens.surface)
-                    .border(1.dp, OrbitTokens.borderSoft, CircleShape)
-                    .orbitPressable(onClick = onBack),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    Icons.Rounded.ArrowBackIosNew,
-                    contentDescription = "Voltar",
-                    tint = OrbitTokens.textHigh,
-                    modifier = Modifier.size(18.dp),
-                )
-            }
+            OrbitIconButton(
+                icon = Icons.Rounded.ArrowBackIosNew,
+                contentDescription = "Voltar",
+                onClick = onBack,
+                tint = OrbitTokens.textHiN,
+                iconSize = 17.dp,
+            )
 
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(6.dp))
 
-            Box(modifier = Modifier.size(42.dp)) {
-                Image(
-                    painter = painterResource(id = R.drawable.luna_avatar),
-                    contentDescription = "Avatar Luna",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .size(42.dp)
-                        .clip(CircleShape)
-                        .border(1.5.dp, Color(0xFFF2F4F8).copy(alpha = 0.35f), CircleShape),
-                )
-                AssinaturaAzul(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .offset(x = 1.dp, y = 1.dp)
-                        .size(12.dp),
-                )
-            }
-
-            Spacer(modifier = Modifier.width(12.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    tituloExibido,
-                    color = OrbitTokens.textHigh,
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    letterSpacing = (-0.2).sp,
-                )
-                Spacer(modifier = Modifier.height(3.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    Box(
-                        Modifier
-                            .size(6.dp)
-                            .clip(CircleShape)
-                            .background(OrbitTokens.online),
-                    )
-                    Text(
-                        "Online · memória privada",
-                        color = OrbitTokens.textMid,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
+            // Só o título — sem avatar nem linha de status. O topo fica leve e o nome da
+            // conversa (que agora assenta e não fica trocando) é o que ancora a tela.
+            Text(
+                tituloExibido,
+                color = OrbitTokens.textHiN,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                letterSpacing = (-0.2).sp,
+                modifier = Modifier.weight(1f),
+            )
 
             // Buscar nesta conversa (busca semântica — «pergunta à Luna»).
-            Box(
-                modifier = Modifier
-                    .size(OrbitMetrics.iconBtn)
-                    .clip(CircleShape)
-                    .background(OrbitTokens.surface)
-                    .border(1.dp, OrbitTokens.borderSoft, CircleShape)
-                    .orbitPressable(onClick = onBuscar),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    Icons.Rounded.Search,
-                    contentDescription = "Buscar na conversa",
-                    tint = OrbitTokens.textHigh,
-                    modifier = Modifier.size(19.dp),
-                )
-            }
-
-            Spacer(modifier = Modifier.width(8.dp))
+            OrbitIconButton(
+                icon = Icons.Rounded.Search,
+                contentDescription = "Buscar na conversa",
+                onClick = onBuscar,
+                iconSize = 19.dp,
+            )
 
             // Mais ações (exportar…) num menuzinho — tira o peso do topo.
             Box {
-                Box(
-                    modifier = Modifier
-                        .size(OrbitMetrics.iconBtn)
-                        .clip(CircleShape)
-                        .background(OrbitTokens.surface)
-                        .border(1.dp, OrbitTokens.borderSoft, CircleShape)
-                        .orbitPressable(onClick = { menuAberto = true }),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        Icons.Rounded.MoreVert,
-                        contentDescription = "Mais",
-                        tint = OrbitTokens.textHigh,
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
+                OrbitIconButton(
+                    icon = Icons.Rounded.MoreVert,
+                    contentDescription = "Mais",
+                    onClick = { menuAberto = true },
+                    iconSize = 20.dp,
+                )
                 if (menuAberto) {
                     Popup(
                         alignment = Alignment.TopEnd,
                         offset = IntOffset(
                             0,
-                            with(density) { (OrbitMetrics.iconBtn + 6.dp).roundToPx() },
+                            with(density) { 40.dp.roundToPx() },
                         ),
                         onDismissRequest = { menuAberto = false },
                         properties = PopupProperties(focusable = true),
@@ -645,8 +618,8 @@ private fun ChatHeader(
                             modifier = Modifier
                                 .widthIn(min = 208.dp)
                                 .clip(RoundedCornerShape(14.dp))
-                                .background(OrbitTokens.surfaceRaised)
-                                .border(1.dp, OrbitTokens.borderSoft, RoundedCornerShape(14.dp))
+                                .background(OrbitTokens.graphiteRaised)
+                                .border(1.dp, OrbitTokens.graphiteHair, RoundedCornerShape(14.dp))
                                 .padding(6.dp),
                         ) {
                             ChatMenuItem(
@@ -666,7 +639,7 @@ private fun ChatHeader(
             Modifier
                 .fillMaxWidth()
                 .height(1.dp)
-                .background(OrbitTokens.borderSoft.copy(alpha = 0.65f)),
+                .background(OrbitTokens.graphiteHair.copy(alpha = 0.65f)),
         )
     }
 }
@@ -689,13 +662,13 @@ private fun ChatMenuItem(
         Icon(
             icone,
             contentDescription = null,
-            tint = OrbitTokens.textHigh,
+            tint = OrbitTokens.textHiN,
             modifier = Modifier.size(18.dp),
         )
         Spacer(Modifier.width(12.dp))
         Text(
             rotulo,
-            color = OrbitTokens.textHigh,
+            color = OrbitTokens.textHiN,
             fontSize = 14.sp,
             fontWeight = FontWeight.Medium,
         )
@@ -712,7 +685,7 @@ private fun AssinaturaAzul(modifier: Modifier = Modifier) {
             lineTo(size.width * 0.15f, size.height)
             close()
         }
-        drawPath(path, color = OrbitTokens.accent)
+        drawPath(path, color = OrbitTokens.bluePastel)
     }
 }
 
@@ -720,8 +693,6 @@ private fun AssinaturaAzul(modifier: Modifier = Modifier) {
 private fun ChatTimeline(
     conversaId: String,
     historico: List<Mensagem>,
-    documentos: List<DocumentoUi> = emptyList(),
-    onAbrirDocumento: (DocumentoUi) -> Unit = {},
     streamState: MutableState<LunaStreamEstado>,
     ocultarMessageId: String? = null,
     scrollParaId: String? = null,
@@ -849,21 +820,6 @@ private fun ChatTimeline(
         return
     }
 
-    // Cada documento se ancora à ÚLTIMA mensagem cujo relógio é <= o dele — ou seja, cai logo
-    // depois da mensagem da Luna que o criou. Como documento e mensagem compartilham o mesmo
-    // relógio (ms), o cartão sobrevive ao reload sem precisar amarrar id pelo SSE. Sem âncora
-    // (relógio faltando/anterior a tudo) o cartão vai pro fim, pra nunca sumir.
-    val documentosPorMensagem = remember(mensagensVisiveis, documentos) {
-        val mapa = HashMap<Int, MutableList<DocumentoUi>>()
-        val ultimoIdx = mensagensVisiveis.lastIndex
-        documentos.forEach { doc ->
-            val idx = mensagensVisiveis.indexOfLast { it.timestamp <= doc.createdAtMs }
-                .let { if (it < 0) ultimoIdx else it }
-            mapa.getOrPut(idx) { mutableListOf() }.add(doc)
-        }
-        mapa
-    }
-
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize(),
@@ -891,8 +847,8 @@ private fun ChatTimeline(
             val recuada = selecionadoId != null && !selecionada
             val corPulso by animateColorAsState(
                 targetValue = when {
-                    selecionada -> OrbitTokens.accent.copy(alpha = 0.22f)
-                    destacado -> OrbitTokens.accent.copy(alpha = 0.16f)
+                    selecionada -> OrbitTokens.bluePastel.copy(alpha = 0.22f)
+                    destacado -> OrbitTokens.bluePastel.copy(alpha = 0.16f)
                     else -> Color.Transparent
                 },
                 animationSpec = tween(durationMillis = if (selecionada || destacado) 180 else 700),
@@ -908,8 +864,6 @@ private fun ChatTimeline(
                 animationSpec = spring(dampingRatio = 0.62f, stiffness = Spring.StiffnessMedium),
                 label = "cresceMensagem",
             )
-            // Documentos ancorados a esta mensagem — desenhados como cartões logo abaixo dela.
-            val docsAqui = documentosPorMensagem[index].orEmpty()
             Column(
                 modifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -938,9 +892,6 @@ private fun ChatTimeline(
                         onLongPress = { onMessageLongPress(msg) },
                         onReferenciarMedia = { att -> onReferenciarMedia(msg, att) },
                     )
-                }
-                docsAqui.forEach { doc ->
-                    DocumentoCard(doc = doc, onAbrir = onAbrirDocumento)
                 }
             }
         }
@@ -1001,8 +952,8 @@ private fun RetryChip(onClick: () -> Unit) {
         Row(
             modifier = Modifier
                 .clip(RoundedCornerShape(20.dp))
-                .background(OrbitTokens.surfaceRaised)
-                .border(1.dp, OrbitTokens.borderSoft, RoundedCornerShape(20.dp))
+                .background(OrbitTokens.graphiteRaised)
+                .border(1.dp, OrbitTokens.graphiteHair, RoundedCornerShape(20.dp))
                 .orbitPressable(onClick = onClick)
                 .padding(horizontal = 16.dp, vertical = 9.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -1011,12 +962,12 @@ private fun RetryChip(onClick: () -> Unit) {
             Icon(
                 imageVector = Icons.Rounded.Refresh,
                 contentDescription = null,
-                tint = OrbitTokens.accentText,
+                tint = OrbitTokens.bluePastel,
                 modifier = Modifier.size(16.dp),
             )
             Text(
                 text = "Tentar de novo",
-                color = OrbitTokens.accentText,
+                color = OrbitTokens.bluePastel,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -1066,21 +1017,21 @@ private fun ChatEmptyState() {
                 Modifier
                     .size(56.dp)
                     .clip(RoundedCornerShape(16.dp))
-                    .background(OrbitTokens.surface)
-                    .border(1.dp, OrbitTokens.borderSoft, RoundedCornerShape(16.dp)),
+                    .background(OrbitTokens.graphiteSurf)
+                    .border(1.dp, OrbitTokens.graphiteHair, RoundedCornerShape(16.dp)),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     Icons.Rounded.ChatBubbleOutline,
                     contentDescription = null,
-                    tint = OrbitTokens.accentText,
+                    tint = OrbitTokens.bluePastel,
                     modifier = Modifier.size(26.dp),
                 )
             }
             Spacer(modifier = Modifier.height(16.dp))
             Text(
                 "Começa a conversa",
-                color = OrbitTokens.textHigh,
+                color = OrbitTokens.textHiN,
                 fontSize = 17.sp,
                 fontWeight = FontWeight.SemiBold,
                 textAlign = TextAlign.Center,
@@ -1088,7 +1039,7 @@ private fun ChatEmptyState() {
             Spacer(modifier = Modifier.height(6.dp))
             Text(
                 "A Luna responde com clareza — texto, voz ou as duas.",
-                color = OrbitTokens.textMid,
+                color = OrbitTokens.textMidN,
                 fontSize = OrbitMetrics.bodySize,
                 lineHeight = 20.sp,
                 textAlign = TextAlign.Center,
@@ -1161,7 +1112,9 @@ private fun MessageBubble(
             horizontalAlignment = if (msg.isLuna) Alignment.Start else Alignment.End,
             modifier = Modifier
                 .align(if (msg.isLuna) Alignment.CenterStart else Alignment.CenterEnd)
-                .fillMaxWidth(if (msg.isLuna && msg.actionRun != null) 0.96f else 0.82f),
+                // A Luna ocupa a largura toda (texto solto, sem bolha); você continua na
+                // bolha padrão, mais estreita, ancorada à direita.
+                .fillMaxWidth(if (msg.isLuna) 1f else 0.82f),
         ) {
             // Pesquisa profunda: a resposta vira um DOSSIÊ (card de relatório com
             // assinatura violeta), montado mais abaixo no lugar da bolha comum. Aqui em
@@ -1213,16 +1166,17 @@ private fun MessageBubble(
             } else if (temTexto || temReferencia) {
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth(if (msg.actionRun != null) 0.88f else 1f)
+                        .fillMaxWidth()
                         .align(if (msg.isLuna) Alignment.Start else Alignment.End)
-                        .clip(shape)
                         .then(
                             if (msg.isLuna) {
+                                // Fala da Luna: texto solto, largura total, sem bolha nem
+                                // rabinho — respira como no Claude/ChatGPT.
                                 Modifier
-                                    .background(OrbitTokens.bubbleLuna)
-                                    .border(1.dp, OrbitTokens.borderSoft, shape)
                             } else {
-                                Modifier.background(OrbitTokens.accent)
+                                // Sua bolha: cinza escura discreta (não mais o accent forte) —
+                                // ancora à direita sem gritar; a Luna segue solta à esquerda.
+                                Modifier.clip(shape).background(OrbitTokens.bubbleUser)
                             },
                         )
                         .combinedClickable(
@@ -1232,14 +1186,12 @@ private fun MessageBubble(
                             onLongClick = onLongPress,
                         ),
                 ) {
-                    if (msg.isLuna) {
-                        AssinaturaAzul(
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .size(12.dp),
-                        )
-                    }
-                    Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                    Column(
+                        Modifier.padding(
+                            horizontal = if (msg.isLuna) 0.dp else 14.dp,
+                            vertical = if (msg.isLuna) 0.dp else 10.dp,
+                        ),
+                    ) {
                         if (temReferencia && msg.reference != null) {
                             MessageReferenceQuote(reference = msg.reference)
                             if (temTexto) Spacer(Modifier.height(8.dp))
@@ -1269,7 +1221,7 @@ private fun MessageBubble(
             Spacer(Modifier.height(4.dp))
             Text(
                 text = formatHoraMensagem(msg.timestamp),
-                color = OrbitTokens.textLow.copy(alpha = 0.85f),
+                color = OrbitTokens.textLowN.copy(alpha = 0.85f),
                 fontSize = 11.sp,
                 modifier = Modifier.combinedClickable(
                     interactionSource = remember { MutableInteractionSource() },
@@ -1400,7 +1352,7 @@ private fun ChatInputArea(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(OrbitTokens.ink1)
+            .background(OrbitTokens.graphiteBg)
             .padding(horizontal = OrbitMetrics.pagePadding, vertical = 12.dp)
             .graphicsLayer { alpha = if (enabled) 1f else 0.45f },
     ) {
@@ -1428,8 +1380,8 @@ private fun ChatInputArea(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(OrbitTokens.surface, ComposerFieldShape)
-            .border(1.dp, OrbitTokens.borderSoft, ComposerFieldShape),
+            .background(OrbitTokens.graphiteSurf, ComposerFieldShape)
+            .border(1.dp, OrbitTokens.graphiteHair, ComposerFieldShape),
     ) {
     Column(modifier = Modifier.fillMaxWidth().padding(6.dp)) {
 
@@ -1455,12 +1407,12 @@ private fun ChatInputArea(
                             value = texto,
                             onValueChange = { texto = it },
                             textStyle = TextStyle(
-                                color = OrbitTokens.textHigh,
+                                color = OrbitTokens.textHiN,
                                 fontSize = 15.sp,
                                 lineHeight = 20.sp,
                             ),
                             modifier = Modifier.fillMaxWidth(),
-                            cursorBrush = SolidColor(OrbitTokens.accent),
+                            cursorBrush = SolidColor(OrbitTokens.bluePastel),
                             maxLines = ComposerMaxLines,
                             decorationBox = { inner ->
                                 Box(Modifier.fillMaxWidth()) {
@@ -1471,7 +1423,7 @@ private fun ChatInputArea(
                                                 anexos.isNotEmpty() -> "Adiciona uma legenda…"
                                                 else -> "Mensagem pra Luna..."
                                             },
-                                            color = OrbitTokens.textLow,
+                                            color = OrbitTokens.textLowN,
                                             fontSize = 15.sp,
                                             lineHeight = 20.sp,
                                         )
@@ -1493,7 +1445,7 @@ private fun ChatInputArea(
                                     .background(OrbitTokens.danger.copy(alpha = dotAlpha)),
                             )
                             Spacer(Modifier.width(10.dp))
-                            Text(formatTimer(segundos), color = OrbitTokens.textHigh, fontSize = 15.sp)
+                            Text(formatTimer(segundos), color = OrbitTokens.textHiN, fontSize = 15.sp)
                             Spacer(Modifier.weight(1f))
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -1506,13 +1458,13 @@ private fun ChatInputArea(
                                 Icon(
                                     Icons.Rounded.ArrowBackIosNew,
                                     contentDescription = null,
-                                    tint = OrbitTokens.textLow,
+                                    tint = OrbitTokens.textLowN,
                                     modifier = Modifier.size(11.dp),
                                 )
                                 Spacer(Modifier.width(5.dp))
                                 Text(
                                     "arraste pra cancelar",
-                                    color = OrbitTokens.textLow,
+                                    color = OrbitTokens.textLowN,
                                     fontSize = 13.sp,
                                     maxLines = 1,
                                 )
@@ -1532,12 +1484,12 @@ private fun ChatInputArea(
                                 Icon(
                                     Icons.Rounded.DeleteOutline,
                                     contentDescription = "Descartar",
-                                    tint = OrbitTokens.textMid,
+                                    tint = OrbitTokens.textMidN,
                                     modifier = Modifier.size(20.dp),
                                 )
                                 Text(
                                     "Descartar",
-                                    color = OrbitTokens.textMid,
+                                    color = OrbitTokens.textMidN,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Medium,
                                 )
@@ -1550,12 +1502,12 @@ private fun ChatInputArea(
                                     .background(OrbitTokens.danger.copy(alpha = dotAlpha)),
                             )
                             Spacer(Modifier.width(10.dp))
-                            Text(formatTimer(segundos), color = OrbitTokens.textHigh, fontSize = 15.sp)
+                            Text(formatTimer(segundos), color = OrbitTokens.textHiN, fontSize = 15.sp)
                             Spacer(Modifier.weight(1f))
                             Icon(
                                 Icons.Rounded.Lock,
                                 contentDescription = null,
-                                tint = OrbitTokens.accentText,
+                                tint = OrbitTokens.bluePastel,
                                 modifier = Modifier.size(16.dp),
                             )
                         }
@@ -1600,21 +1552,20 @@ private fun ChatInputArea(
             Icon(
                 Icons.Filled.Add,
                 contentDescription = "Anexos",
-                tint = if (anexos.isNotEmpty()) OrbitTokens.accentText else OrbitTokens.textHigh,
+                tint = if (anexos.isNotEmpty()) OrbitTokens.bluePastel else OrbitTokens.textHiN,
                 modifier = Modifier.size(24.dp),
             )
         }
 
         // Botão de modo: some na gravação (a linha vira controles de áudio). Mostra o modo
-        // ATIVO (ícone + nome) e abre o seletor — Técnico/Mãos à obra acesos em accent, Conversa
-        // quieto, pra dar num relance qual está ligado. O chevron avisa que abre um menu, não alterna.
+        // ATIVO (ícone + nome) e abre o seletor. Discreto tipo Claude: pílula-fantasma neutra
+        // sempre — SEM preenchimento colorido; o modo aceso (Técnico/Ação) só tinge o texto e o
+        // ícone de azul pastel, Conversa fica cinza. O chevron avisa que abre um menu, não alterna.
         if (!gravando) {
             Spacer(Modifier.width(8.dp))
             val modoAceso = modoAtivo != ModoLunaOpcao.Conversa
             val tecShape = RoundedCornerShape(50)
-            val tecBg = if (modoAceso) OrbitTokens.accentSoft else Color.Transparent
-            val tecBorda = if (modoAceso) OrbitTokens.accent.copy(alpha = 0.45f) else OrbitTokens.borderSoft
-            val tecTint = if (modoAceso) OrbitTokens.accentText else OrbitTokens.textMid
+            val tecTint = if (modoAceso) OrbitTokens.bluePastel else OrbitTokens.textMidN
             val modoIcone = when (modoAtivo) {
                 ModoLunaOpcao.Tecnico -> Icons.Rounded.Tune
                 ModoLunaOpcao.MaosAObra -> Icons.Rounded.Handyman
@@ -1622,19 +1573,17 @@ private fun ChatInputArea(
             }
             val modoRotulo = when (modoAtivo) {
                 ModoLunaOpcao.Tecnico -> "Técnico"
-                ModoLunaOpcao.MaosAObra -> "Mãos à obra"
+                ModoLunaOpcao.MaosAObra -> "Ação"
                 ModoLunaOpcao.Conversa -> "Conversa"
             }
             Row(
                 Modifier
                     .clip(tecShape)
-                    .background(tecBg)
-                    .border(1.dp, tecBorda, tecShape)
                     .clickable(enabled = enabled) {
                         haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         modoSheetAberto = true
                     }
-                    .padding(start = 12.dp, end = 8.dp, top = 7.dp, bottom = 7.dp),
+                    .padding(start = 8.dp, end = 6.dp, top = 7.dp, bottom = 7.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
@@ -1670,15 +1619,15 @@ private fun ChatInputArea(
         val (sendInteraction, sendPressScale) = rememberOrbitPressScale()
 
         val mostrarSend = isTyping || recordState == RecordState.Locked
+        // Enviar/mic acendem no pastel com o ícone escuro (contraste), igual ao composer do
+        // Início. Só a gravação foge pro vermelho.
         val corBotao = when {
             recordState != RecordState.Idle -> OrbitTokens.danger
-            mostrarSend -> SendIdleBg
-            else -> OrbitTokens.accent
+            else -> OrbitTokens.bluePastel
         }
         val tintIcone = when {
             recordState != RecordState.Idle -> Color.White
-            mostrarSend -> OrbitTokens.ink0
-            else -> Color.White
+            else -> OrbitTokens.onBluePastel
         }
 
         // pointerInput estável: NÃO trocar o modifier ao entrar em Recording
@@ -1742,8 +1691,8 @@ private fun ChatInputArea(
                         .offset(y = (-74 - lockProgresso * 10).dp)
                         .size(width = 40.dp, height = 58.dp)
                         .clip(RoundedCornerShape(OrbitMetrics.radiusCard))
-                        .background(OrbitTokens.surfaceRaised.copy(alpha = 0.9f))
-                        .border(1.dp, OrbitTokens.borderSoft, RoundedCornerShape(OrbitMetrics.radiusCard)),
+                        .background(OrbitTokens.graphiteRaised.copy(alpha = 0.9f))
+                        .border(1.dp, OrbitTokens.graphiteHair, RoundedCornerShape(OrbitMetrics.radiusCard)),
                     contentAlignment = Alignment.Center,
                 ) {
                     Column(
@@ -1753,14 +1702,14 @@ private fun ChatInputArea(
                         Icon(
                             Icons.Rounded.Lock,
                             contentDescription = null,
-                            tint = lerp(OrbitTokens.textLow, OrbitTokens.accentText, lockProgresso),
+                            tint = lerp(OrbitTokens.textLowN, OrbitTokens.bluePastel, lockProgresso),
                             modifier = Modifier.size(18.dp),
                         )
                         Spacer(Modifier.height(2.dp))
                         Icon(
                             Icons.Rounded.KeyboardArrowUp,
                             contentDescription = null,
-                            tint = OrbitTokens.textLow.copy(alpha = 1f - lockProgresso),
+                            tint = OrbitTokens.textLowN.copy(alpha = 1f - lockProgresso),
                             modifier = Modifier.size(14.dp),
                         )
                     }

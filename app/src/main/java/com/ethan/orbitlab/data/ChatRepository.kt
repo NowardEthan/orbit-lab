@@ -301,14 +301,16 @@ object ChatRepository {
     }
 
     /**
-     * Deixa a Luna rebatizar a conversa conforme o assunto atual. Roda no 1º par (título
-     * imediato) e a cada 6 turnos depois — pega a deriva do assunto sem trocar o nome a
-     * cada mensagem. Chamada barata e à parte do stream; se falhar, o título fica como está.
+     * Deixa a Luna batizar a conversa conforme o assunto — UMA vez, no 1º par. O nome nasce
+     * do conteúdo e depois FICA: um título que se troca sozinho a cada tantos turnos parece
+     * "mudar a cada mensagem" e tira o chão de quem usa o nome como referência. Se o assunto
+     * virar outro, isso é uma conversa nova. Chamada barata e à parte do stream; se falhar
+     * (ex.: sem rede), o título fica no palpite imediato e não tenta de novo.
      */
     fun talvezRenomearPelaLuna(conversaId: String) {
         val conv = getConversa(conversaId) ?: return
         val turnosUsuario = conv.mensagens.count { !it.isLuna && !it.erro }
-        val deveRenomear = turnosUsuario == 1 || (turnosUsuario >= 6 && turnosUsuario % 6 == 0)
+        val deveRenomear = turnosUsuario == 1
         if (!deveRenomear) return
         scope.launch {
             val msgs = getConversa(conversaId)?.mensagens ?: return@launch

@@ -27,7 +27,7 @@ fun LunaActionTimeline(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         if (tools.isNotEmpty()) {
-            LunaToolStrip(steps = tools)
+            LunaToolTimeline(steps = tools, inicialmenteAberto = inicialmenteAberto)
         }
         if (run.isDeepResearch() && research != null) {
             LunaResearchPanel(

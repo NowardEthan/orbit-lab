@@ -129,22 +129,47 @@ fun toolMeta(ferramenta: String): ToolMeta = when (ferramenta) {
         live = { "Anotando um passo" },
         done = { "Passo adicionado" },
     )
-    "criar_documento" -> ToolMeta(
+    "criar_artefato" -> ToolMeta(
         kind = LunaActionStepKind.WRITE,
-        live = { "Escrevendo o documento" },
-        done = { "Documento escrito" },
+        live = { "Escrevendo o artefato" },
+        done = { "Artefato escrito" },
     )
-    "editar_documento" -> ToolMeta(
+    "editar_artefato" -> ToolMeta(
         kind = LunaActionStepKind.WRITE,
-        live = { "Revisando o documento" },
-        done = { "Documento revisado" },
+        live = { "Revisando o artefato" },
+        done = { "Artefato revisado" },
     )
-    "ler_documento" -> ToolMeta(
+    "editar_trecho_artefato" -> ToolMeta(
+        kind = LunaActionStepKind.WRITE,
+        live = { "Ajustando um trecho" },
+        done = { "Trecho ajustado" },
+    )
+    "ler_artefato" -> ToolMeta(
         kind = LunaActionStepKind.SUMMARIZE,
-        live = { "Lendo o documento" },
-        done = { "Leu o documento" },
+        live = { "Lendo o artefato" },
+        done = { "Leu o artefato" },
     )
-    "listar_documentos" -> ToolMeta(
+    "ler_estrutura" -> ToolMeta(
+        kind = LunaActionStepKind.SUMMARIZE,
+        live = { "Olhando o índice" },
+        done = { "Viu o índice" },
+    )
+    "ler_secao" -> ToolMeta(
+        kind = LunaActionStepKind.SUMMARIZE,
+        live = { "Abrindo a seção" },
+        done = { "Leu a seção" },
+    )
+    "buscar_no_artefato" -> ToolMeta(
+        kind = LunaActionStepKind.SUMMARIZE,
+        live = { "Procurando no artefato" },
+        done = { "Buscou no artefato" },
+    )
+    "anotar_canone" -> ToolMeta(
+        kind = LunaActionStepKind.MEMORY,
+        live = { "Anotando no cânone" },
+        done = { "Anotou no cânone" },
+    )
+    "listar_artefatos" -> ToolMeta(
         kind = LunaActionStepKind.MEMORY,
         live = { "Abrindo a estante" },
         done = { "Olhou a estante" },

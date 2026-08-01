@@ -14,25 +14,25 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.Chat
-import androidx.compose.material.icons.rounded.Air
-import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.automirrored.rounded.ArrowForward
+import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.LocationOn
-import androidx.compose.material.icons.rounded.Notifications
-import androidx.compose.material.icons.rounded.Person
-import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Umbrella
-import androidx.compose.material.icons.rounded.WaterDrop
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
@@ -59,18 +59,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
 import com.ethan.orbitlab.data.AuthRepository
 import com.ethan.orbitlab.data.ChatRepository
-import com.ethan.orbitlab.data.Conversa
 import com.ethan.orbitlab.data.PrefsRepository
 import com.ethan.orbitlab.data.UserProfileRepository
 import com.ethan.orbitlab.data.local.DiaPrevisao
@@ -78,6 +80,7 @@ import com.ethan.orbitlab.data.local.LocalLab
 import com.ethan.orbitlab.data.local.LocationRepository
 import com.ethan.orbitlab.data.local.emojiWMO
 import kotlin.math.roundToInt
+import com.ethan.orbitlab.ui.theme.Bricolage
 import com.ethan.orbitlab.ui.theme.OrbitMetrics
 import com.ethan.orbitlab.ui.theme.OrbitTokens
 import com.ethan.orbitlab.ui.theme.orbitPressable
@@ -89,12 +92,10 @@ import java.util.Locale
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InicioScreen(
-    onAbrirNovidades: () -> Unit = {},
-    temNovidade: Boolean = false,
     onAbrirConversa: (String) -> Unit = {},
     onNovaConversa: () -> Unit = {},
+    onNovaConversaComTexto: (String) -> Unit = {},
     idleAtivo: Boolean = true,
-    onMarkNovidadesVistas: () -> Unit = {},
 ) {
     val density = LocalDensity.current
     val context = LocalContext.current
@@ -144,16 +145,10 @@ fun InicioScreen(
         }
     }
 
-    LaunchedEffect(temNovidade) {
-        if (temNovidade) onMarkNovidadesVistas()
-    }
     val nomeCompleto = profile.displayName.ifBlank { session?.displayName.orEmpty() }
     val nome = nomeCompleto.substringBefore(' ').ifBlank { nomeCompleto }.ifBlank { "você" }
     val saudacao = remember { saudacaoDoDia() }
     val recentes = remember(conversas) { conversas.take(5) }
-    val totalMsgs = remember(conversas) {
-        conversas.sumOf { it.messageCount.coerceAtLeast(it.mensagens.size) }
-    }
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Transparent)) {
         InicioOrbs(idleAtivo = idleAtivo, density = density)
@@ -170,85 +165,87 @@ fun InicioScreen(
             },
             modifier = Modifier.fillMaxSize(),
         ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(
-                    top = 24.dp,
-                    start = OrbitMetrics.pagePadding,
-                    end = OrbitMetrics.pagePadding,
-                    bottom = 120.dp,
-                ),
-            verticalArrangement = Arrangement.spacedBy(OrbitMetrics.sectionGap),
-        ) {
-            HeaderSecao(
-                saudacao = saudacao,
-                nome = nome,
-                avatarUrl = profile.avatarUrl,
-                onAbrirNovidades = onAbrirNovidades,
-                temNovidade = temNovidade,
-            )
-            ClimaSecao(
-                ativo = localizacaoAtiva,
-                local = clima,
-                carregando = climaCarregando,
-                onAtivar = {
-                    if (LocationRepository.temPermissao(context)) {
-                        PrefsRepository.setLocalizacaoAtiva(true)
-                        LocationRepository.atualizarEmBackground(context, forcar = true)
-                    } else {
-                        permClima.launch(
-                            arrayOf(
-                                Manifest.permission.ACCESS_FINE_LOCATION,
-                                Manifest.permission.ACCESS_COARSE_LOCATION,
-                            ),
-                        )
-                    }
-                },
-                onAtualizar = { LocationRepository.atualizarEmBackground(context, forcar = true) },
-            )
-            if (updateAvailable && !apkUrl.isNullOrBlank()) {
-                UpdateBanner(
-                    version = latestVersion,
-                    mandatory = mandatory,
-                    downloading = downloading,
-                    progress = progress,
-                    onUpdate = {
-                        if (downloading) return@UpdateBanner
-                        val url = apkUrl ?: return@UpdateBanner
-                        downloading = true
-                        progress = 0f
-                        ChatRepository.launch {
-                            try {
-                                ApkInstaller.downloadAndInstall(context, url) { progress = it }
-                            } catch (_: Exception) {
-                                ApkInstaller.openInBrowser(context, url)
-                            } finally {
-                                downloading = false
-                                progress = 0f
-                            }
-                        }
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(
+                        top = 8.dp,
+                        start = OrbitMetrics.pagePadding,
+                        end = OrbitMetrics.pagePadding,
+                        bottom = 108.dp,
+                    ),
+                verticalArrangement = Arrangement.spacedBy(OrbitMetrics.sectionGap),
+            ) {
+                HeaderSecao(
+                    saudacao = saudacao,
+                    nome = nome,
+                )
+                LunaSecao(
+                    linha = remember(saudacao, clima) { linhaDaLuna(saudacao, clima?.clima) },
+                    temUltima = recentes.isNotEmpty(),
+                    onFalar = {
+                        val ultima = recentes.firstOrNull()
+                        if (ultima != null) onAbrirConversa(ultima.id) else onNovaConversa()
                     },
                 )
-            }
-            ResumoSecao(
-                conversas = conversas.size,
-                mensagens = totalMsgs,
-            )
-            ContinuarSecao(
-                ultima = recentes.firstOrNull(),
-                onContinuar = { id -> onAbrirConversa(id) },
-                onNova = onNovaConversa,
-            )
-            if (recentes.isNotEmpty()) {
-                RecentesSecao(
-                    conversas = recentes,
-                    onAbrir = onAbrirConversa,
+                ClimaSecao(
+                    ativo = localizacaoAtiva,
+                    local = clima,
+                    carregando = climaCarregando,
+                    onAtivar = {
+                        if (LocationRepository.temPermissao(context)) {
+                            PrefsRepository.setLocalizacaoAtiva(true)
+                            LocationRepository.atualizarEmBackground(context, forcar = true)
+                        } else {
+                            permClima.launch(
+                                arrayOf(
+                                    Manifest.permission.ACCESS_FINE_LOCATION,
+                                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                                ),
+                            )
+                        }
+                    },
+                    onAtualizar = { LocationRepository.atualizarEmBackground(context, forcar = true) },
                 )
+                if (updateAvailable && !apkUrl.isNullOrBlank()) {
+                    UpdateBanner(
+                        version = latestVersion,
+                        mandatory = mandatory,
+                        downloading = downloading,
+                        progress = progress,
+                        onUpdate = {
+                            if (downloading) return@UpdateBanner
+                            val url = apkUrl ?: return@UpdateBanner
+                            downloading = true
+                            progress = 0f
+                            ChatRepository.launch {
+                                try {
+                                    ApkInstaller.downloadAndInstall(context, url) { progress = it }
+                                } catch (_: Exception) {
+                                    ApkInstaller.openInBrowser(context, url)
+                                } finally {
+                                    downloading = false
+                                    progress = 0f
+                                }
+                            }
+                        },
+                    )
+                }
             }
         }
-        }
+
+        ComposerEntrada(
+            onEnviar = { texto -> onNovaConversaComTexto(texto) },
+            onAbrirVazio = onNovaConversa,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .imePadding()
+                .padding(horizontal = OrbitMetrics.pagePadding)
+                .padding(bottom = 16.dp),
+        )
     }
 }
 
@@ -278,8 +275,8 @@ private fun ClimaSecao(
             Modifier
                 .fillMaxWidth()
                 .clip(shape)
-                .background(OrbitTokens.surface)
-                .border(1.dp, OrbitTokens.borderSoft, shape)
+                .background(OrbitTokens.graphiteSurf)
+                .border(1.dp, OrbitTokens.graphiteHair, shape)
                 .orbitPressable(onClick = if (ativo) onAtualizar else onAtivar)
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -289,7 +286,7 @@ private fun ClimaSecao(
             Column(Modifier.weight(1f)) {
                 Text(
                     "Clima no seu lugar",
-                    color = OrbitTokens.textHigh,
+                    color = OrbitTokens.textHiN,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
@@ -297,7 +294,7 @@ private fun ClimaSecao(
                 Text(
                     if (buscandoAgora) "Buscando o tempo agora…"
                     else "Veja o tempo agora e dê à Luna o seu lugar.",
-                    color = OrbitTokens.textMid,
+                    color = OrbitTokens.textMidN,
                     fontSize = 12.sp,
                     lineHeight = 16.sp,
                 )
@@ -306,12 +303,12 @@ private fun ClimaSecao(
                 Spacer(Modifier.width(10.dp))
                 Text(
                     "Ativar",
-                    color = Color.White,
+                    color = OrbitTokens.onBluePastel,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier
                         .clip(RoundedCornerShape(OrbitMetrics.radiusPill))
-                        .background(OrbitTokens.accent)
+                        .background(OrbitTokens.bluePastel)
                         .padding(horizontal = 14.dp, vertical = 7.dp),
                 )
             }
@@ -321,72 +318,79 @@ private fun ClimaSecao(
 
     val c = local.clima
     var mostrarDetalhe by remember { mutableStateOf(false) }
-    val paleta = paletaCeu(c.codigo, horaLocal())
-    Box(
+    Row(
         Modifier
             .fillMaxWidth()
             .clip(shape)
-            .border(1.dp, OrbitTokens.borderSoft, shape)
-            .orbitPressable(onClick = { mostrarDetalhe = true }),
+            .background(OrbitTokens.graphiteSurf)
+            .border(1.dp, OrbitTokens.graphiteHair, shape)
+            .orbitPressable(onClick = { mostrarDetalhe = true })
+            .padding(horizontal = 18.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        CeuVivoFundo(paleta, Modifier.matchParentSize(), compacto = true)
-        Column(
-            Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                Icons.Rounded.LocationOn,
-                contentDescription = null,
-                tint = OrbitTokens.textMid,
-                modifier = Modifier.size(14.dp),
-            )
-            Spacer(Modifier.width(4.dp))
+        Text(emojiWMO(c.codigo), fontSize = 34.sp)
+        Spacer(Modifier.width(16.dp))
+        Column(Modifier.weight(1f)) {
             Text(
-                lugarLabel(local),
-                color = OrbitTokens.textMid,
+                c.tempC?.let { "${it.roundToInt()}°" } ?: "--°",
+                color = OrbitTokens.textHiN,
+                fontSize = 28.sp,
+                fontFamily = Bricolage,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = (-1).sp,
+                lineHeight = 30.sp,
+            )
+            Text(
+                c.descricao?.takeIf { it.isNotBlank() } ?: subtituloClima(c),
+                color = OrbitTokens.textMidN,
                 fontSize = 13.sp,
-                fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
             )
-            if (carregando) {
-                Text("atualizando…", color = OrbitTokens.textLow, fontSize = 11.sp)
-            }
         }
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(emojiWMO(c.codigo), fontSize = 44.sp)
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    c.tempC?.let { "${it.roundToInt()}°" } ?: "--°",
-                    color = OrbitTokens.textHigh,
-                    fontSize = 40.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = (-1).sp,
-                )
-                Text(
-                    subtituloClima(c),
-                    color = OrbitTokens.textMid,
-                    fontSize = 13.sp,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-
-        Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+        Spacer(Modifier.width(12.dp))
+        Column(
+            horizontalAlignment = Alignment.End,
+            modifier = Modifier.widthIn(max = 150.dp),
+        ) {
+            Text(
+                lugarLabel(local),
+                color = OrbitTokens.textMidN,
+                fontSize = 12.5.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
             if (c.maxC != null || c.minC != null) {
-                val max = c.maxC?.let { "↑${it.roundToInt()}°" }
-                val min = c.minC?.let { "↓${it.roundToInt()}°" }
-                StatClima(texto = listOfNotNull(max, min).joinToString("  "))
+                Spacer(Modifier.height(3.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    c.maxC?.let {
+                        Text(
+                            "${it.roundToInt()}°",
+                            color = OrbitTokens.bluePastel,
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                    c.minC?.let {
+                        Text(
+                            " / ${it.roundToInt()}°",
+                            color = OrbitTokens.textMidN,
+                            fontSize = 12.5.sp,
+                        )
+                    }
+                    c.umidade?.let {
+                        Text(
+                            " · $it%",
+                            color = OrbitTokens.textMidN,
+                            fontSize = 12.5.sp,
+                        )
+                    }
+                }
             }
-            c.chuvaProb?.let { StatClima(icone = Icons.Rounded.Umbrella, texto = "$it%") }
-            c.umidade?.let { StatClima(icone = Icons.Rounded.WaterDrop, texto = "$it%") }
-            c.ventoKmh?.let { StatClima(icone = Icons.Rounded.Air, texto = "${it.roundToInt()} km/h") }
-        }
+            if (carregando) {
+                Spacer(Modifier.height(2.dp))
+                Text("atualizando…", color = OrbitTokens.textLowN, fontSize = 10.sp)
+            }
         }
     }
 
@@ -412,7 +416,7 @@ private fun ClimaDetalheSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = OrbitTokens.surfaceRaised,
+        containerColor = OrbitTokens.graphiteRaised,
     ) {
         // Puxar pra baixo atualiza — sem botão, o gesto natural (igual à tela de Início).
         PullToRefreshBox(
@@ -442,7 +446,7 @@ private fun ClimaDetalheSheet(
                 Modifier
                     .fillMaxWidth()
                     .clip(heroShape)
-                    .border(1.dp, OrbitTokens.borderSoft, heroShape),
+                    .border(1.dp, OrbitTokens.graphiteHair, heroShape),
             ) {
                 CeuVivoFundo(paleta, Modifier.matchParentSize(), compacto = false)
                 Column(Modifier.padding(20.dp)) {
@@ -450,13 +454,13 @@ private fun ClimaDetalheSheet(
                         Icon(
                             Icons.Rounded.LocationOn,
                             contentDescription = null,
-                            tint = OrbitTokens.textMid,
+                            tint = OrbitTokens.textMidN,
                             modifier = Modifier.size(15.dp),
                         )
                         Spacer(Modifier.width(5.dp))
                         Text(
                             lugarLabel(local),
-                            color = OrbitTokens.textHigh,
+                            color = OrbitTokens.textHiN,
                             fontSize = 16.sp,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,
@@ -465,7 +469,7 @@ private fun ClimaDetalheSheet(
                         )
                         Text(
                             if (refreshing) "atualizando…" else atualizadoLabel(local.atualizadoEm),
-                            color = OrbitTokens.textLow,
+                            color = OrbitTokens.textLowN,
                             fontSize = 11.sp,
                         )
                     }
@@ -476,14 +480,14 @@ private fun ClimaDetalheSheet(
                         Column(Modifier.weight(1f)) {
                             Text(
                                 c.tempC?.let { "${it.roundToInt()}°" } ?: "--°",
-                                color = OrbitTokens.textHigh,
+                                color = OrbitTokens.textHiN,
                                 fontSize = 56.sp,
                                 fontWeight = FontWeight.Bold,
                                 letterSpacing = (-2).sp,
                             )
                             Text(
                                 subtituloClima(c),
-                                color = OrbitTokens.textMid,
+                                color = OrbitTokens.textMidN,
                                 fontSize = 14.sp,
                             )
                         }
@@ -532,7 +536,7 @@ private fun ClimaDetalheSheet(
                                 Modifier
                                     .fillMaxWidth()
                                     .height(1.dp)
-                                    .background(OrbitTokens.borderSoft),
+                                    .background(OrbitTokens.graphiteHair),
                             )
                         }
                     }
@@ -547,7 +551,7 @@ private fun ClimaDetalheSheet(
 private fun SecaoLabel(texto: String) {
     Text(
         texto,
-        color = OrbitTokens.textLow,
+        color = OrbitTokens.textLowN,
         fontSize = 11.sp,
         fontWeight = FontWeight.Medium,
         letterSpacing = 1.5.sp,
@@ -559,12 +563,12 @@ private fun DetalheStat(rotulo: String, valor: String, modifier: Modifier = Modi
     Column(
         modifier
             .clip(RoundedCornerShape(14.dp))
-            .background(OrbitTokens.surface)
+            .background(OrbitTokens.graphiteSurf)
             .padding(14.dp),
     ) {
-        Text(rotulo, color = OrbitTokens.textLow, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+        Text(rotulo, color = OrbitTokens.textLowN, fontSize = 11.sp, fontWeight = FontWeight.Medium)
         Spacer(Modifier.height(5.dp))
-        Text(valor, color = OrbitTokens.textHigh, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+        Text(valor, color = OrbitTokens.textHiN, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
@@ -579,14 +583,14 @@ private fun DiaPrevisaoRow(dia: DiaPrevisao) {
         Column(Modifier.weight(1f)) {
             Text(
                 rotuloCap(dia.rotulo),
-                color = OrbitTokens.textHigh,
+                color = OrbitTokens.textHiN,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Medium,
             )
             dia.descricao?.takeIf { it.isNotBlank() }?.let {
                 Text(
                     it,
-                    color = OrbitTokens.textLow,
+                    color = OrbitTokens.textLowN,
                     fontSize = 12.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -598,11 +602,11 @@ private fun DiaPrevisaoRow(dia: DiaPrevisao) {
                 Icon(
                     Icons.Rounded.Umbrella,
                     contentDescription = null,
-                    tint = OrbitTokens.textLow,
+                    tint = OrbitTokens.textLowN,
                     modifier = Modifier.size(13.dp),
                 )
                 Spacer(Modifier.width(3.dp))
-                Text("$it%", color = OrbitTokens.textMid, fontSize = 13.sp)
+                Text("$it%", color = OrbitTokens.textMidN, fontSize = 13.sp)
             }
             Spacer(Modifier.width(14.dp))
         }
@@ -610,7 +614,7 @@ private fun DiaPrevisaoRow(dia: DiaPrevisao) {
         val mn = dia.minC?.let { "↓${it.roundToInt()}°" }
         Text(
             listOfNotNull(mx, mn).joinToString("  "),
-            color = OrbitTokens.textMid,
+            color = OrbitTokens.textMidN,
             fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold,
         )
@@ -627,25 +631,6 @@ private fun atualizadoLabel(epochMs: Long): String {
         min < 60 -> "atualizado há $min min"
         min < 1440 -> "atualizado há ${min / 60} h"
         else -> "atualizado há ${min / 1440} d"
-    }
-}
-
-@Composable
-private fun StatClima(
-    texto: String,
-    icone: androidx.compose.ui.graphics.vector.ImageVector? = null,
-) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        if (icone != null) {
-            Icon(
-                icone,
-                contentDescription = null,
-                tint = OrbitTokens.textLow,
-                modifier = Modifier.size(14.dp),
-            )
-            Spacer(Modifier.width(4.dp))
-        }
-        Text(texto, color = OrbitTokens.textMid, fontSize = 12.sp, fontWeight = FontWeight.Medium)
     }
 }
 
@@ -667,29 +652,20 @@ private fun subtituloClima(c: com.ethan.orbitlab.data.local.ClimaLab): String {
 
 @Composable
 private fun BoxScope.InicioOrbs(idleAtivo: Boolean, density: Density) {
+    // Grafite minimalista: um único brilho pastel bem discreto no topo, respirando de
+    // leve. Nada de violeta/dourado — a cor mora só nos detalhes (CTA, ativo).
     val drift = if (idleAtivo) 6f else 0f
     Box(
         modifier = Modifier
             .align(Alignment.TopStart)
-            .offset(x = (-40).dp, y = (-20).dp)
-            .size(200.dp)
+            .offset(x = (-30).dp, y = (-40).dp)
+            .size(240.dp)
             .graphicsLayer {
                 translationX = with(density) { drift.dp.toPx() }
             }
             .background(
                 brush = Brush.radialGradient(
-                    colors = listOf(OrbitTokens.violet.copy(alpha = 0.05f), Color.Transparent),
-                ),
-            ),
-    )
-    Box(
-        modifier = Modifier
-            .align(Alignment.TopEnd)
-            .offset(x = 36.dp, y = 80.dp)
-            .size(160.dp)
-            .background(
-                brush = Brush.radialGradient(
-                    colors = listOf(OrbitTokens.gold.copy(alpha = 0.04f), Color.Transparent),
+                    colors = listOf(OrbitTokens.bluePastel.copy(alpha = 0.045f), Color.Transparent),
                 ),
             ),
     )
@@ -699,253 +675,200 @@ private fun BoxScope.InicioOrbs(idleAtivo: Boolean, density: Density) {
 private fun HeaderSecao(
     saudacao: String,
     nome: String,
-    avatarUrl: String?,
-    onAbrirNovidades: () -> Unit,
-    temNovidade: Boolean,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Box(
-                Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(OrbitTokens.surfaceRaised)
-                    .border(1.dp, OrbitTokens.borderSoft, CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (!avatarUrl.isNullOrBlank()) {
-                    AsyncImage(
-                        model = avatarUrl,
-                        contentDescription = "Seu avatar",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                } else {
-                    Icon(
-                        Icons.Rounded.Person,
-                        contentDescription = null,
-                        tint = OrbitTokens.textMid,
-                        modifier = Modifier.size(22.dp),
-                    )
-                }
-            }
-            Column {
-                Text(
-                    "$saudacao,",
-                    color = OrbitTokens.textMid,
-                    fontSize = OrbitMetrics.bodySize,
-                )
-                Text(
-                    "$nome.",
-                    color = OrbitTokens.textHigh,
-                    fontSize = OrbitMetrics.titleSize,
-                    fontWeight = OrbitMetrics.titleWeight,
-                    letterSpacing = (-0.3).sp,
-                )
-            }
-        }
-        Box(
-            Modifier
-                .size(OrbitMetrics.iconBtn)
-                .clip(CircleShape)
-                .background(OrbitTokens.surfaceRaised)
-                .border(1.dp, OrbitTokens.borderSoft, CircleShape)
-                .orbitPressable(onClick = onAbrirNovidades),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                Icons.Rounded.Notifications,
-                contentDescription = "Novidades",
-                tint = OrbitTokens.textHigh,
-                modifier = Modifier.size(20.dp),
-            )
-            if (temNovidade) {
-                Box(
-                    Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(6.dp)
-                        .size(8.dp)
-                        .clip(CircleShape)
-                        .background(OrbitTokens.accent),
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ResumoSecao(conversas: Int, mensagens: Int) {
-    Row(
-        Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        MetricCard(
-            titulo = "Conversas",
-            valor = conversas.toString(),
-            modifier = Modifier.weight(1f),
-        )
-        MetricCard(
-            titulo = "Mensagens",
-            valor = mensagens.toString(),
-            modifier = Modifier.weight(1f),
-        )
-    }
-}
-
-@Composable
-private fun MetricCard(
-    titulo: String,
-    valor: String,
-    modifier: Modifier = Modifier,
-) {
-    val shape = RoundedCornerShape(OrbitMetrics.radiusCard)
-    Column(
-        modifier
-            .clip(shape)
-            .background(OrbitTokens.surface.copy(alpha = 0.9f))
-            .border(1.dp, OrbitTokens.borderSoft, shape)
-            .padding(14.dp),
-    ) {
-        Text(titulo, color = OrbitTokens.textMid, fontSize = 12.sp)
-        Spacer(Modifier.height(4.dp))
+    Column(Modifier.fillMaxWidth()) {
         Text(
-            valor,
-            color = OrbitTokens.textHigh,
-            fontSize = 22.sp,
+            "$saudacao,",
+            color = OrbitTokens.textMidN,
+            fontSize = OrbitMetrics.bodySize,
+            lineHeight = 18.sp,
+        )
+        Text(
+            "$nome.",
+            color = OrbitTokens.textHiN,
+            fontSize = OrbitMetrics.titleSize,
+            fontFamily = Bricolage,
             fontWeight = FontWeight.Bold,
+            letterSpacing = (-0.4).sp,
+            lineHeight = 30.sp,
         )
     }
 }
 
 @Composable
-private fun ContinuarSecao(
-    ultima: Conversa?,
-    onContinuar: (String) -> Unit,
-    onNova: () -> Unit,
+private fun LunaSecao(
+    linha: String,
+    temUltima: Boolean,
+    onFalar: () -> Unit,
 ) {
     val shape = RoundedCornerShape(OrbitMetrics.radiusCard)
-    Column(
+    Box(
         Modifier
             .fillMaxWidth()
             .clip(shape)
-            .background(OrbitTokens.surface)
-            .border(1.dp, OrbitTokens.borderSoft, shape)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+            .background(OrbitTokens.graphiteSurf)
+            .border(1.dp, OrbitTokens.graphiteHair, shape)
+            .orbitPressable(onClick = onFalar),
     ) {
-        Text(
-            if (ultima != null) "Continuar de onde parou" else "Começar com a Luna",
-            color = OrbitTokens.textHigh,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.SemiBold,
-        )
-        if (ultima != null) {
-            Text(
-                ultima.titulo,
-                color = OrbitTokens.textMid,
-                fontSize = 13.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                ultima.preview,
-                color = OrbitTokens.textLow,
-                fontSize = 12.sp,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-        } else {
-            Text(
-                "Suas conversas sincronizam com a Conta Aura. Toque para criar a primeira.",
-                color = OrbitTokens.textMid,
-                fontSize = 13.sp,
-                lineHeight = 18.sp,
-            )
-        }
-        Row(
+        // Brilho pastel discreto no canto — a "presença" da Luna, sem violeta.
+        Box(
             Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(OrbitMetrics.radiusPill))
-                .background(OrbitTokens.accent)
-                .orbitPressable {
-                    if (ultima != null) onContinuar(ultima.id) else onNova()
-                }
-                .padding(vertical = 12.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                if (ultima != null) Icons.Rounded.PlayArrow else Icons.AutoMirrored.Rounded.Chat,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(18.dp),
-            )
-            Spacer(Modifier.width(6.dp))
-            Text(
-                if (ultima != null) "Continuar conversa" else "Nova conversa",
-                color = Color.White,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold,
-            )
-        }
-    }
-}
-
-@Composable
-private fun RecentesSecao(
-    conversas: List<Conversa>,
-    onAbrir: (String) -> Unit,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(
-            "Recentes",
-            color = OrbitTokens.textHigh,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.SemiBold,
+                .align(Alignment.TopEnd)
+                .offset(x = 30.dp, y = (-40).dp)
+                .size(150.dp)
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            OrbitTokens.bluePastel.copy(alpha = 0.14f),
+                            Color.Transparent,
+                        ),
+                    ),
+                ),
         )
-        conversas.forEach { conv ->
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(OrbitTokens.surface.copy(alpha = 0.85f))
-                    .border(1.dp, OrbitTokens.borderSoft, RoundedCornerShape(14.dp))
-                    .orbitPressable { onAbrir(conv.id) }
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        conv.titulo,
-                        color = OrbitTokens.textHigh,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        "${conv.horaFormatada} · ${conv.preview}",
-                        color = OrbitTokens.textLow,
-                        fontSize = 12.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
+        Column(Modifier.padding(18.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier
+                        .size(30.dp)
+                        .clip(CircleShape)
+                        .background(
+                            Brush.radialGradient(
+                                colors = listOf(
+                                    Color(0xFFEAF1FB),
+                                    OrbitTokens.bluePastel,
+                                    Color(0xFF6E8FC4),
+                                ),
+                            ),
+                        ),
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    "Luna",
+                    color = OrbitTokens.textHiN,
+                    fontSize = 15.sp,
+                    fontFamily = Bricolage,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+            Text(
+                linha,
+                color = OrbitTokens.textHiN.copy(alpha = 0.92f),
+                fontSize = 15.sp,
+                lineHeight = 21.sp,
+            )
+            Spacer(Modifier.height(14.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    if (temUltima) "Continuar com a Luna" else "Falar com a Luna",
+                    color = OrbitTokens.bluePastel,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(Modifier.width(6.dp))
                 Icon(
-                    Icons.Rounded.ChevronRight,
+                    Icons.AutoMirrored.Rounded.ArrowForward,
                     contentDescription = null,
-                    tint = OrbitTokens.textLow,
-                    modifier = Modifier.size(18.dp),
+                    tint = OrbitTokens.bluePastel,
+                    modifier = Modifier.size(15.dp),
                 )
             }
         }
     }
 }
+
+@Composable
+private fun ComposerEntrada(
+    onEnviar: (String) -> Unit,
+    onAbrirVazio: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    // Composer de verdade: digita aqui e o envio ABRE UMA CONVERSA NOVA já mandando o texto.
+    // Vazio, o botão só abre um chat em branco (o antigo "toca pra conversar").
+    var texto by remember { mutableStateOf("") }
+    val temTexto = texto.isNotBlank()
+    val keyboard = LocalSoftwareKeyboardController.current
+    val enviar = {
+        val t = texto.trim()
+        if (t.isNotEmpty()) {
+            texto = ""
+            keyboard?.hide()
+            onEnviar(t)
+        } else {
+            onAbrirVazio()
+        }
+    }
+    val shape = RoundedCornerShape(22.dp)
+    Row(
+        modifier
+            .clip(shape)
+            .background(OrbitTokens.graphiteRaised)
+            .border(1.dp, OrbitTokens.graphiteHair, shape)
+            .padding(start = 18.dp, end = 10.dp, top = 10.dp, bottom = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        BasicTextField(
+            value = texto,
+            onValueChange = { texto = it },
+            modifier = Modifier.weight(1f),
+            textStyle = TextStyle(
+                color = OrbitTokens.textHiN,
+                fontSize = 15.sp,
+                lineHeight = 20.sp,
+            ),
+            cursorBrush = SolidColor(OrbitTokens.bluePastel),
+            maxLines = 5,
+            keyboardOptions = KeyboardOptions(
+                capitalization = KeyboardCapitalization.Sentences,
+                imeAction = ImeAction.Send,
+            ),
+            keyboardActions = KeyboardActions(onSend = { enviar() }),
+            decorationBox = { inner ->
+                Box(contentAlignment = Alignment.CenterStart) {
+                    if (texto.isEmpty()) {
+                        Text(
+                            "Fala comigo…",
+                            color = OrbitTokens.textMidN,
+                            fontSize = 15.sp,
+                        )
+                    }
+                    inner()
+                }
+            },
+        )
+        Spacer(Modifier.width(8.dp))
+        Box(
+            Modifier
+                .size(38.dp)
+                .clip(CircleShape)
+                .background(OrbitTokens.bluePastel)
+                .orbitPressable(onClick = enviar),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Rounded.ArrowUpward,
+                contentDescription = if (temTexto) "Enviar" else "Nova conversa",
+                tint = OrbitTokens.onBluePastel,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+    }
+}
+
+private fun linhaDaLuna(saudacao: String, c: com.ethan.orbitlab.data.local.ClimaLab?): String {
+    val t = c?.tempC?.roundToInt()
+    val desc = c?.descricao?.takeIf { it.isNotBlank() }?.lowercase(Locale.getDefault())
+    val clima = when {
+        t == null -> null
+        desc != null -> "Tá $t° e $desc por aí."
+        else -> "Tá $t° por aí."
+    }
+    val abertura = "$saudacao."
+    val nudge = when (saudacao) {
+        "Bom dia" -> "Por onde a gente começa?"
+        "Boa tarde" -> "Como tá indo o dia?"
+        else -> "Me conta como foi o dia."
+    }
+    return listOfNotNull(abertura, clima, nudge).joinToString(" ")
+}
+

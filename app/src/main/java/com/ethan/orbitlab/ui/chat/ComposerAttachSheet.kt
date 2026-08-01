@@ -66,6 +66,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.ethan.orbitlab.ui.theme.OrbitFills
 import com.ethan.orbitlab.ui.theme.OrbitMetrics
 import com.ethan.orbitlab.ui.theme.OrbitMotion
 import com.ethan.orbitlab.ui.theme.OrbitTokens
@@ -648,7 +649,7 @@ private fun AlbumList(
                 Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
-                    .background(if (ativa) OrbitTokens.accentSoft else Color.Transparent)
+                    .background(if (ativa) OrbitTokens.surfaceHover else Color.Transparent)
                     .orbitPressable { onSelect(album.id) }
                     .padding(horizontal = 12.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -784,7 +785,10 @@ private fun AttachTabBar(
                         Modifier
                             .size(40.dp)
                             .clip(CircleShape)
-                            .background(if (selected) OrbitTokens.accentSoft else Color.Transparent),
+                            .then(
+                                if (selected) Modifier.background(OrbitFills.accent.brush)
+                                else Modifier.background(Color.Transparent),
+                            ),
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
@@ -792,7 +796,7 @@ private fun AttachTabBar(
                                 if (item == AttachTab.GALERIA) Icons.Rounded.Image
                                 else Icons.Rounded.Description,
                             contentDescription = null,
-                            tint = if (selected) OrbitTokens.accentText else OrbitTokens.textMid,
+                            tint = if (selected) Color.White else OrbitTokens.textMid,
                             modifier = Modifier.size(22.dp),
                         )
                     }

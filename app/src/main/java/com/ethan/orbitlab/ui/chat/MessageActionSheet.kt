@@ -177,11 +177,8 @@ private fun GrupoAcoes(itens: List<AcaoItem>) {
 @Composable
 private fun ActionRow(item: AcaoItem) {
     val tintIcone = if (item.aviso) OrbitTokens.warning else OrbitTokens.accentText
-    val bgTile = if (item.aviso) {
-        OrbitTokens.warning.copy(alpha = 0.14f)
-    } else {
-        OrbitTokens.surfaceRaised
-    }
+    // Ladrilho SEMPRE neutro — a cor mora no ícone (contraste), não numa lavagem da própria cor.
+    val bgTile = OrbitTokens.surfaceRaised
     Row(
         Modifier
             .fillMaxWidth()

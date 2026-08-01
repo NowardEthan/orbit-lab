@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -17,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ChatBubbleOutline
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.FormatQuote
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -51,11 +54,24 @@ fun ComposerReferenceChip(
             .fillMaxWidth()
             .padding(bottom = 8.dp)
             .clip(shape)
-            .background(OrbitTokens.accentSoft)
-            .border(1.dp, OrbitTokens.accent.copy(alpha = 0.35f), shape)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .background(OrbitTokens.graphiteRaised)
+            .border(1.dp, OrbitTokens.graphiteHair, shape)
+            .height(IntrinsicSize.Min),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // Trilho de acento: contraste sólido em vez de um banho de accentSoft.
+        Box(
+            Modifier
+                .width(3.dp)
+                .fillMaxHeight()
+                .background(OrbitTokens.bluePastel),
+        )
+        Row(
+            Modifier
+                .weight(1f)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
         when (reference) {
             is ThreadReference.Image -> {
                 if (reference.uri != null) {
@@ -79,18 +95,23 @@ fun ComposerReferenceChip(
                 }
             }
             is ThreadReference.Message -> RefIcon(Icons.Rounded.ChatBubbleOutline)
+            is ThreadReference.ArtefatoTrecho -> RefIcon(Icons.Rounded.FormatQuote)
         }
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text(
-                if (reference is ThreadReference.Image) "Referência · imagem" else "Referência · mensagem",
-                color = OrbitTokens.accentText,
+                when (reference) {
+                    is ThreadReference.Image -> "Referência · imagem"
+                    is ThreadReference.ArtefatoTrecho -> "Referência · artefato"
+                    is ThreadReference.Message -> "Referência · mensagem"
+                },
+                color = OrbitTokens.bluePastel,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
                 referenceChipLabel(reference),
-                color = OrbitTokens.textHigh,
+                color = OrbitTokens.textHiN,
                 fontSize = 12.sp,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
@@ -107,9 +128,10 @@ fun ComposerReferenceChip(
             Icon(
                 Icons.Rounded.Close,
                 contentDescription = "Remover referência",
-                tint = OrbitTokens.textMid,
+                tint = OrbitTokens.textMidN,
                 modifier = Modifier.size(16.dp),
             )
+        }
         }
     }
 }
@@ -120,10 +142,10 @@ private fun RefIcon(icon: androidx.compose.ui.graphics.vector.ImageVector) {
         Modifier
             .size(36.dp)
             .clip(RoundedCornerShape(8.dp))
-            .background(OrbitTokens.surface),
+            .background(OrbitTokens.graphiteSurf),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = null, tint = OrbitTokens.accentText, modifier = Modifier.size(18.dp))
+        Icon(icon, contentDescription = null, tint = OrbitTokens.bluePastel, modifier = Modifier.size(18.dp))
     }
 }
 

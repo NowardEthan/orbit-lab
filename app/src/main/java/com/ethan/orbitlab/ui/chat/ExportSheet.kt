@@ -51,7 +51,7 @@ import com.ethan.orbitlab.ui.theme.OrbitTokens
 import com.ethan.orbitlab.ui.theme.orbitPressable
 
 /** Cria documento via SAF respeitando mime + nome (funciona do Android 5 pra cima). */
-private class CriarDocumento : ActivityResultContract<Pair<String, String>, Uri?>() {
+internal class CriarDocumento : ActivityResultContract<Pair<String, String>, Uri?>() {
     override fun createIntent(context: Context, input: Pair<String, String>): Intent =
         Intent(Intent.ACTION_CREATE_DOCUMENT)
             .addCategory(Intent.CATEGORY_OPENABLE)
@@ -172,7 +172,7 @@ fun ExportSheet(
 }
 
 @Composable
-private fun FormatoPill(
+internal fun FormatoPill(
     rotulo: String,
     selecionado: Boolean,
     modifier: Modifier = Modifier,
@@ -212,7 +212,7 @@ private fun FormatoPill(
 }
 
 @Composable
-private fun AcaoBotao(
+internal fun AcaoBotao(
     icone: ImageVector,
     titulo: String,
     subtitulo: String,

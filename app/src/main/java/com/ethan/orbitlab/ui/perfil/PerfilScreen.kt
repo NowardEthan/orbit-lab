@@ -7,7 +7,6 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -18,7 +17,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -30,6 +28,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Chat
 import androidx.compose.material.icons.rounded.CameraAlt
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.Image
@@ -56,14 +55,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -79,6 +75,8 @@ import com.ethan.orbitlab.data.ProfileImageKind
 import com.ethan.orbitlab.data.ProfileMilestones
 import com.ethan.orbitlab.data.UserProfile
 import com.ethan.orbitlab.data.UserProfileRepository
+import com.ethan.orbitlab.ui.theme.Bricolage
+import com.ethan.orbitlab.ui.theme.OrbitIconButton
 import com.ethan.orbitlab.ui.theme.OrbitMetrics
 import com.ethan.orbitlab.ui.theme.OrbitMotion
 import com.ethan.orbitlab.ui.theme.OrbitTokens
@@ -250,9 +248,9 @@ fun PerfilScreen(
                 mensagens = conversas.sumOf { it.messageCount.coerceAtLeast(it.mensagens.size) },
                 onConversarComLuna = onConversarComLuna,
             )
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(24.dp))
             AbasPerfil(aba = aba, onAba = { aba = it })
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(20.dp))
             Box(modifier = Modifier.padding(horizontal = OrbitMetrics.pagePadding)) {
                 when (aba) {
                     AbaPerfil.LUNA -> ConteudoLuna(
@@ -263,11 +261,7 @@ fun PerfilScreen(
                         },
                     )
                     AbaPerfil.ATIVIDADE -> ConteudoAtividade(
-                        conversas = conversas.size,
-                        mensagens = conversas.sumOf {
-                            it.messageCount.coerceAtLeast(it.mensagens.size)
-                        },
-                        recentes = conversas.take(4),
+                        recentes = conversas.take(5),
                         onAbrir = onAbrirConversa,
                     )
                     AbaPerfil.CONQUISTAS -> ConteudoConquistas(profile.milestones)
@@ -295,13 +289,13 @@ private fun BarraEdicao(
     ) {
         Text(
             "Cancelar",
-            color = OrbitTokens.textMid,
+            color = OrbitTokens.textMidN,
             fontSize = 15.sp,
             modifier = Modifier.orbitPressable(enabled = !busy, onClick = onCancelar),
         )
         Text(
             "Editar perfil",
-            color = OrbitTokens.textHigh,
+            color = OrbitTokens.textHiN,
             fontSize = 16.sp,
             fontWeight = FontWeight.SemiBold,
         )
@@ -312,14 +306,14 @@ private fun BarraEdicao(
         ) {
             if (busy) {
                 CircularProgressIndicator(
-                    color = OrbitTokens.accentText,
+                    color = OrbitTokens.bluePastel,
                     strokeWidth = 2.dp,
                     modifier = Modifier.size(14.dp),
                 )
             }
             Text(
                 if (saving) "Salvando…" else if (uploading) "Enviando…" else "Salvar",
-                color = OrbitTokens.accentText,
+                color = OrbitTokens.bluePastel,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -338,18 +332,18 @@ private fun HeaderPerfil(
     onTrocarAvatar: () -> Unit,
     onRemoverCapa: () -> Unit,
 ) {
-    val capaFallback = Color(0xFFE4E2DE)
-
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(168.dp),
+            .height(156.dp),
     ) {
+        // Faixa da capa — calma: imagem quando existe, senão só um grafite sutil.
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(118.dp)
+                .height(108.dp)
                 .align(Alignment.TopCenter)
+                .background(OrbitTokens.graphiteSurf)
                 .then(
                     if (editando) {
                         Modifier.orbitPressable(enabled = !uploading, onClick = onTrocarCapa)
@@ -365,34 +359,6 @@ private fun HeaderPerfil(
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
                 )
-            } else if (!avatarUrl.isNullOrBlank() && !editando) {
-                AsyncImage(
-                    model = avatarUrl,
-                    contentDescription = "Capa",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.35f)),
-                )
-            } else {
-                Canvas(Modifier.fillMaxSize()) {
-                    val path = Path().apply {
-                        moveTo(0f, 0f)
-                        lineTo(size.width, 0f)
-                        lineTo(size.width, size.height * 0.62f)
-                        quadraticTo(
-                            size.width * 0.5f,
-                            size.height * 1.18f,
-                            0f,
-                            size.height * 0.62f,
-                        )
-                        close()
-                    }
-                    drawPath(path, color = capaFallback)
-                }
             }
 
             if (editando) {
@@ -445,39 +411,28 @@ private fun HeaderPerfil(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = OrbitMetrics.pagePadding)
-                    .padding(top = 20.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                    .padding(top = 18.dp),
+                horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_orbit_symbol_on_light),
-                    contentDescription = "Orbit",
-                    tint = Color.Unspecified,
-                    modifier = Modifier.size(28.dp),
+                OrbitIconButton(
+                    icon = Icons.Rounded.Settings,
+                    contentDescription = "Editar perfil",
+                    onClick = onEditarPerfil,
+                    tint = OrbitTokens.textHiN,
+                    iconSize = 20.dp,
                 )
-                Box(
-                    modifier = Modifier
-                        .size(OrbitMetrics.iconBtn)
-                        .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.55f))
-                        .border(1.dp, OrbitTokens.ink0.copy(alpha = 0.08f), CircleShape)
-                        .orbitPressable(onClick = onEditarPerfil),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        Icons.Rounded.Settings,
-                        contentDescription = "Editar perfil",
-                        tint = OrbitTokens.ink0,
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
             }
         }
 
+        // Avatar recortado do fundo por um anel grafite (contraste, não halo claro).
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .size(96.dp)
+                .size(92.dp)
+                .clip(CircleShape)
+                .background(OrbitTokens.graphiteRaised)
+                .border(3.dp, OrbitTokens.graphiteBg, CircleShape)
                 .then(
                     if (editando) {
                         Modifier.orbitPressable(enabled = !uploading, onClick = onTrocarAvatar)
@@ -487,59 +442,37 @@ private fun HeaderPerfil(
                 ),
             contentAlignment = Alignment.Center,
         ) {
-            Box(
-                modifier = Modifier
-                    .size(96.dp)
-                    .clip(CircleShape)
-                    .background(OrbitTokens.ink0)
-                    .border(2.dp, Color(0xFFF2F4F8), CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (!avatarUrl.isNullOrBlank()) {
-                    AsyncImage(
-                        model = avatarUrl,
-                        contentDescription = "Avatar",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                } else {
-                    Icon(
-                        Icons.Rounded.Person,
-                        contentDescription = "Avatar",
-                        tint = OrbitTokens.textMid,
-                        modifier = Modifier.size(44.dp),
-                    )
-                }
-                if (editando) {
-                    Box(
-                        Modifier
-                            .fillMaxSize()
-                            .background(Color.Black.copy(alpha = 0.35f)),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            Icons.Rounded.PhotoCamera,
-                            contentDescription = "Trocar foto",
-                            tint = Color.White,
-                            modifier = Modifier.size(26.dp),
-                        )
-                    }
-                }
+            if (!avatarUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = avatarUrl,
+                    contentDescription = "Avatar",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(CircleShape),
+                )
+            } else {
+                Icon(
+                    Icons.Rounded.Person,
+                    contentDescription = "Avatar",
+                    tint = OrbitTokens.textMidN,
+                    modifier = Modifier.size(42.dp),
+                )
             }
-            if (!editando) {
-                Canvas(
+            if (editando) {
+                Box(
                     Modifier
-                        .align(Alignment.BottomEnd)
-                        .offset(x = (-4).dp, y = (-4).dp)
-                        .size(14.dp),
+                        .fillMaxSize()
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.35f)),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    val path = Path().apply {
-                        moveTo(size.width, size.height)
-                        lineTo(size.width, size.height * 0.15f)
-                        lineTo(size.width * 0.15f, size.height)
-                        close()
-                    }
-                    drawPath(path, color = OrbitTokens.accent)
+                    Icon(
+                        Icons.Rounded.PhotoCamera,
+                        contentDescription = "Trocar foto",
+                        tint = Color.White,
+                        modifier = Modifier.size(26.dp),
+                    )
                 }
             }
         }
@@ -566,7 +499,7 @@ private fun IdentidadeEditavel(
     ) {
         Text(
             "Toque na capa ou na foto para trocar. Nome, @ e bio ficam aqui.",
-            color = OrbitTokens.textLow,
+            color = OrbitTokens.textLowN,
             fontSize = 12.sp,
             lineHeight = 16.sp,
             textAlign = TextAlign.Center,
@@ -621,9 +554,9 @@ private fun CampoEditavel(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text(label, color = OrbitTokens.textMid, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            Text(label, color = OrbitTokens.textMidN, fontSize = 12.sp, fontWeight = FontWeight.Medium)
             if (hint != null) {
-                Text(hint, color = OrbitTokens.textLow, fontSize = 11.sp)
+                Text(hint, color = OrbitTokens.textLowN, fontSize = 11.sp)
             }
         }
         Spacer(Modifier.height(6.dp))
@@ -632,13 +565,13 @@ private fun CampoEditavel(
                 .fillMaxWidth()
                 .height(minHeight)
                 .clip(RoundedCornerShape(14.dp))
-                .background(OrbitTokens.surface)
-                .border(1.dp, OrbitTokens.borderSoft, RoundedCornerShape(14.dp))
+                .background(OrbitTokens.graphiteSurf)
+                .border(1.dp, OrbitTokens.graphiteHair, RoundedCornerShape(14.dp))
                 .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = if (singleLine) Alignment.CenterVertically else Alignment.Top,
         ) {
             if (prefix != null) {
-                Text(prefix, color = OrbitTokens.textLow, fontSize = 15.sp)
+                Text(prefix, color = OrbitTokens.textLowN, fontSize = 15.sp)
                 Spacer(Modifier.width(2.dp))
             }
             BasicTextField(
@@ -646,8 +579,8 @@ private fun CampoEditavel(
                 onValueChange = onValueChange,
                 enabled = enabled,
                 singleLine = singleLine,
-                textStyle = TextStyle(color = OrbitTokens.textHigh, fontSize = 15.sp),
-                cursorBrush = SolidColor(OrbitTokens.accent),
+                textStyle = TextStyle(color = OrbitTokens.textHiN, fontSize = 15.sp),
+                cursorBrush = SolidColor(OrbitTokens.bluePastel),
                 modifier = Modifier.weight(1f),
                 decorationBox = { inner ->
                     Box {
@@ -658,7 +591,7 @@ private fun CampoEditavel(
                                     label == "Bio" -> "Uma linha sobre você"
                                     else -> label
                                 },
-                                color = OrbitTokens.textLow,
+                                color = OrbitTokens.textLowN,
                                 fontSize = 15.sp,
                             )
                         }
@@ -688,13 +621,14 @@ private fun IdentidadeEAcoes(
     ) {
         Text(
             nome,
-            color = OrbitTokens.textHigh,
+            color = OrbitTokens.textHiN,
             fontSize = 26.sp,
+            fontFamily = Bricolage,
             fontWeight = FontWeight.Bold,
-            letterSpacing = (-0.3).sp,
+            letterSpacing = (-0.4).sp,
         )
         Spacer(modifier = Modifier.height(2.dp))
-        Text(handle, color = OrbitTokens.textMid, fontSize = OrbitMetrics.bodySize)
+        Text(handle, color = OrbitTokens.textMidN, fontSize = OrbitMetrics.bodySize)
         if (profile.memberSinceLabel.isNotBlank() || profile.plan.isNotBlank()) {
             Spacer(modifier = Modifier.height(6.dp))
             Text(
@@ -702,14 +636,14 @@ private fun IdentidadeEAcoes(
                     UserProfileRepository.planLabel(profile.plan),
                     profile.memberSinceLabel.takeIf { it.isNotBlank() },
                 ).joinToString(" · "),
-                color = OrbitTokens.textLow,
+                color = OrbitTokens.textLowN,
                 fontSize = 12.sp,
             )
         }
         Spacer(modifier = Modifier.height(10.dp))
         Text(
             profile.bio.ifBlank { "Escreva uma bio curta — quem você é neste Orbit." },
-            color = if (profile.bio.isBlank()) OrbitTokens.textLow else OrbitTokens.textMid,
+            color = if (profile.bio.isBlank()) OrbitTokens.textLowN else OrbitTokens.textMidN,
             fontSize = OrbitMetrics.bodySize,
             lineHeight = 20.sp,
             textAlign = TextAlign.Center,
@@ -721,7 +655,7 @@ private fun IdentidadeEAcoes(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(OrbitMetrics.radiusPill))
-                .background(OrbitTokens.accent)
+                .background(OrbitTokens.bluePastel)
                 .orbitPressable(onClick = onConversarComLuna)
                 .padding(horizontal = 12.dp, vertical = 13.dp),
             horizontalArrangement = Arrangement.Center,
@@ -730,13 +664,13 @@ private fun IdentidadeEAcoes(
             Icon(
                 Icons.AutoMirrored.Rounded.Chat,
                 contentDescription = null,
-                tint = Color.White,
+                tint = OrbitTokens.onBluePastel,
                 modifier = Modifier.size(16.dp),
             )
             Spacer(modifier = Modifier.width(6.dp))
             Text(
                 "Conversar com a Luna",
-                color = Color.White,
+                color = OrbitTokens.onBluePastel,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
@@ -754,7 +688,7 @@ private fun IdentidadeEAcoes(
                     .padding(horizontal = 16.dp)
                     .width(1.dp)
                     .height(28.dp)
-                    .background(OrbitTokens.borderSoft),
+                    .background(OrbitTokens.graphiteHair),
             )
             StatSocial(valor = mensagens.toString(), label = "mensagens")
         }
@@ -766,12 +700,12 @@ private fun StatSocial(valor: String, label: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
             valor,
-            color = OrbitTokens.textHigh,
+            color = OrbitTokens.textHiN,
             fontSize = 14.sp,
             fontWeight = FontWeight.SemiBold,
         )
         Spacer(modifier = Modifier.width(4.dp))
-        Text(label, color = OrbitTokens.textMid, fontSize = 13.sp)
+        Text(label, color = OrbitTokens.textMidN, fontSize = 13.sp)
     }
 }
 
@@ -786,7 +720,7 @@ private fun AbasPerfil(aba: AbaPerfil, onAba: (AbaPerfil) -> Unit) {
         AbaPerfil.entries.forEach { item ->
             val ativa = item == aba
             val indicadorLargura by animateDpAsState(
-                targetValue = if (ativa) 28.dp else 0.dp,
+                targetValue = if (ativa) 22.dp else 0.dp,
                 animationSpec = tween(OrbitMotion.msFast),
                 label = "abaPerfilIndicador",
             )
@@ -796,30 +730,19 @@ private fun AbasPerfil(aba: AbaPerfil, onAba: (AbaPerfil) -> Unit) {
                     .orbitPressable { onAba(item) }
                     .padding(horizontal = 8.dp, vertical = 4.dp),
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    Icon(
-                        item.icone,
-                        contentDescription = null,
-                        tint = if (ativa) OrbitTokens.accent else OrbitTokens.textLow,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Text(
-                        item.label,
-                        color = if (ativa) OrbitTokens.accentText else OrbitTokens.textLow,
-                        fontSize = 13.sp,
-                        fontWeight = if (ativa) FontWeight.SemiBold else FontWeight.Medium,
-                    )
-                }
+                Text(
+                    item.label,
+                    color = if (ativa) OrbitTokens.textHiN else OrbitTokens.textLowN,
+                    fontSize = 14.sp,
+                    fontWeight = if (ativa) FontWeight.SemiBold else FontWeight.Medium,
+                )
                 Spacer(modifier = Modifier.height(8.dp))
                 Box(
                     Modifier
                         .width(indicadorLargura)
                         .height(2.dp)
                         .clip(RoundedCornerShape(1.dp))
-                        .background(if (ativa) OrbitTokens.accent else Color.Transparent),
+                        .background(if (ativa) OrbitTokens.bluePastel else Color.Transparent),
                 )
             }
         }
@@ -828,106 +751,98 @@ private fun AbasPerfil(aba: AbaPerfil, onAba: (AbaPerfil) -> Unit) {
 
 @Composable
 private fun ConteudoLuna(ultima: Conversa?, onContinuar: () -> Unit) {
-    val shape = RoundedCornerShape(OrbitMetrics.radiusCard)
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(OrbitTokens.surface)
-            .border(1.dp, OrbitTokens.borderSoft, shape)
-            .padding(16.dp),
-    ) {
+    Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
                 Modifier
-                    .size(44.dp)
+                    .size(40.dp)
                     .clip(CircleShape)
-                    .background(
-                        Brush.linearGradient(listOf(OrbitTokens.violet, OrbitTokens.accent)),
-                    ),
+                    .background(OrbitTokens.graphiteRaised),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     Icons.Rounded.DarkMode,
                     contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(22.dp),
+                    tint = OrbitTokens.bluePastel,
+                    modifier = Modifier.size(20.dp),
                 )
             }
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     "Sua Luna",
-                    color = OrbitTokens.textHigh,
-                    fontSize = 16.sp,
+                    color = OrbitTokens.textHiN,
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
                     "Companheira de clareza — privada nesta conta.",
-                    color = OrbitTokens.textMid,
+                    color = OrbitTokens.textMidN,
                     fontSize = OrbitMetrics.captionSize,
                 )
             }
         }
-        Spacer(modifier = Modifier.height(14.dp))
-        if (ultima != null) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(OrbitTokens.ink1.copy(alpha = 0.65f))
-                    .padding(12.dp),
-            ) {
-                Text(
-                    ultima.titulo,
-                    color = OrbitTokens.textHigh,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    ultima.preview,
-                    color = OrbitTokens.textMid,
-                    fontSize = 12.sp,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        } else {
-            Text(
-                "Ainda não há conversas. Comece um papo com a Luna.",
-                color = OrbitTokens.textMid,
-                fontSize = 13.sp,
-            )
-        }
-        Spacer(modifier = Modifier.height(14.dp))
+        Spacer(modifier = Modifier.height(16.dp))
+        // «Continuar» é a afordância principal da aba — fundo sutil, sem moldura nem 2º pill.
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(OrbitMetrics.radiusPill))
-                .background(OrbitTokens.accent)
+                .background(OrbitTokens.graphiteSurf)
                 .orbitPressable(onClick = onContinuar)
-                .padding(vertical = 13.dp),
-            horizontalArrangement = Arrangement.Center,
+                .padding(horizontal = 14.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            Column(modifier = Modifier.weight(1f)) {
+                if (ultima != null) {
+                    Text(
+                        "Continuar conversa",
+                        color = OrbitTokens.textLowN,
+                        fontSize = 11.sp,
+                    )
+                    Spacer(modifier = Modifier.height(3.dp))
+                    Text(
+                        ultima.titulo,
+                        color = OrbitTokens.textHiN,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (ultima.preview.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            ultima.preview,
+                            color = OrbitTokens.textMidN,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                } else {
+                    Text(
+                        "Conversar com a Luna",
+                        color = OrbitTokens.textHiN,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        "Ainda não há conversas — comece um papo.",
+                        color = OrbitTokens.textMidN,
+                        fontSize = 12.sp,
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.width(10.dp))
             Icon(
                 Icons.Rounded.PlayArrow,
                 contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(18.dp),
-            )
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(
-                if (ultima != null) "Continuar conversa" else "Conversar com a Luna",
-                color = Color.White,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold,
+                tint = OrbitTokens.bluePastel,
+                modifier = Modifier.size(22.dp),
             )
         }
     }
@@ -935,45 +850,54 @@ private fun ConteudoLuna(ultima: Conversa?, onContinuar: () -> Unit) {
 
 @Composable
 private fun ConteudoAtividade(
-    conversas: Int,
-    mensagens: Int,
     recentes: List<Conversa>,
     onAbrir: (String) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            StatCard("Conversas", conversas.toString(), Modifier.weight(1f))
-            StatCard("Mensagens", mensagens.toString(), Modifier.weight(1f))
-        }
+    Column(modifier = Modifier.fillMaxWidth()) {
         if (recentes.isEmpty()) {
             Text(
                 "Quando você conversar, a atividade aparece aqui.",
-                color = OrbitTokens.textMid,
+                color = OrbitTokens.textMidN,
                 fontSize = 13.sp,
             )
         } else {
-            recentes.forEach { conv ->
-                Column(
+            recentes.forEachIndexed { i, conv ->
+                if (i > 0) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(OrbitTokens.graphiteHair),
+                    )
+                }
+                Row(
                     Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(OrbitTokens.surface)
-                        .border(1.dp, OrbitTokens.borderSoft, RoundedCornerShape(14.dp))
                         .orbitPressable { onAbrir(conv.id) }
-                        .padding(14.dp),
+                        .padding(vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
-                        conv.titulo,
-                        color = OrbitTokens.textHigh,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        "${conv.grupoDia} · ${conv.horaFormatada}",
-                        color = OrbitTokens.textLow,
-                        fontSize = 12.sp,
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            conv.titulo,
+                            color = OrbitTokens.textHiN,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            "${conv.grupoDia} · ${conv.horaFormatada}",
+                            color = OrbitTokens.textLowN,
+                            fontSize = 12.sp,
+                        )
+                    }
+                    Icon(
+                        Icons.Rounded.ChevronRight,
+                        contentDescription = null,
+                        tint = OrbitTokens.textLowN,
+                        modifier = Modifier.size(18.dp),
                     )
                 }
             }
@@ -982,31 +906,25 @@ private fun ConteudoAtividade(
 }
 
 @Composable
-private fun StatCard(titulo: String, valor: String, modifier: Modifier = Modifier) {
-    Column(
-        modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(OrbitTokens.surface)
-            .border(1.dp, OrbitTokens.borderSoft, RoundedCornerShape(14.dp))
-            .padding(14.dp),
-    ) {
-        Text(titulo, color = OrbitTokens.textMid, fontSize = 12.sp)
-        Text(valor, color = OrbitTokens.textHigh, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-    }
-}
-
-@Composable
 private fun ConteudoConquistas(m: ProfileMilestones) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("Marcos da sua conta Aura", color = OrbitTokens.textMid, fontSize = 13.sp)
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            "Marcos da sua conta Aura",
+            color = OrbitTokens.textLowN,
+            fontSize = 12.sp,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
         ConquistaRow(Icons.Rounded.Mic, "Mensagem de voz", "Enviou um áudio pra Luna", m.voiceMessage)
+        Divisoria()
         ConquistaRow(Icons.Rounded.Image, "Imagem no chat", "Anexou uma foto", m.imageAttachment)
+        Divisoria()
         ConquistaRow(
             Icons.Rounded.WorkspacePremium,
             "Arquivo anexado",
             "Mandou um documento",
             m.fileAttachment,
         )
+        Divisoria()
         ConquistaRow(Icons.Rounded.Lock, "Referência", "Citou uma mensagem ou anexo", m.documentReference)
     }
 }
@@ -1021,34 +939,40 @@ private fun ConquistaRow(
     Row(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(
-                if (desbloqueada) OrbitTokens.surface else OrbitTokens.ink1.copy(alpha = 0.5f),
-            )
-            .border(1.dp, OrbitTokens.borderSoft, RoundedCornerShape(14.dp))
-            .padding(14.dp),
+            .padding(vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
             icone,
             contentDescription = null,
-            tint = if (desbloqueada) OrbitTokens.accentText else OrbitTokens.textLow,
-            modifier = Modifier.size(22.dp),
+            tint = if (desbloqueada) OrbitTokens.bluePastel else OrbitTokens.textLowN,
+            modifier = Modifier.size(20.dp),
         )
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Text(
                 titulo,
-                color = if (desbloqueada) OrbitTokens.textHigh else OrbitTokens.textMid,
+                color = if (desbloqueada) OrbitTokens.textHiN else OrbitTokens.textMidN,
                 fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold,
+                fontWeight = FontWeight.Medium,
             )
-            Text(subtitulo, color = OrbitTokens.textLow, fontSize = 12.sp)
+            Text(subtitulo, color = OrbitTokens.textLowN, fontSize = 12.sp)
         }
         Text(
             if (desbloqueada) "✓" else "·",
-            color = if (desbloqueada) OrbitTokens.accentText else OrbitTokens.textLow,
+            color = if (desbloqueada) OrbitTokens.bluePastel else OrbitTokens.textLowN,
             fontSize = 16.sp,
         )
     }
+}
+
+@Composable
+private fun Divisoria() {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .padding(start = 34.dp)
+            .height(1.dp)
+            .background(OrbitTokens.graphiteHair),
+    )
 }

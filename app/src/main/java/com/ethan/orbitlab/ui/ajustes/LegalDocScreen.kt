@@ -49,7 +49,7 @@ fun LegalDocScreen(
     Column(
         Modifier
             .fillMaxSize()
-            .background(OrbitTokens.ink1)
+            .background(OrbitTokens.graphiteBg)
             .statusBarsPadding(),
     ) {
         Row(
@@ -62,22 +62,22 @@ fun LegalDocScreen(
                 Modifier
                     .size(OrbitMetrics.iconBtn)
                     .clip(CircleShape)
-                    .background(OrbitTokens.surface)
-                    .border(1.dp, OrbitTokens.borderSoft, CircleShape)
+                    .background(OrbitTokens.graphiteSurf)
+                    .border(1.dp, OrbitTokens.graphiteHair, CircleShape)
                     .orbitPressable(onClick = onBack),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     Icons.AutoMirrored.Rounded.ArrowBackIos,
                     contentDescription = "Voltar",
-                    tint = OrbitTokens.textHigh,
+                    tint = OrbitTokens.textHiN,
                     modifier = Modifier.size(16.dp),
                 )
             }
             Spacer(Modifier.width(12.dp))
             Text(
                 titulo,
-                color = OrbitTokens.textHigh,
+                color = OrbitTokens.textHiN,
                 fontSize = 17.sp,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f),
@@ -109,11 +109,11 @@ fun DocLinkRow(
             .padding(vertical = 12.dp, horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, contentDescription = null, tint = OrbitTokens.accentText, modifier = Modifier.size(20.dp))
+        Icon(icon, contentDescription = null, tint = OrbitTokens.bluePastel, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(12.dp))
         Text(
             label,
-            color = OrbitTokens.textHigh,
+            color = OrbitTokens.textHiN,
             fontSize = 15.sp,
             fontWeight = FontWeight.Medium,
             modifier = Modifier.weight(1f),
@@ -121,7 +121,7 @@ fun DocLinkRow(
         Icon(
             Icons.Rounded.ChevronRight,
             contentDescription = null,
-            tint = OrbitTokens.textLow,
+            tint = OrbitTokens.textLowN,
             modifier = Modifier.size(18.dp),
         )
     }

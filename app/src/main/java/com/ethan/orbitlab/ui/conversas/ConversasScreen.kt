@@ -2,7 +2,6 @@ package com.ethan.orbitlab.ui.conversas
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -30,6 +29,7 @@ import androidx.compose.material.icons.rounded.ChatBubbleOutline
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.IosShare
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.SearchOff
@@ -47,14 +47,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -67,7 +63,6 @@ import com.ethan.orbitlab.R
 import com.ethan.orbitlab.data.ChatRepository
 import com.ethan.orbitlab.data.Conversa
 import com.ethan.orbitlab.data.export.ConversaExporter
-import com.ethan.orbitlab.ui.theme.OrbitFills
 import com.ethan.orbitlab.ui.theme.OrbitMetrics
 import com.ethan.orbitlab.ui.theme.OrbitMotion
 import com.ethan.orbitlab.ui.theme.OrbitTokens
@@ -79,7 +74,10 @@ private val SearchPill = RoundedCornerShape(999.dp)
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun ConversasScreen(onOpenChat: (String) -> Unit = {}) {
+fun ConversasScreen(
+    onOpenChat: (String) -> Unit = {},
+    onAbrirEstante: () -> Unit = {},
+) {
     var query by remember { mutableStateOf("") }
     val conversas by ChatRepository.conversas.collectAsState()
 
@@ -102,9 +100,6 @@ fun ConversasScreen(onOpenChat: (String) -> Unit = {}) {
         filtradas.groupBy { it.grupoDia }.toList()
     }
 
-    // Destaque visual da conversa mais recente (mockup: barra + canto azul).
-    val idDestaque = filtradas.firstOrNull()?.id
-
     BackHandler(enabled = isSelectionMode) {
         selecionados.clear()
     }
@@ -117,7 +112,7 @@ fun ConversasScreen(onOpenChat: (String) -> Unit = {}) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(top = 24.dp),
+                .padding(top = 6.dp),
         ) {
             Column(
                 modifier = Modifier.padding(horizontal = OrbitMetrics.pagePadding),
@@ -125,10 +120,11 @@ fun ConversasScreen(onOpenChat: (String) -> Unit = {}) {
                 HeaderConversas(
                     isSelectionMode = isSelectionMode,
                     quantidadeSelecionada = selecionados.size,
+                    onAbrirEstante = onAbrirEstante,
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 SearchBar(query = query, onQueryChange = { query = it })
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(8.dp))
             }
 
             when {
@@ -151,7 +147,6 @@ fun ConversasScreen(onOpenChat: (String) -> Unit = {}) {
                         grupos = grupos,
                         isSelectionMode = isSelectionMode,
                         selecionados = selecionados,
-                        idDestaque = idDestaque,
                         bottomPad = if (isSelectionMode) 84.dp else 24.dp,
                         onOpenChat = { id ->
                             if (isSelectionMode) {
@@ -206,21 +201,16 @@ fun ConversasScreen(onOpenChat: (String) -> Unit = {}) {
 private fun HeaderConversas(
     isSelectionMode: Boolean,
     quantidadeSelecionada: Int,
+    onAbrirEstante: () -> Unit,
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Icon(
-            painter = painterResource(R.drawable.ic_orbit_symbol),
-            contentDescription = "Orbit",
-            tint = Color.Unspecified,
-            modifier = Modifier.size(32.dp),
-        )
-        Column {
+        Column(modifier = Modifier.weight(1f)) {
             Text(
                 "Conversas",
-                color = OrbitTokens.textHigh,
+                color = OrbitTokens.textHiN,
                 fontSize = OrbitMetrics.titleSize,
                 fontWeight = OrbitMetrics.titleWeight,
                 letterSpacing = (-0.3).sp,
@@ -229,7 +219,7 @@ private fun HeaderConversas(
             if (isSelectionMode) {
                 Text(
                     text = "$quantidadeSelecionada selecionada${if (quantidadeSelecionada == 1) "" else "s"}",
-                    color = OrbitTokens.textHigh,
+                    color = OrbitTokens.textHiN,
                     fontSize = OrbitMetrics.captionSize,
                     fontWeight = FontWeight.Medium,
                 )
@@ -240,16 +230,45 @@ private fun HeaderConversas(
                 ) {
                     Text(
                         text = "Histórico com a Luna",
-                        color = OrbitTokens.textMid,
+                        color = OrbitTokens.textMidN,
                         fontSize = OrbitMetrics.captionSize,
                     )
                     Icon(
                         Icons.Rounded.Album,
                         contentDescription = null,
-                        tint = OrbitTokens.textLow,
+                        tint = OrbitTokens.textLowN,
                         modifier = Modifier.size(14.dp),
                     )
                 }
+            }
+        }
+
+        // Atalho pra Estante — os artefatos são primos da conversa, então moram aqui, ao lado
+        // do histórico (e não no menu do "+", que é só pra CRIAR coisa). Some no modo seleção
+        // pra não competir com a barra de ações.
+        if (!isSelectionMode) {
+            Row(
+                modifier = Modifier
+                    .clip(SearchPill)
+                    .background(OrbitTokens.graphiteSurf)
+                    .border(1.dp, OrbitTokens.graphiteHair, SearchPill)
+                    .orbitPressable(onClick = onAbrirEstante)
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Icon(
+                    Icons.Rounded.Description,
+                    contentDescription = null,
+                    tint = OrbitTokens.bluePastel,
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    "Artefatos",
+                    color = OrbitTokens.textHiN,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                )
             }
         }
     }
@@ -267,8 +286,8 @@ private fun BarraSelecao(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(OrbitMetrics.radiusCard))
-            .background(OrbitTokens.surfaceRaised)
-            .border(1.dp, OrbitTokens.borderSoft, RoundedCornerShape(OrbitMetrics.radiusCard))
+            .background(OrbitTokens.graphiteRaised)
+            .border(1.dp, OrbitTokens.graphiteHair, RoundedCornerShape(OrbitMetrics.radiusCard))
             .padding(horizontal = 10.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -277,21 +296,21 @@ private fun BarraSelecao(
             modifier = Modifier
                 .size(40.dp)
                 .clip(CircleShape)
-                .background(OrbitTokens.surfaceHover)
+                .background(OrbitTokens.graphiteSurf)
                 .orbitPressable(onClick = onCancelar),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 Icons.Rounded.Close,
                 contentDescription = "Cancelar",
-                tint = OrbitTokens.textHigh,
+                tint = OrbitTokens.textHiN,
                 modifier = Modifier.size(20.dp),
             )
         }
 
         Text(
             text = "$quantidade selecionada${if (quantidade == 1) "" else "s"}",
-            color = OrbitTokens.textMid,
+            color = OrbitTokens.textMidN,
             fontSize = OrbitMetrics.bodySize,
             fontWeight = FontWeight.Medium,
             modifier = Modifier.weight(1f),
@@ -301,22 +320,23 @@ private fun BarraSelecao(
             modifier = Modifier
                 .size(40.dp)
                 .clip(CircleShape)
-                .background(OrbitTokens.surfaceHover)
+                .background(OrbitTokens.graphiteSurf)
                 .orbitPressable(onClick = onExportar),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 Icons.Rounded.IosShare,
                 contentDescription = "Exportar",
-                tint = OrbitTokens.accentText,
+                tint = OrbitTokens.bluePastel,
                 modifier = Modifier.size(18.dp),
             )
         }
 
+        // Apagar mantém o vermelho — é semântica de ação destrutiva, não acento de marca.
         Row(
             modifier = Modifier
                 .clip(RoundedCornerShape(OrbitMetrics.radiusPill))
-                .background(OrbitFills.danger.brush)
+                .background(OrbitTokens.danger)
                 .orbitPressable(onClick = onApagar)
                 .padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -325,12 +345,12 @@ private fun BarraSelecao(
             Icon(
                 Icons.Rounded.DeleteOutline,
                 contentDescription = null,
-                tint = OrbitFills.danger.onFill,
+                tint = Color.White,
                 modifier = Modifier.size(18.dp),
             )
             Text(
                 "Apagar",
-                color = OrbitFills.danger.onFill,
+                color = Color.White,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -344,30 +364,30 @@ private fun SearchBar(query: String, onQueryChange: (String) -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(SearchPill)
-            .background(OrbitTokens.surface)
-            .border(1.dp, OrbitTokens.borderSoft, SearchPill)
+            .background(OrbitTokens.graphiteSurf)
+            .border(1.dp, OrbitTokens.graphiteHair, SearchPill)
             .padding(horizontal = 16.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
             Icons.Rounded.Search,
             contentDescription = null,
-            tint = OrbitTokens.textLow,
+            tint = OrbitTokens.textLowN,
             modifier = Modifier.size(20.dp),
         )
         Spacer(modifier = Modifier.width(10.dp))
         BasicTextField(
             value = query,
             onValueChange = onQueryChange,
-            textStyle = TextStyle(color = OrbitTokens.textHigh, fontSize = OrbitMetrics.bodySize),
+            textStyle = TextStyle(color = OrbitTokens.textHiN, fontSize = OrbitMetrics.bodySize),
             modifier = Modifier.weight(1f),
             singleLine = true,
-            cursorBrush = SolidColor(OrbitTokens.accent),
+            cursorBrush = SolidColor(OrbitTokens.bluePastel),
             decorationBox = { innerTextField ->
                 if (query.isEmpty()) {
                     Text(
                         "Buscar no histórico...",
-                        color = OrbitTokens.textLow,
+                        color = OrbitTokens.textLowN,
                         fontSize = OrbitMetrics.bodySize,
                     )
                 }
@@ -398,16 +418,16 @@ private fun EstadoVazio(
                 Modifier
                     .size(56.dp)
                     .clip(RoundedCornerShape(16.dp))
-                    .background(OrbitTokens.surfaceRaised)
-                    .border(1.dp, OrbitTokens.borderSoft, RoundedCornerShape(16.dp)),
+                    .background(OrbitTokens.graphiteRaised)
+                    .border(1.dp, OrbitTokens.graphiteHair, RoundedCornerShape(16.dp)),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(icone, contentDescription = null, tint = OrbitTokens.textMid, modifier = Modifier.size(26.dp))
+                Icon(icone, contentDescription = null, tint = OrbitTokens.textMidN, modifier = Modifier.size(26.dp))
             }
             Spacer(Modifier.height(16.dp))
             Text(
                 titulo,
-                color = OrbitTokens.textHigh,
+                color = OrbitTokens.textHiN,
                 fontSize = 17.sp,
                 fontWeight = FontWeight.SemiBold,
                 textAlign = TextAlign.Center,
@@ -415,7 +435,7 @@ private fun EstadoVazio(
             Spacer(Modifier.height(6.dp))
             Text(
                 corpo,
-                color = OrbitTokens.textMid,
+                color = OrbitTokens.textMidN,
                 fontSize = OrbitMetrics.bodySize,
                 lineHeight = 20.sp,
                 textAlign = TextAlign.Center,
@@ -430,7 +450,6 @@ private fun ListaConversas(
     grupos: List<Pair<String, List<Conversa>>>,
     isSelectionMode: Boolean,
     selecionados: List<String>,
-    idDestaque: String?,
     bottomPad: Dp,
     onOpenChat: (String) -> Unit,
     onLongPress: (String) -> Unit,
@@ -446,26 +465,23 @@ private fun ListaConversas(
             stickyHeader(key = "h-$rotulo") {
                 Text(
                     text = rotulo.uppercase(),
-                    color = OrbitTokens.textLow,
+                    color = OrbitTokens.textLowN,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold,
                     letterSpacing = 0.7.sp,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(OrbitTokens.ink1)
-                        .padding(top = 4.dp, bottom = 10.dp),
+                        .background(OrbitTokens.graphiteBg)
+                        .padding(top = 14.dp, bottom = 8.dp),
                 )
             }
             items(itens, key = { it.id }) { conv ->
-                val ativa = !isSelectionMode && conv.id == idDestaque
                 ConversaItem(
                     conv = conv,
                     isSelectionMode = isSelectionMode,
                     isSelected = selecionados.contains(conv.id),
-                    isDestaque = ativa,
                     onOpenChat = onOpenChat,
                     onLongPress = onLongPress,
-                    modifier = Modifier.padding(bottom = OrbitMetrics.itemGap),
                 )
             }
         }
@@ -478,25 +494,17 @@ private fun ConversaItem(
     conv: Conversa,
     isSelectionMode: Boolean,
     isSelected: Boolean,
-    isDestaque: Boolean,
     onOpenChat: (String) -> Unit,
     onLongPress: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val marcada = isSelected || isDestaque
-    val borderColor = when {
-        isSelected -> OrbitTokens.border
-        isDestaque -> OrbitTokens.borderSoft
-        else -> OrbitTokens.borderSoft
-    }
-    val backgroundColor = when {
-        isSelected -> OrbitTokens.surfaceRaised
-        else -> OrbitTokens.surface
-    }
+    // Lista NUA (direção 1.0, estilo Claude): sem cartão, sem borda, sem ladrilho, sem prévia.
+    // Só título + hora, muito ar. O único preenchimento que aparece é a faixa da seleção —
+    // e mesmo essa é grafite quieto, não acento. Contraste vem do texto, não de moldura.
     val shape = RoundedCornerShape(OrbitMetrics.radiusCard)
     val (interaction, scale) = rememberOrbitPressScale()
 
-    Box(
+    Row(
         modifier = modifier
             .fillMaxWidth()
             .graphicsLayer {
@@ -504,122 +512,35 @@ private fun ConversaItem(
                 scaleY = scale
             }
             .clip(shape)
-            .background(backgroundColor)
-            .border(1.dp, borderColor, shape)
+            .then(if (isSelected) Modifier.background(OrbitTokens.graphiteSurf) else Modifier)
             .combinedClickable(
                 interactionSource = interaction,
                 indication = null,
                 onClick = { onOpenChat(conv.id) },
                 onLongClick = { onLongPress(conv.id) },
-            ),
+            )
+            .padding(horizontal = 8.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Arcos só no item em destaque/selecionado — evita Canvas em cada linha no scroll.
-        if (marcada) {
-            Canvas(
-                Modifier
-                    .matchParentSize()
-                    .graphicsLayer { alpha = 0.55f },
-            ) {
-                val stroke = Stroke(width = 1.2.dp.toPx())
-                val cx = size.width * 0.92f
-                val cy = size.height * 0.55f
-                val base = size.minDimension * 0.55f
-                for (i in 0..3) {
-                    drawCircle(
-                        color = Color.White.copy(alpha = 0.045f),
-                        radius = base + i * (size.minDimension * 0.22f),
-                        center = Offset(cx, cy),
-                        style = stroke,
-                    )
-                }
-            }
-        }
-
-        if (marcada) {
-            Canvas(
-                Modifier
-                    .align(Alignment.BottomEnd)
-                    .size(16.dp),
-            ) {
-                val path = Path().apply {
-                    moveTo(size.width, size.height)
-                    lineTo(size.width, size.height * 0.18f)
-                    lineTo(size.width * 0.18f, size.height)
-                    close()
-                }
-                drawPath(path, color = OrbitTokens.accent)
-            }
-        }
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(end = 16.dp),
-            verticalAlignment = Alignment.Top,
-        ) {
-            if (marcada) {
-                Box(
-                    Modifier
-                        .padding(vertical = 14.dp)
-                        .width(3.dp)
-                        .height(36.dp)
-                        .clip(RoundedCornerShape(topEnd = 2.dp, bottomEnd = 2.dp))
-                        .background(OrbitTokens.accent),
-                )
-                Spacer(Modifier.width(13.dp))
-            } else {
-                Spacer(Modifier.width(16.dp))
-            }
-
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(vertical = 14.dp),
-            ) {
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = conv.titulo,
-                        color = OrbitTokens.textHigh,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
-                    )
-                    if (!isSelectionMode) {
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            text = conv.horaFormatada,
-                            color = OrbitTokens.textLow,
-                            fontSize = OrbitMetrics.captionSize,
-                            fontWeight = FontWeight.Medium,
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(5.dp))
-                Text(
-                    text = conv.preview,
-                    color = OrbitTokens.textMid,
-                    fontSize = OrbitMetrics.bodySize,
-                    lineHeight = 20.sp,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-
-            if (isSelectionMode) {
-                Row(
-                    Modifier.padding(top = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Spacer(Modifier.width(12.dp))
-                    SelectionCheck(selected = isSelected)
-                }
-            }
+        Text(
+            text = conv.titulo,
+            color = OrbitTokens.textHiN,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        if (isSelectionMode) {
+            SelectionCheck(selected = isSelected)
+        } else {
+            Text(
+                text = conv.horaFormatada,
+                color = OrbitTokens.textLowN,
+                fontSize = OrbitMetrics.captionSize,
+                fontWeight = FontWeight.Medium,
+            )
         }
     }
 }
@@ -632,11 +553,11 @@ private fun SelectionCheck(selected: Boolean) {
             .clip(CircleShape)
             .then(
                 if (selected) {
-                    Modifier.background(OrbitTokens.accent)
+                    Modifier.background(OrbitTokens.bluePastel)
                 } else {
                     Modifier
                         .background(Color.Transparent)
-                        .border(1.5.dp, OrbitTokens.border, CircleShape)
+                        .border(1.5.dp, OrbitTokens.textLowN, CircleShape)
                 },
             ),
         contentAlignment = Alignment.Center,
@@ -645,14 +566,14 @@ private fun SelectionCheck(selected: Boolean) {
             Icon(
                 Icons.Rounded.Check,
                 contentDescription = null,
-                tint = Color.White,
+                tint = OrbitTokens.onBluePastel,
                 modifier = Modifier.size(14.dp),
             )
         }
     }
 }
 
-@Preview(showBackground = true, backgroundColor = 0xFF0E1014, widthDp = 380, heightDp = 800)
+@Preview(showBackground = true, backgroundColor = 0xFF17181B, widthDp = 380, heightDp = 800)
 @Composable
 fun ConversasScreenPreview() {
     ConversasScreen()

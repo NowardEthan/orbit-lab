@@ -29,6 +29,38 @@ sealed class ThreadReference {
         val uri: Uri?,
         override val excerpt: String = attachmentName,
     ) : ThreadReference()
+
+    /**
+     * Um trecho de um artefato, apontado no leitor pra a Luna mudar.
+     *
+     * O [trecho] é uma cópia EXATA da fonte Markdown (veio da seleção sobre o texto cru, não do
+     * que aparece renderizado) — é isso que faz dele um `trecho_antigo` válido pra a mão cirúrgica
+     * `editar_trecho_artefato`. O [documentoId] é o id do artefato (o `id` da ferramenta).
+     * Os campos de mensagem não se aplicam aqui; ficam neutros.
+     */
+    data class ArtefatoTrecho(
+        val documentoId: String,
+        val titulo: String,
+        val trecho: String,
+        override val excerpt: String = trecho.trim().replace(Regex("\\s+"), " ").take(280),
+        override val messageId: String = documentoId,
+        override val messageIndex: Int = 0,
+        override val isLuna: Boolean = false,
+    ) : ThreadReference()
+}
+
+/** Monta a referência a um trecho de artefato. `null` se o trecho vier vazio. */
+fun buildArtefatoTrechoReference(
+    documentoId: String,
+    titulo: String,
+    trecho: String,
+): ThreadReference.ArtefatoTrecho? {
+    if (documentoId.isBlank() || trecho.isBlank()) return null
+    return ThreadReference.ArtefatoTrecho(
+        documentoId = documentoId,
+        titulo = titulo.ifBlank { "Artefato" },
+        trecho = trecho,
+    )
 }
 
 fun messageIndexInThread(mensagens: List<Mensagem>, messageId: String): Int {
@@ -87,6 +119,7 @@ fun referenceChipLabel(ref: ThreadReference): String = when (ref) {
         val tipo = "Imagem"
         "Msg #${ref.messageIndex} · $tipo — ${ref.attachmentName}"
     }
+    is ThreadReference.ArtefatoTrecho -> "«${ref.titulo}» — ${ref.excerpt}"
 }
 
 /** Prompt enviado à Luna (demo) — mesmo formato do mobile. */
@@ -119,6 +152,28 @@ fun formatMessageWithReference(userText: String, ref: ThreadReference): String {
                 } else {
                     append("Comentário sobre esta imagem.")
                 }
+            }
+        }
+        is ThreadReference.ArtefatoTrecho -> buildString {
+            // O trecho vem cru da fonte — é o `trecho_antigo` pronto pra `editar_trecho_artefato`.
+            // Entregue entre marcas pra a Luna copiá-lo tal e qual, sem re-emitir o artefato inteiro.
+            appendLine("[Referência a um artefato]")
+            appendLine("- Artefato: «${ref.titulo}» (id: ${ref.documentoId})")
+            appendLine("- Trecho apontado (cópia EXATA do texto atual do artefato):")
+            appendLine("<<<TRECHO")
+            appendLine(ref.trecho)
+            appendLine("TRECHO>>>")
+            appendLine()
+            appendLine(
+                "Se ele pedir pra alterar ESTE trecho, use editar_trecho_artefato com o id acima e " +
+                    "este texto como trecho_antigo (copie-o tal e qual, sem as marcas <<<TRECHO). " +
+                    "Não reescreva o artefato inteiro.",
+            )
+            appendLine()
+            if (question.isNotBlank()) {
+                append("Pedido sobre este trecho:\n$question")
+            } else {
+                append("Comentário sobre este trecho.")
             }
         }
     }

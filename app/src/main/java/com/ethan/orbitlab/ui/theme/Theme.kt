@@ -3,6 +3,7 @@ package com.ethan.orbitlab.ui.theme
 import android.os.Build
 import androidx.compose.foundation.LocalOverscrollFactory
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
@@ -39,8 +40,13 @@ fun OrbitLabTheme(
         else -> LightColorScheme
     }
 
-    // Sem stretch/glow elástico no fim do scroll (Android 12+)
-    CompositionLocalProvider(LocalOverscrollFactory provides null) {
+    // Sem stretch/glow elástico no fim do scroll (Android 12+).
+    // Corpo padrão do app em Hanken — qualquer Text sem fontFamily explícita
+    // herda daqui; títulos aplicam Bricolage por cima (ver OrbitType.kt).
+    CompositionLocalProvider(
+        LocalOverscrollFactory provides null,
+        LocalTextStyle provides LocalTextStyle.current.copy(fontFamily = Hanken),
+    ) {
         MaterialTheme(
             colorScheme = colorScheme,
             typography = Typography,

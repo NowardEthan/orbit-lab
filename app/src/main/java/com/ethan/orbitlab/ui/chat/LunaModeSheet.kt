@@ -29,11 +29,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ethan.orbitlab.ui.theme.OrbitMetrics
@@ -65,19 +65,19 @@ private val MODOS = listOf(
     ModoLuna(
         opcao = ModoLunaOpcao.Conversa,
         nome = "Conversa",
-        descricao = "O jeito natural dela: leve, caloroso e direto ao ponto. Ótimo pro dia a dia e pra pensar junto.",
+        descricao = "Leve e direta — o jeito natural dela.",
         icone = Icons.Rounded.ChatBubbleOutline,
     ),
     ModoLuna(
         opcao = ModoLunaOpcao.Tecnico,
         nome = "Técnico",
-        descricao = "Respostas mais fundas e organizadas — com rigor, estrutura e os termos certos. Ótimo pra estudar, revisar ou redigir algo sério.",
+        descricao = "Fundo e rigoroso, com os termos certos.",
         icone = Icons.Rounded.Tune,
     ),
     ModoLuna(
         opcao = ModoLunaOpcao.MaosAObra,
-        nome = "Mãos à obra",
-        descricao = "Ela planeja e usa as ferramentas — cria e edita documentos, marca passos. Ótimo pra tocar uma tarefa junto; é mais lento e pesa um pouco mais.",
+        nome = "Ação",
+        descricao = "Usa as ferramentas e toca a tarefa com você.",
         icone = Icons.Rounded.Handyman,
     ),
 )
@@ -98,14 +98,14 @@ fun LunaModeSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = OrbitTokens.surfaceRaised,
+        containerColor = OrbitTokens.graphiteRaised,
         dragHandle = {
             Box(
                 Modifier
                     .padding(top = 10.dp, bottom = 6.dp)
                     .size(width = 36.dp, height = 4.dp)
                     .clip(RoundedCornerShape(2.dp))
-                    .background(OrbitTokens.borderSoft),
+                    .background(OrbitTokens.graphiteHair),
             )
         },
     ) {
@@ -118,21 +118,21 @@ fun LunaModeSheet(
         ) {
             Text(
                 "Como a Luna responde",
-                color = OrbitTokens.textHigh,
+                color = OrbitTokens.textHiN,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.SemiBold,
             )
             Spacer(Modifier.height(4.dp))
             Text(
                 "Escolhe o jeito que combina com o que você precisa agora.",
-                color = OrbitTokens.textMid,
+                color = OrbitTokens.textMidN,
                 fontSize = 13.sp,
                 lineHeight = 18.sp,
             )
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(12.dp))
 
             MODOS.forEachIndexed { i, modo ->
-                if (i > 0) Spacer(Modifier.height(10.dp))
+                if (i > 0) Spacer(Modifier.height(6.dp))
                 ModeCard(
                     modo = modo,
                     selecionado = modo.opcao == modoAtivo,
@@ -154,59 +154,66 @@ private fun ModeCard(
     onClick: () -> Unit,
 ) {
     val forma = RoundedCornerShape(OrbitMetrics.radiusCard)
-    val bg = if (selecionado) OrbitTokens.accentSoft else OrbitTokens.surface
-    val borda = if (selecionado) OrbitTokens.accent.copy(alpha = 0.55f) else OrbitTokens.borderSoft
-    val tintIcone = if (selecionado) OrbitTokens.accentText else OrbitTokens.textMid
+    // Um só acento (azul pastel): o selecionado ACENDE, o resto fica quieto no grafite —
+    // sem os três tons antigos (violeta/azul/verde). A seleção é a borda + o ladrilho aceso
+    // + o selo, todos no pastel; contraste, não opacidade.
+    val borda = if (selecionado) OrbitTokens.bluePastel else OrbitTokens.graphiteHair
 
     Row(
         Modifier
             .fillMaxWidth()
             .clip(forma)
-            .background(bg)
-            .border(1.dp, borda, forma)
+            .background(OrbitTokens.graphiteSurf)
+            .border(if (selecionado) 1.5.dp else 1.dp, borda, forma)
             .orbitPressable(onClick = onClick)
-            .padding(14.dp),
+            .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             Modifier
-                .size(38.dp)
-                .clip(RoundedCornerShape(11.dp))
-                .background(if (selecionado) OrbitTokens.accent.copy(alpha = 0.18f) else OrbitTokens.surfaceRaised),
+                .size(30.dp)
+                .clip(RoundedCornerShape(9.dp))
+                .background(if (selecionado) OrbitTokens.bluePastel else OrbitTokens.graphiteRaised),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(modo.icone, contentDescription = null, tint = tintIcone, modifier = Modifier.size(20.dp))
+            Icon(
+                modo.icone,
+                contentDescription = null,
+                tint = if (selecionado) OrbitTokens.onBluePastel else OrbitTokens.textMidN,
+                modifier = Modifier.size(17.dp),
+            )
         }
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(11.dp))
         Column(Modifier.weight(1f)) {
             Text(
                 modo.nome,
-                color = OrbitTokens.textHigh,
-                fontSize = 15.sp,
+                color = OrbitTokens.textHiN,
+                fontSize = 14.5.sp,
                 fontWeight = FontWeight.SemiBold,
             )
-            Spacer(Modifier.height(3.dp))
+            Spacer(Modifier.height(1.dp))
             Text(
                 modo.descricao,
-                color = OrbitTokens.textMid,
-                fontSize = 12.5.sp,
-                lineHeight = 17.sp,
+                color = OrbitTokens.textMidN,
+                fontSize = 11.5.sp,
+                lineHeight = 14.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
         Spacer(Modifier.width(10.dp))
         Box(
             Modifier
-                .size(22.dp)
+                .size(18.dp)
                 .clip(CircleShape)
-                .background(if (selecionado) OrbitTokens.accent else Color.Transparent)
                 .then(
-                    if (selecionado) Modifier
-                    else Modifier.border(1.5.dp, OrbitTokens.borderSoft, CircleShape),
+                    if (selecionado) Modifier.background(OrbitTokens.bluePastel)
+                    else Modifier.border(1.5.dp, OrbitTokens.graphiteHair, CircleShape),
                 ),
             contentAlignment = Alignment.Center,
         ) {
             if (selecionado) {
-                Icon(Icons.Rounded.Check, contentDescription = "Selecionado", tint = Color.White, modifier = Modifier.size(14.dp))
+                Icon(Icons.Rounded.Check, contentDescription = "Selecionado", tint = OrbitTokens.onBluePastel, modifier = Modifier.size(12.dp))
             }
         }
     }

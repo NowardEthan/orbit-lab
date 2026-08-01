@@ -80,8 +80,8 @@ fun LunaResearchPanel(
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(OrbitMetrics.radiusCard))
-            .background(OrbitTokens.ink1)
-            .border(1.dp, OrbitTokens.borderSoft, RoundedCornerShape(OrbitMetrics.radiusCard))
+            .background(OrbitTokens.graphiteSurf)
+            .border(1.dp, OrbitTokens.graphiteHair, RoundedCornerShape(OrbitMetrics.radiusCard))
             .padding(12.dp),
     ) {
         Row(
@@ -95,7 +95,7 @@ fun LunaResearchPanel(
             Icon(
                 imageVector = Icons.Rounded.Search,
                 contentDescription = null,
-                tint = if (done) OrbitTokens.textMid else OrbitTokens.accentText,
+                tint = if (done) OrbitTokens.textMidN else OrbitTokens.bluePastel,
                 modifier = Modifier.size(16.dp),
             )
             Column(Modifier.weight(1f)) {
@@ -105,7 +105,7 @@ fun LunaResearchPanel(
                 ) {
                     Text(
                         text = "PESQUISA PROFUNDA",
-                        color = OrbitTokens.textLow,
+                        color = OrbitTokens.textLowN,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.SemiBold,
                         letterSpacing = 0.6.sp,
@@ -118,7 +118,7 @@ fun LunaResearchPanel(
                 Spacer(Modifier.height(3.dp))
                 Text(
                     text = run.title,
-                    color = OrbitTokens.textHigh,
+                    color = OrbitTokens.textHiN,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 2,
@@ -132,7 +132,7 @@ fun LunaResearchPanel(
                     Icons.Rounded.KeyboardArrowRight
                 },
                 contentDescription = if (aberto) "Recolher pesquisa" else "Ver pesquisa",
-                tint = OrbitTokens.textLow,
+                tint = OrbitTokens.textLowN,
                 modifier = Modifier.size(18.dp),
             )
         }
@@ -144,8 +144,8 @@ fun LunaResearchPanel(
                 .fillMaxWidth()
                 .height(3.dp)
                 .clip(RoundedCornerShape(2.dp)),
-            color = OrbitTokens.accent,
-            trackColor = OrbitTokens.surfaceHover,
+            color = OrbitTokens.bluePastel,
+            trackColor = OrbitTokens.graphiteRaised,
             strokeCap = StrokeCap.Round,
         )
         Spacer(Modifier.height(6.dp))
@@ -156,7 +156,7 @@ fun LunaResearchPanel(
                 append(" · ${run.totalConsultas()} consultas")
                 if (run.totalCitacoes() > 0) append(" · ${run.totalCitacoes()} referências")
             },
-            color = OrbitTokens.textLow,
+            color = OrbitTokens.textLowN,
             fontSize = 11.sp,
         )
 
@@ -164,7 +164,7 @@ fun LunaResearchPanel(
             Spacer(Modifier.height(6.dp))
             Text(
                 text = liveLabel,
-                color = OrbitTokens.accentText,
+                color = OrbitTokens.bluePastel,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
@@ -214,9 +214,10 @@ fun LunaResearchPanel(
  * Dossiê — a cara da PESQUISA PROFUNDA.
  *
  * A resposta da Luna, quando ela pesquisou na web, não sai numa bolha de chat comum:
- * vira um card de relatório com assinatura violeta (pra distinguir do azul do papo
- * normal). Cabeçalho "PESQUISA PROFUNDA" + nº de fontes, o corpo da resposta, o rodapé
- * com as fontes clicáveis, e as fases detalhadas atrás de um toque.
+ * vira um card de relatório — o que o distingue é SER um cartão (borda, lavagem no topo,
+ * barra de progresso, trilha das fases), não uma cor própria. Cabeçalho "PESQUISA PROFUNDA"
+ * + nº de fontes, o corpo da resposta, o rodapé com as fontes clicáveis, e as fases atrás
+ * de um toque. Acento único: o azul pastel, como no resto do app.
  *
  * Serve os dois momentos: ao vivo (`streaming = true`, resposta a escrever com o caret
  * a piscar) e a mensagem já assente no histórico.
@@ -245,18 +246,18 @@ fun LunaDossieCard(
         modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(OrbitMetrics.radiusCard))
-            .background(OrbitTokens.ink1)
+            .background(OrbitTokens.graphiteSurf)
             .border(
                 1.dp,
-                OrbitTokens.violet.copy(alpha = 0.28f),
+                OrbitTokens.bluePastel.copy(alpha = 0.28f),
                 RoundedCornerShape(OrbitMetrics.radiusCard),
             ),
     ) {
-        // ── Cabeçalho com lavagem violeta ──────────────────────────────────────────
+        // ── Cabeçalho com lavagem pastel ───────────────────────────────────────────
         Row(
             Modifier
                 .fillMaxWidth()
-                .background(OrbitTokens.violet.copy(alpha = 0.09f))
+                .background(OrbitTokens.bluePastel.copy(alpha = 0.09f))
                 .orbitPressable { detalhesAbertos = !detalhesAbertos }
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -265,7 +266,7 @@ fun LunaDossieCard(
             Icon(
                 imageVector = Icons.Rounded.TravelExplore,
                 contentDescription = null,
-                tint = OrbitTokens.violet,
+                tint = OrbitTokens.bluePastel,
                 modifier = Modifier.size(18.dp),
             )
             Column(Modifier.weight(1f)) {
@@ -275,7 +276,7 @@ fun LunaDossieCard(
                 ) {
                     Text(
                         text = "PESQUISA PROFUNDA",
-                        color = OrbitTokens.violet,
+                        color = OrbitTokens.bluePastel,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 0.8.sp,
@@ -288,7 +289,7 @@ fun LunaDossieCard(
                     Spacer(Modifier.height(2.dp))
                     Text(
                         text = run.title,
-                        color = OrbitTokens.textHigh,
+                        color = OrbitTokens.textHiN,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 2,
@@ -300,7 +301,7 @@ fun LunaDossieCard(
                     Spacer(Modifier.height(3.dp))
                     Text(
                         text = stats,
-                        color = OrbitTokens.violet.copy(alpha = 0.9f),
+                        color = OrbitTokens.bluePastel.copy(alpha = 0.9f),
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Medium,
                     )
@@ -313,7 +314,7 @@ fun LunaDossieCard(
                     Icons.Rounded.KeyboardArrowRight
                 },
                 contentDescription = if (detalhesAbertos) "Recolher fases" else "Ver fases",
-                tint = OrbitTokens.textLow,
+                tint = OrbitTokens.textLowN,
                 modifier = Modifier.size(18.dp),
             )
         }
@@ -324,8 +325,8 @@ fun LunaDossieCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(2.dp),
-                color = OrbitTokens.violet,
-                trackColor = OrbitTokens.violet.copy(alpha = 0.15f),
+                color = OrbitTokens.bluePastel,
+                trackColor = OrbitTokens.bluePastel.copy(alpha = 0.15f),
                 strokeCap = StrokeCap.Butt,
             )
         }
@@ -353,7 +354,7 @@ fun LunaDossieCard(
                 streaming -> {
                     Text(
                         text = liveLabel?.takeIf { it.isNotBlank() } ?: "Começando a pesquisa…",
-                        color = OrbitTokens.violet,
+                        color = OrbitTokens.bluePastel,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Medium,
                     )
@@ -367,7 +368,7 @@ fun LunaDossieCard(
                 Modifier
                     .fillMaxWidth()
                     .height(1.dp)
-                    .background(OrbitTokens.borderSoft),
+                    .background(OrbitTokens.graphiteHair),
             )
             Row(
                 Modifier
@@ -396,7 +397,7 @@ fun LunaDossieCard(
                         append(" · ${run.totalConsultas()} consultas")
                         if (run.totalCitacoes() > 0) append(" · ${run.totalCitacoes()} referências")
                     },
-                    color = OrbitTokens.textLow,
+                    color = OrbitTokens.textLowN,
                     fontSize = 11.sp,
                 )
                 run.steps
@@ -428,7 +429,7 @@ private fun DossieCaret() {
             .width(2.dp)
             .height(13.dp)
             .clip(RoundedCornerShape(1.dp))
-            .background(OrbitTokens.violet.copy(alpha = a)),
+            .background(OrbitTokens.bluePastel.copy(alpha = a)),
     )
 }
 
@@ -514,11 +515,11 @@ private fun TimelineRow(
     val rodando = (passo.status == LunaResearchStepStatus.RUNNING || ativo) && !erro
     val corPonto = when {
         erro -> OrbitTokens.danger
-        rodando -> OrbitTokens.violet
-        pendente -> OrbitTokens.textLow
-        else -> OrbitTokens.violet.copy(alpha = 0.82f)
+        rodando -> OrbitTokens.bluePastel
+        pendente -> OrbitTokens.textLowN
+        else -> OrbitTokens.bluePastel.copy(alpha = 0.82f)
     }
-    val corTrilho = OrbitTokens.violet.copy(alpha = 0.22f)
+    val corTrilho = OrbitTokens.bluePastel.copy(alpha = 0.22f)
 
     // Entrada: o passo surge deslizando de baixo, uma vez.
     val entrada = remember { Animatable(0f) }
@@ -546,7 +547,7 @@ private fun TimelineRow(
                 }
                 if (rodando) {
                     drawCircle(
-                        OrbitTokens.violet.copy(alpha = halo),
+                        OrbitTokens.bluePastel.copy(alpha = halo),
                         radius = 7.dp.toPx(),
                         center = Offset(cx, dotY),
                     )
@@ -570,7 +571,7 @@ private fun TimelineRow(
         ) {
             Text(
                 text = passo.label,
-                color = if (rodando) OrbitTokens.textHigh else OrbitTokens.textMid,
+                color = if (rodando) OrbitTokens.textHiN else OrbitTokens.textMidN,
                 fontSize = 13.sp,
                 fontWeight = if (rodando) FontWeight.SemiBold else FontWeight.Medium,
                 maxLines = 2,
@@ -586,7 +587,7 @@ private fun TimelineRow(
                 Spacer(Modifier.height(2.dp))
                 Text(
                     text = sub,
-                    color = OrbitTokens.textLow,
+                    color = OrbitTokens.textLowN,
                     fontSize = 11.sp,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
@@ -600,14 +601,14 @@ private fun TimelineRow(
 private fun StatusChip(texto: String, destaque: Boolean) {
     Text(
         text = texto,
-        color = if (destaque) OrbitTokens.accentText else OrbitTokens.textMid,
+        color = if (destaque) OrbitTokens.onBluePastel else OrbitTokens.textMidN,
         fontSize = 10.sp,
         fontWeight = FontWeight.Medium,
         modifier = Modifier
             .clip(RoundedCornerShape(999.dp))
-            .background(
-                if (destaque) OrbitTokens.accentSoft
-                else OrbitTokens.surfaceHover,
+            .then(
+                if (destaque) Modifier.background(OrbitTokens.bluePastel)
+                else Modifier.background(OrbitTokens.graphiteRaised),
             )
             .padding(horizontal = 7.dp, vertical = 2.dp),
     )
@@ -619,8 +620,8 @@ private fun DomainChip(fonte: LunaWebFonte) {
     Row(
         Modifier
             .clip(RoundedCornerShape(999.dp))
-            .background(OrbitTokens.surface)
-            .border(1.dp, OrbitTokens.borderSoft, RoundedCornerShape(999.dp))
+            .background(OrbitTokens.graphiteSurf)
+            .border(1.dp, OrbitTokens.graphiteHair, RoundedCornerShape(999.dp))
             .orbitPressable { abrirUrl(context, fonte.url) }
             .padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -629,7 +630,7 @@ private fun DomainChip(fonte: LunaWebFonte) {
         FaviconLetter(domain = fonte.domain, size = 14.dp)
         Text(
             text = fonte.domain.removePrefix("www."),
-            color = OrbitTokens.textMid,
+            color = OrbitTokens.textMidN,
             fontSize = 11.sp,
             maxLines = 1,
         )
@@ -642,8 +643,8 @@ private fun ResearchStepCard(step: LunaResearchStep) {
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
-            .background(OrbitTokens.surface.copy(alpha = 0.55f))
-            .border(1.dp, OrbitTokens.borderSoft.copy(alpha = 0.7f), RoundedCornerShape(10.dp))
+            .background(OrbitTokens.graphiteSurf.copy(alpha = 0.55f))
+            .border(1.dp, OrbitTokens.graphiteHair.copy(alpha = 0.7f), RoundedCornerShape(10.dp))
             .padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -653,20 +654,20 @@ private fun ResearchStepCard(step: LunaResearchStep) {
         ) {
             Text(
                 text = step.kind.icone(),
-                color = OrbitTokens.accentText,
+                color = OrbitTokens.bluePastel,
                 fontSize = 13.sp,
             )
             Column(Modifier.weight(1f)) {
                 Text(
                     text = step.label,
-                    color = OrbitTokens.textHigh,
+                    color = OrbitTokens.textHiN,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
                 if (!step.detail.isNullOrBlank()) {
                     Text(
                         text = step.detail,
-                        color = OrbitTokens.textLow,
+                        color = OrbitTokens.textLowN,
                         fontSize = 11.sp,
                     )
                 }
@@ -674,7 +675,7 @@ private fun ResearchStepCard(step: LunaResearchStep) {
             if (step.status == LunaResearchStepStatus.RUNNING) {
                 StatusChip(texto = "Agora", destaque = true)
             } else if (step.status == LunaResearchStepStatus.DONE) {
-                Text("✓", color = OrbitTokens.textLow, fontSize = 12.sp)
+                Text("✓", color = OrbitTokens.textLowN, fontSize = 12.sp)
             }
         }
 
@@ -684,12 +685,12 @@ private fun ResearchStepCard(step: LunaResearchStep) {
                 step.queries.forEach { q ->
                     Text(
                         text = "⌕  $q",
-                        color = OrbitTokens.textMid,
+                        color = OrbitTokens.textMidN,
                         fontSize = 12.sp,
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(8.dp))
-                            .background(OrbitTokens.ink0.copy(alpha = 0.45f))
+                            .background(OrbitTokens.graphiteBg.copy(alpha = 0.45f))
                             .padding(horizontal = 9.dp, vertical = 6.dp),
                     )
                 }
@@ -720,7 +721,7 @@ private fun ResearchStepCard(step: LunaResearchStep) {
 private fun BlockLabel(texto: String) {
     Text(
         text = texto.uppercase(),
-        color = OrbitTokens.textLow,
+        color = OrbitTokens.textLowN,
         fontSize = 10.sp,
         fontWeight = FontWeight.SemiBold,
         letterSpacing = 0.5.sp,
@@ -743,7 +744,7 @@ private fun SourceRow(fonte: LunaWebFonte) {
         Column(Modifier.weight(1f)) {
             Text(
                 text = fonte.title,
-                color = OrbitTokens.accentText,
+                color = OrbitTokens.bluePastel,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 2,
@@ -754,13 +755,13 @@ private fun SourceRow(fonte: LunaWebFonte) {
                     append(fonte.domain.removePrefix("www."))
                     if (!fonte.publishedAt.isNullOrBlank()) append(" · ${fonte.publishedAt}")
                 },
-                color = OrbitTokens.textLow,
+                color = OrbitTokens.textLowN,
                 fontSize = 10.sp,
             )
             if (!fonte.snippet.isNullOrBlank()) {
                 Text(
                     text = fonte.snippet,
-                    color = OrbitTokens.textMid,
+                    color = OrbitTokens.textMidN,
                     fontSize = 11.sp,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
@@ -770,16 +771,16 @@ private fun SourceRow(fonte: LunaWebFonte) {
         Text(
             text = fonte.status.rotulo(),
             color = when (fonte.status) {
-                LunaFonteStatus.DESCARTADA -> OrbitTokens.textLow
-                LunaFonteStatus.CONFIRMADA, LunaFonteStatus.CITADA -> OrbitTokens.accentText
-                LunaFonteStatus.LENDO -> OrbitTokens.accentText
-                else -> OrbitTokens.textMid
+                LunaFonteStatus.DESCARTADA -> OrbitTokens.textLowN
+                LunaFonteStatus.CONFIRMADA, LunaFonteStatus.CITADA -> OrbitTokens.bluePastel
+                LunaFonteStatus.LENDO -> OrbitTokens.bluePastel
+                else -> OrbitTokens.textMidN
             },
             fontSize = 9.sp,
             fontWeight = FontWeight.Medium,
             modifier = Modifier
                 .clip(RoundedCornerShape(999.dp))
-                .background(OrbitTokens.surfaceHover)
+                .background(OrbitTokens.graphiteRaised)
                 .padding(horizontal = 6.dp, vertical = 2.dp),
         )
     }
@@ -798,14 +799,14 @@ private fun CitationRow(cite: LunaCitacao) {
     ) {
         Text(
             text = "[${cite.index}]",
-            color = OrbitTokens.accentText,
+            color = OrbitTokens.bluePastel,
             fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
         )
         Column(Modifier.weight(1f)) {
             Text(
                 text = cite.title,
-                color = OrbitTokens.accentText,
+                color = OrbitTokens.bluePastel,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 2,
@@ -814,7 +815,7 @@ private fun CitationRow(cite: LunaCitacao) {
             if (!cite.excerpt.isNullOrBlank()) {
                 Text(
                     text = cite.excerpt,
-                    color = OrbitTokens.textMid,
+                    color = OrbitTokens.textMidN,
                     fontSize = 11.sp,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
@@ -831,13 +832,13 @@ private fun FaviconLetter(domain: String, size: Dp) {
         Modifier
             .size(size)
             .clip(CircleShape)
-            .background(OrbitTokens.surfaceHover)
-            .border(1.dp, OrbitTokens.borderSoft, CircleShape),
+            .background(OrbitTokens.graphiteRaised)
+            .border(1.dp, OrbitTokens.graphiteHair, CircleShape),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = letter,
-            color = OrbitTokens.textMid,
+            color = OrbitTokens.textMidN,
             fontSize = (size.value * 0.55f).sp,
             fontWeight = FontWeight.SemiBold,
         )

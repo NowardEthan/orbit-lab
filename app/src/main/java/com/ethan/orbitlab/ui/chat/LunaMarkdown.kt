@@ -16,6 +16,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -25,6 +29,8 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
@@ -37,7 +43,10 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.widget.Toast
+import com.ethan.orbitlab.ui.theme.OrbitFills
 import com.ethan.orbitlab.ui.theme.OrbitTokens
+import com.ethan.orbitlab.ui.theme.orbitPressable
 
 /**
  * Markdown da Luna — um sistema só.
@@ -87,6 +96,9 @@ private fun serializarBloco(bloco: BlocoMd): String = when (bloco) {
     is BlocoMd.Lista -> bloco.itens.mapIndexed { i, item ->
         if (bloco.ordenada) "${i + 1}. $item" else "- $item"
     }.joinToString("\n")
+    is BlocoMd.Checklist -> bloco.itens.joinToString("\n") {
+        "- [${if (it.marcado) "x" else " "}] ${it.texto}"
+    }
     is BlocoMd.Codigo -> {
         val lang = bloco.linguagem.orEmpty()
         "```$lang\n${bloco.texto}\n```"
@@ -127,12 +139,24 @@ fun LunaMarkdown(
     content: String,
     modifier: Modifier = Modifier,
     variante: LunaMarkdownVariante = LunaMarkdownVariante.Chat,
+    /**
+     * Ligado só no leitor de artefato: recebe o índice GLOBAL da checkbox tocada (a k-ésima do
+     * texto inteiro) pra quem chama reescrever a fonte e salvar. Nulo = checkboxes só de leitura
+     * (o caso do chat).
+     */
+    onToggleCheck: ((Int) -> Unit)? = null,
 ) {
     val cache = remember { MdIncrementalCache() }
     val blocos = remember(content) { cache.update(content) }
     val doc = variante == LunaMarkdownVariante.Documento
     val gap = if (doc) MdDoc.gap else Md.gap
     val gapTitulo = if (doc) MdDoc.gapTitulo else Md.gapTitulo
+
+    // Índice global da PRIMEIRA checkbox de cada bloco — pra mapear um toque de volta à fonte.
+    val baseCheck = remember(blocos) {
+        var acc = 0
+        blocos.map { b -> if (b is BlocoMd.Checklist) acc.also { acc += b.itens.size } else -1 }
+    }
 
     CompositionLocalProvider(LocalMdVariante provides variante) {
         Column(
@@ -151,6 +175,7 @@ fun LunaMarkdown(
                         is BlocoMd.Paragrafo -> MdTexto(bloco.texto)
                         is BlocoMd.Quote -> MdQuote(bloco.texto)
                         is BlocoMd.Lista -> MdLista(bloco)
+                        is BlocoMd.Checklist -> MdChecklist(bloco, baseCheck[index], onToggleCheck)
                         is BlocoMd.Codigo -> MdCodigo(bloco)
                         is BlocoMd.Divisor -> MdDivisor()
                     }
@@ -190,7 +215,7 @@ private fun MdTitulo(bloco: BlocoMd.Titulo) {
                         .width(34.dp)
                         .height(3.dp)
                         .clip(RoundedCornerShape(2.dp))
-                        .background(OrbitTokens.accent),
+                        .background(OrbitFills.accent.brush),
                 )
             }
         }
@@ -236,26 +261,27 @@ private fun MdQuote(texto: String) {
     val doc = LocalMdVariante.current == LunaMarkdownVariante.Documento
     val styled = remember(texto) { estiloInline(texto) }
     if (doc) {
+        // Card sólido (não tingido) + trilho em gradiente: contraste firme, sem "UI de opacidade".
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(IntrinsicSize.Min)
-                .clip(RoundedCornerShape(10.dp))
-                .background(OrbitTokens.accentSoft)
-                .border(1.dp, OrbitTokens.accent.copy(alpha = 0.22f), RoundedCornerShape(10.dp)),
+                .clip(RoundedCornerShape(12.dp))
+                .background(OrbitTokens.surface)
+                .border(1.dp, OrbitTokens.borderSoft, RoundedCornerShape(12.dp)),
         ) {
             Box(
                 Modifier
-                    .width(3.dp)
+                    .width(4.dp)
                     .fillMaxHeight()
-                    .background(OrbitTokens.accent),
+                    .background(OrbitFills.accent.brush),
             )
             Text(
                 text = styled,
                 color = OrbitTokens.textHigh,
                 fontSize = MdDoc.body,
                 lineHeight = MdDoc.bodyLine,
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                modifier = Modifier.padding(horizontal = 15.dp, vertical = 13.dp),
             )
         }
         return
@@ -270,7 +296,7 @@ private fun MdQuote(texto: String) {
                 .width(Md.rail)
                 .fillMaxHeight()
                 .clip(RoundedCornerShape(1.dp))
-                .background(OrbitTokens.accent.copy(alpha = 0.55f)),
+                .background(OrbitFills.accent.brush),
         )
         Text(
             text = styled,
@@ -329,40 +355,164 @@ private fun MdLista(bloco: BlocoMd.Lista) {
     }
 }
 
+/**
+ * Checklist — os `- [ ]` viram caixinhas. No leitor de artefato ([onToggle] != null) marcar é
+ * com o dedo e fica salvo; no chat elas são só de leitura. Cada item conhece seu índice GLOBAL
+ * ([base] + posição) pra quem escuta reescrever a fonte certa.
+ */
+@Composable
+private fun MdChecklist(
+    bloco: BlocoMd.Checklist,
+    base: Int,
+    onToggle: ((Int) -> Unit)?,
+) {
+    val doc = LocalMdVariante.current == LunaMarkdownVariante.Documento
+    val body = if (doc) MdDoc.body else Md.body
+    val bodyLine = if (doc) MdDoc.bodyLine else Md.bodyLine
+    Column(verticalArrangement = Arrangement.spacedBy(if (doc) 6.dp else 3.dp)) {
+        bloco.itens.forEachIndexed { i, item ->
+            val indiceGlobal = base + i
+            val linha = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .let { if (onToggle != null) it.orbitPressable { onToggle(indiceGlobal) } else it }
+            Row(
+                modifier = linha,
+                horizontalArrangement = Arrangement.spacedBy(if (doc) 10.dp else 7.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                CaixaCheck(marcado = item.marcado, doc = doc)
+                val styled = remember(item.texto) { estiloInline(item.texto) }
+                Text(
+                    text = styled,
+                    color = if (item.marcado) OrbitTokens.textLow else OrbitTokens.textHigh,
+                    fontSize = body,
+                    lineHeight = bodyLine,
+                    textDecoration = if (item.marcado) TextDecoration.LineThrough else null,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * A caixinha da checklist — visual próprio, não o ícone cru do Material.
+ * - Vazia: quadrado de cantos redondos, só contorno (fundo transparente).
+ * - Marcada: preenchida com o gradiente de acento e um ✓ branco por cima — contraste firme.
+ */
+@Composable
+private fun CaixaCheck(marcado: Boolean, doc: Boolean) {
+    val lado = if (doc) 21.dp else 18.dp
+    val shape = RoundedCornerShape(if (doc) 7.dp else 6.dp)
+    if (marcado) {
+        Box(
+            modifier = Modifier
+                .padding(top = 1.dp)
+                .size(lado)
+                .clip(shape)
+                .background(OrbitFills.accent.brush),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Check,
+                contentDescription = null,
+                tint = OrbitFills.accent.onFill,
+                modifier = Modifier.size(if (doc) 15.dp else 13.dp),
+            )
+        }
+    } else {
+        Box(
+            modifier = Modifier
+                .padding(top = 1.dp)
+                .size(lado)
+                .clip(shape)
+                .border(1.5.dp, OrbitTokens.border, shape),
+        )
+    }
+}
+
 @Composable
 private fun MdCodigo(bloco: BlocoMd.Codigo) {
-    Column(
+    val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(Md.radius))
             .background(OrbitTokens.ink0.copy(alpha = 0.45f)),
     ) {
-        if (bloco.linguagem != null) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            if (bloco.linguagem != null) {
+                Text(
+                    text = bloco.linguagem,
+                    color = OrbitTokens.textLow,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Medium,
+                    letterSpacing = 0.2.sp,
+                    modifier = Modifier.padding(start = 9.dp, top = 6.dp, end = 9.dp),
+                )
+            }
             Text(
-                text = bloco.linguagem,
-                color = OrbitTokens.textLow,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Medium,
-                letterSpacing = 0.2.sp,
-                modifier = Modifier.padding(start = 9.dp, top = 6.dp, end = 9.dp),
+                text = bloco.texto,
+                color = OrbitTokens.textHigh.copy(alpha = 0.88f),
+                fontSize = Md.mono,
+                lineHeight = Md.monoLine,
+                fontFamily = FontFamily.Monospace,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        start = 9.dp,
+                        end = 9.dp,
+                        top = if (bloco.linguagem != null) 2.dp else 7.dp,
+                        bottom = 7.dp,
+                    ),
             )
         }
-        Text(
-            text = bloco.texto,
-            color = OrbitTokens.textHigh.copy(alpha = 0.88f),
-            fontSize = Md.mono,
-            lineHeight = Md.monoLine,
-            fontFamily = FontFamily.Monospace,
+        // Copiar — discreto no canto; o código costuma ser pra levar embora.
+        Icon(
+            imageVector = Icons.Rounded.ContentCopy,
+            contentDescription = "Copiar código",
+            tint = OrbitTokens.textLow,
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(
-                    start = 9.dp,
-                    end = 9.dp,
-                    top = if (bloco.linguagem != null) 2.dp else 7.dp,
-                    bottom = 7.dp,
-                ),
+                .align(Alignment.TopEnd)
+                .padding(4.dp)
+                .clip(RoundedCornerShape(7.dp))
+                .orbitPressable {
+                    clipboard.setText(AnnotatedString(bloco.texto))
+                    Toast.makeText(context, "Código copiado", Toast.LENGTH_SHORT).show()
+                }
+                .padding(5.dp)
+                .size(15.dp),
         )
     }
+}
+
+/**
+ * Vira a k-ésima checkbox do texto inteiro (`[ ]` ↔ `[x]`), preservando o resto da linha e a
+ * indentação. Função pura — quem chama salva o resultado. Se o índice não existe, devolve igual.
+ */
+fun alternarChecklistNoTexto(fonte: String, indiceGlobal: Int): String {
+    var k = -1
+    val linhas = fonte.replace("\r\n", "\n").split("\n")
+    val novas = linhas.map { linha ->
+        if (RE_CHECK.matches(linha.trim())) {
+            k++
+            if (k == indiceGlobal) {
+                val marcada = Regex("""\[[xX]]""").containsMatchIn(linha)
+                if (marcada) {
+                    linha.replaceFirst(Regex("""\[[xX]]"""), "[ ]")
+                } else {
+                    linha.replaceFirst("[ ]", "[x]")
+                }
+            } else {
+                linha
+            }
+        } else {
+            linha
+        }
+    }
+    return novas.joinToString("\n")
 }
 
 @Composable
@@ -382,9 +532,15 @@ private sealed class BlocoMd {
     data class Paragrafo(val texto: String) : BlocoMd()
     data class Quote(val texto: String) : BlocoMd()
     data class Lista(val ordenada: Boolean, val itens: List<String>) : BlocoMd()
+    data class Checklist(val itens: List<ItemCheck>) : BlocoMd()
     data class Codigo(val texto: String, val linguagem: String?) : BlocoMd()
     data object Divisor : BlocoMd()
 }
+
+data class ItemCheck(val texto: String, val marcado: Boolean)
+
+/** Uma linha vira item de checklist quando é `- [ ] …` ou `- [x] …` (também `*`). */
+private val RE_CHECK = Regex("""^[-*]\s+\[([ xX])]\s+(.*)$""")
 
 /**
  * Linha inteira em negrito — a Luna usa isso como título de seção (ex.: `**1. finalidade**`),
@@ -453,6 +609,17 @@ private fun parseBlocosMarkdown(fonte: String): List<BlocoMd> {
                     i++
                 }
                 out += BlocoMd.Quote(buf.toString())
+            }
+
+            RE_CHECK.matches(trim) -> {
+                val itens = mutableListOf<ItemCheck>()
+                while (i < linhas.size) {
+                    val m = RE_CHECK.find(linhas[i].trim()) ?: break
+                    val marcado = m.groupValues[1].lowercase() == "x"
+                    itens += ItemCheck(m.groupValues[2].trim(), marcado)
+                    i++
+                }
+                out += BlocoMd.Checklist(itens)
             }
 
             trim.matches(Regex("""^[-*]\s+.+""")) || trim.matches(Regex("""^\d+\.\s+.+""")) -> {

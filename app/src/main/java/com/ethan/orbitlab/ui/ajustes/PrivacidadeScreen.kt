@@ -109,7 +109,7 @@ fun PrivacidadeScreen(
                     Text("Cancelar")
                 }
             },
-            containerColor = OrbitTokens.surfaceRaised,
+            containerColor = OrbitTokens.graphiteRaised,
         )
     }
     if (confirmPasso == 2) {
@@ -141,14 +141,14 @@ fun PrivacidadeScreen(
                     Text("Cancelar")
                 }
             },
-            containerColor = OrbitTokens.surfaceRaised,
+            containerColor = OrbitTokens.graphiteRaised,
         )
     }
 
     Column(
         Modifier
             .fillMaxSize()
-            .background(OrbitTokens.ink1)
+            .background(OrbitTokens.graphiteBg)
             .statusBarsPadding(),
     ) {
         Row(
@@ -161,22 +161,22 @@ fun PrivacidadeScreen(
                 Modifier
                     .size(40.dp)
                     .clip(CircleShape)
-                    .background(OrbitTokens.surface)
-                    .border(1.dp, OrbitTokens.borderSoft, CircleShape)
+                    .background(OrbitTokens.graphiteSurf)
+                    .border(1.dp, OrbitTokens.graphiteHair, CircleShape)
                     .orbitPressable(onClick = onBack),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     Icons.AutoMirrored.Rounded.ArrowBackIos,
                     contentDescription = "Voltar",
-                    tint = OrbitTokens.textHigh,
+                    tint = OrbitTokens.textHiN,
                     modifier = Modifier.size(16.dp),
                 )
             }
             Spacer(Modifier.width(12.dp))
             Text(
                 "Privacidade e dados",
-                color = OrbitTokens.textHigh,
+                color = OrbitTokens.textHiN,
                 fontSize = 17.sp,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -193,21 +193,21 @@ fun PrivacidadeScreen(
             Text(
                 "O trato é simples: seus dados são seus. Aqui está, sem enrolação, o que acontece com " +
                     "eles enquanto você conversa com a Luna.",
-                color = OrbitTokens.textMid,
+                color = OrbitTokens.textMidN,
                 fontSize = 14.sp,
                 lineHeight = 20.sp,
             )
 
             CartaoPrivacidade(
                 icon = Icons.Rounded.Lock,
-                cor = OrbitTokens.accent,
+                cor = OrbitTokens.bluePastel,
                 titulo = "O que fica salvo",
             ) {
                 Text(
                         "Neste lab, as conversas e a Conta Aura ficam só neste aparelho. " +
                         "No Orbit de verdade, conversas, rotina e o que a Luna aprende sobre você " +
                         "ficam na sua conta (Firebase). Nada é vendido nem vira anúncio.",
-                    color = OrbitTokens.textMid,
+                    color = OrbitTokens.textMidN,
                     fontSize = 13.sp,
                     lineHeight = 19.sp,
                 )
@@ -222,7 +222,7 @@ fun PrivacidadeScreen(
                     "Pra Luna pensar e responder, o texto das suas mensagens é enviado a provedores " +
                         "de inteligência artificial. Eles processam a mensagem naquele instante pra " +
                         "gerar a resposta. Sem isso, ela não fala.",
-                    color = OrbitTokens.textMid,
+                    color = OrbitTokens.textMidN,
                     fontSize = 13.sp,
                     lineHeight = 19.sp,
                 )
@@ -236,7 +236,7 @@ fun PrivacidadeScreen(
                 Text(
                     "A Luna é uma companhia — ela acolhe, escuta e organiza, mas não é profissional " +
                         "de saúde. Ela não substitui psicólogo, psiquiatra ou médico.",
-                    color = OrbitTokens.textMid,
+                    color = OrbitTokens.textMidN,
                     fontSize = 13.sp,
                     lineHeight = 19.sp,
                 )
@@ -244,7 +244,7 @@ fun PrivacidadeScreen(
                 Text(
                     "Se você estiver passando por um momento difícil ou de crise, procure ajuda de " +
                         "gente de verdade. No Brasil, o CVV atende de graça, 24h, no 188 (ou em cvv.org.br).",
-                    color = OrbitTokens.textMid,
+                    color = OrbitTokens.textMidN,
                     fontSize = 13.sp,
                     lineHeight = 19.sp,
                 )
@@ -255,8 +255,8 @@ fun PrivacidadeScreen(
                 Modifier
                     .fillMaxWidth()
                     .clip(docsShape)
-                    .background(OrbitTokens.surface)
-                    .border(1.dp, OrbitTokens.borderSoft, docsShape)
+                    .background(OrbitTokens.graphiteSurf)
+                    .border(1.dp, OrbitTokens.graphiteHair, docsShape)
                     .padding(horizontal = 12.dp, vertical = 4.dp),
             ) {
                 DocLinkRow(
@@ -269,7 +269,7 @@ fun PrivacidadeScreen(
                         .fillMaxWidth()
                         .padding(start = 32.dp)
                         .height(1.dp)
-                        .background(OrbitTokens.borderSoft),
+                        .background(OrbitTokens.graphiteHair),
                 )
                 DocLinkRow(
                     icon = DocTermosIcon,
@@ -283,7 +283,7 @@ fun PrivacidadeScreen(
                 Modifier
                     .fillMaxWidth()
                     .clip(zonaShape)
-                    .background(OrbitTokens.danger.copy(alpha = 0.08f))
+                    .background(OrbitTokens.graphiteSurf)
                     .border(1.dp, OrbitTokens.danger.copy(alpha = 0.28f), zonaShape)
                     .padding(16.dp),
             ) {
@@ -297,7 +297,7 @@ fun PrivacidadeScreen(
                 Text(
                     "Seu direito de sumir. No lab isso apaga conversas e preferências deste aparelho. " +
                         "No app real, apaga conta, memória e login na nuvem.",
-                    color = OrbitTokens.textMid,
+                    color = OrbitTokens.textMidN,
                     fontSize = 13.sp,
                     lineHeight = 18.sp,
                 )
@@ -306,7 +306,7 @@ fun PrivacidadeScreen(
                     Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
-                        .background(OrbitTokens.surface)
+                        .background(OrbitTokens.graphiteSurf)
                         .border(1.dp, OrbitTokens.danger.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
                         .orbitPressable(enabled = !apagando) { confirmPasso = 1 }
                         .padding(vertical = 12.dp),
@@ -352,8 +352,8 @@ private fun CartaoPrivacidade(
         Modifier
             .fillMaxWidth()
             .clip(shape)
-            .background(OrbitTokens.surface)
-            .border(1.dp, OrbitTokens.borderSoft, shape)
+            .background(OrbitTokens.graphiteSurf)
+            .border(1.dp, OrbitTokens.graphiteHair, shape)
             .padding(14.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -361,7 +361,7 @@ private fun CartaoPrivacidade(
                 Modifier
                     .size(36.dp)
                     .clip(RoundedCornerShape(10.dp))
-                    .background(cor.copy(alpha = 0.16f)),
+                    .background(OrbitTokens.graphiteRaised),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(icon, contentDescription = null, tint = cor, modifier = Modifier.size(18.dp))
@@ -369,7 +369,7 @@ private fun CartaoPrivacidade(
             Spacer(Modifier.width(10.dp))
             Text(
                 titulo,
-                color = OrbitTokens.textHigh,
+                color = OrbitTokens.textHiN,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.SemiBold,
             )
