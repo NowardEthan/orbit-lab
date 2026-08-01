@@ -2,12 +2,12 @@ package com.ethan.orbitlab.ui.chat
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -42,6 +43,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.widget.Toast
@@ -537,8 +539,10 @@ private fun MdDivisor() {
 }
 
 /**
- * Tabela GFM. Colunas em peso igual (não estoura a largura, o texto quebra) — o caso comum de
- * 2–4 colunas fica limpo. Cabeçalho em card, filetes finos separando linhas e colunas.
+ * Tabela GFM. Cada coluna tem largura própria (estimada pelo texto mais longo dela) e a tabela
+ * ROLA na horizontal — em vez de espremer as colunas em peso igual, o que fazia célula com texto
+ * comprido quebrar em muitas linhas e a tabela crescer pra baixo. Largura fixa por coluna mantém
+ * as linhas alinhadas; a soma vira a largura do bloco que rola dentro do scroll.
  */
 @Composable
 private fun MdTabela(bloco: BlocoMd.Tabela) {
@@ -546,38 +550,48 @@ private fun MdTabela(bloco: BlocoMd.Tabela) {
         bloco.cabecalho.size,
         bloco.linhas.maxOfOrNull { it.size } ?: 0,
     ).coerceAtLeast(1)
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .border(1.dp, OrbitTokens.borderSoft, RoundedCornerShape(12.dp)),
-    ) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .background(OrbitTokens.surface)
-                .height(IntrinsicSize.Min),
-        ) {
-            for (c in 0 until nCols) {
-                if (c > 0) DivisorVertical()
-                CelulaTabela(bloco.cabecalho.getOrElse(c) { "" }, cabecalho = true)
-            }
+
+    // Largura por coluna: ~7,6dp por caractere do texto mais longo, + folga, presa entre um mínimo
+    // e um teto (célula muito longa quebra em vez de virar uma coluna gigante). Heurística — não
+    // precisa ser exata, só generosa o bastante pra não quebrar no caso comum.
+    val larguras = remember(bloco, nCols) {
+        (0 until nCols).map { c ->
+            val maxChars = (
+                listOf(bloco.cabecalho.getOrElse(c) { "" }) + bloco.linhas.map { it.getOrElse(c) { "" } }
+            ).maxOf { it.length }
+            (maxChars * 7.6f + 26f).coerceIn(72f, 280f)
         }
-        bloco.linhas.forEach { linha ->
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(1.dp)
-                    .background(OrbitTokens.borderSoft.copy(alpha = 0.5f)),
-            )
+    }
+    val larguraTotal = larguras.sum() + (nCols - 1) // +1dp por divisor vertical entre colunas
+
+    Box(Modifier.horizontalScroll(rememberScrollState())) {
+        Column(
+            modifier = Modifier
+                .clip(RoundedCornerShape(12.dp))
+                .border(1.dp, OrbitTokens.borderSoft, RoundedCornerShape(12.dp)),
+        ) {
             Row(
                 Modifier
-                    .fillMaxWidth()
+                    .background(OrbitTokens.surface)
                     .height(IntrinsicSize.Min),
             ) {
                 for (c in 0 until nCols) {
                     if (c > 0) DivisorVertical()
-                    CelulaTabela(linha.getOrElse(c) { "" }, cabecalho = false)
+                    CelulaTabela(bloco.cabecalho.getOrElse(c) { "" }, cabecalho = true, largura = larguras[c].dp)
+                }
+            }
+            bloco.linhas.forEach { linha ->
+                Box(
+                    Modifier
+                        .width(larguraTotal.dp)
+                        .height(1.dp)
+                        .background(OrbitTokens.borderSoft.copy(alpha = 0.5f)),
+                )
+                Row(Modifier.height(IntrinsicSize.Min)) {
+                    for (c in 0 until nCols) {
+                        if (c > 0) DivisorVertical()
+                        CelulaTabela(linha.getOrElse(c) { "" }, cabecalho = false, largura = larguras[c].dp)
+                    }
                 }
             }
         }
@@ -585,7 +599,7 @@ private fun MdTabela(bloco: BlocoMd.Tabela) {
 }
 
 @Composable
-private fun RowScope.CelulaTabela(texto: String, cabecalho: Boolean) {
+private fun CelulaTabela(texto: String, cabecalho: Boolean, largura: Dp) {
     val styled = remember(texto) { estiloInline(texto) }
     Text(
         text = styled,
@@ -594,7 +608,7 @@ private fun RowScope.CelulaTabela(texto: String, cabecalho: Boolean) {
         lineHeight = 20.sp,
         fontWeight = if (cabecalho) FontWeight.SemiBold else FontWeight.Normal,
         modifier = Modifier
-            .weight(1f)
+            .width(largura)
             .padding(horizontal = 12.dp, vertical = 9.dp),
     )
 }
