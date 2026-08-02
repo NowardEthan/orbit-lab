@@ -171,6 +171,9 @@ fun ChatScreen(
     val lunaDirect by PrefsRepository.lunaDirectEnabled.collectAsState()
     /** Id da bolha Luna em voo (Railway) — some do histórico enquanto o draft streama. */
     var streamLunaMsgId by remember { mutableStateOf<String?>(null) }
+    // Pergunta viva da Luna (ferramenta `perguntar`) — cartão de opções sob a última bolha.
+    // Efêmera: nasce quando ela pergunta, morre quando você responde (ou manda outra coisa).
+    val perguntaAtiva = remember(conversaId) { mutableStateOf<PerguntaLuna?>(null) }
     var messageReference by remember(conversaId) { mutableStateOf<ThreadReference?>(null) }
     var actionSheetMsg by remember { mutableStateOf<Mensagem?>(null) }
     var exportAberto by remember { mutableStateOf(false) }
@@ -220,9 +223,12 @@ fun ChatScreen(
           anexos: List<ComposerAttachment>,
           reference: ThreadReference?,
           userMsgId: String?,
-          lunaMsgId: String? ->
+          lunaMsgId: String?,
+          reenvio: Boolean ->
             streamLunaMsgId = lunaMsgId
             streamState.value = LunaStreamEstado.Raciocinando("")
+            // Turno novo começou: some com um cartão de pergunta anterior que ficou pendurado.
+            perguntaAtiva.value = null
             // Escopo de app: não cancela se a composição sair no meio da chamada.
             ChatRepository.launch {
                 try {
@@ -245,6 +251,7 @@ fun ChatScreen(
                             reference = reference,
                             userMessageId = userMsgId ?: newUserMessageId(),
                             lunaMessageId = lunaMsgId ?: newUserMessageId(),
+                            reenvio = reenvio,
                             onEstado = { streamState.value = it },
                         )
                     }
@@ -255,12 +262,15 @@ fun ChatScreen(
                         reasoning = resultado.reasoning.takeIf { it.isNotBlank() && !resultado.erro },
                         reasoningDuracao = resultado.reasoningDuracao.takeIf { it.isNotBlank() && !resultado.erro },
                         actionRun = if (resultado.erro) null else resultado.actionRun,
+                        imagensGeradas = if (resultado.erro) emptyList() else resultado.imagensGeradas,
                         // Reusa o id (substitui um balão de erro no lugar) ou gera novo (anexa).
                         messageId = lunaMsgId,
                         // Erro = aviso local: não vai pra nuvem nem vira memória; some no retry.
                         persistirNuvem = !resultado.erro,
                         erro = resultado.erro,
                     )
+                    // Ela perguntou algo? Acende o cartão de opções sob a bolha dela.
+                    perguntaAtiva.value = if (resultado.erro) null else resultado.pergunta
                     // Deu certo → a Luna rebatiza a conversa pelo assunto atual (no 1º par
                     // e a cada 6 turnos). Barato e à parte; não trava a resposta.
                     if (!resultado.erro) {
@@ -304,7 +314,7 @@ fun ChatScreen(
                 reference = reference,
                 messageId = userMsgId,
             )
-            dispararResposta(textoEnvio, historicoAntes, anexos, reference, userMsgId, lunaMsgId)
+            dispararResposta(textoEnvio, historicoAntes, anexos, reference, userMsgId, lunaMsgId, false)
             Unit
         }
     }
@@ -344,7 +354,9 @@ fun ChatScreen(
                     // (Gerar id novo aqui era o bug: o Railway gravava um segundo turno seu.)
                     val userMsgId = if (lunaDirect) null else userMsg.id
                     val lunaMsgId = replyId ?: if (lunaDirect) null else lunaMessageIdForUser(userMsg.id)
-                    dispararResposta(userMsg.texto, historicoAntes, emptyList(), userMsg.reference, userMsgId, lunaMsgId)
+                    // reenvio=true: reescreve o buffer da sessão com o histórico ANTES desta fala,
+                    // pra ela entrar uma vez só (o buffer quente do servidor podia tê-la de antes).
+                    dispararResposta(userMsg.texto, historicoAntes, emptyList(), userMsg.reference, userMsgId, lunaMsgId, true)
                 }
             }
             Unit
@@ -413,12 +425,24 @@ fun ChatScreen(
                     ancoraInicial = ancoraInicial,
                     onAncora = { id -> PrefsRepository.setAncora(conversaId, id) },
                     onRetry = onRetry,
+                    pergunta = perguntaAtiva.value,
+                    onResponderPergunta = { opcao ->
+                        perguntaAtiva.value = null
+                        onSend(opcao, emptyList(), null)
+                    },
                     onMessageLongPress = { msg ->
                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                         actionSheetMsg = msg
                     },
                     onReferenciarMedia = { msg, att ->
                         val ref = buildImageReference(msg, historico, att)
+                        if (ref != null) {
+                            messageReference = ref
+                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        }
+                    },
+                    onReferenciarPorSwipe = { msg ->
+                        val ref = referenciaAoPuxar(msg, historico)
                         if (ref != null) {
                             messageReference = ref
                             haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -536,7 +560,9 @@ fun ChatScreen(
                             // um lunaMsgId NOVO pra forçar regeneração (não pegar o cache do turno).
                             val userMsgId = if (lunaDirect) null else ancora.id
                             val lunaMsgId = if (lunaDirect) null else newUserMessageId()
-                            dispararResposta(ancora.texto, historicoAntes, emptyList(), ancora.reference, userMsgId, lunaMsgId)
+                            // reenvio=true: manda o histórico truncado pro servidor reescrever o
+                            // buffer — senão a fala antiga sobrevive e a Luna diz «você já mandou isso».
+                            dispararResposta(ancora.texto, historicoAntes, emptyList(), ancora.reference, userMsgId, lunaMsgId, true)
                         }
                     }
                 },
@@ -704,6 +730,9 @@ private fun ChatTimeline(
     onRetry: () -> Unit = {},
     onMessageLongPress: (Mensagem) -> Unit = {},
     onReferenciarMedia: (Mensagem, ComposerAttachment) -> Unit = { _, _ -> },
+    onReferenciarPorSwipe: (Mensagem) -> Unit = {},
+    pergunta: PerguntaLuna? = null,
+    onResponderPergunta: (String) -> Unit = {},
 ) {
     val streamEstado = streamState.value
     // Uma posição de rolagem por conversa: trocar de conversa não herda o lugar da anterior.
@@ -884,14 +913,21 @@ private fun ChatTimeline(
                         .background(corPulso)
                         .padding(vertical = 2.dp),
                 ) {
-                    MessageBubble(
-                        msg = msg,
-                        // Só a última bolha entra animada — abrir a conversa não faz o histórico
-                        // inteiro dançar; quem envia/recebe agora é que ganha a chegada com vida.
-                        animarEntrada = index == mensagensVisiveis.lastIndex,
-                        onLongPress = { onMessageLongPress(msg) },
-                        onReferenciarMedia = { att -> onReferenciarMedia(msg, att) },
-                    )
+                    // Puxar-pra-referenciar (WhatsApp): arrasta a bolha e ela vira a referência.
+                    // Desligado quando a folha de ações está aberta, pra os gestos não brigarem.
+                    SwipeToReference(
+                        enabled = selecionadoId == null,
+                        onReferenciar = { onReferenciarPorSwipe(msg) },
+                    ) {
+                        MessageBubble(
+                            msg = msg,
+                            // Só a última bolha entra animada — abrir a conversa não faz o histórico
+                            // inteiro dançar; quem envia/recebe agora é que ganha a chegada com vida.
+                            animarEntrada = index == mensagensVisiveis.lastIndex,
+                            onLongPress = { onMessageLongPress(msg) },
+                            onReferenciarMedia = { att -> onReferenciarMedia(msg, att) },
+                        )
+                    }
                 }
             }
         }
@@ -900,13 +936,23 @@ private fun ChatTimeline(
                 LunaStreamDraft(estado = streamEstado)
             }
         } else {
-            // Retomar: última é SUA (resposta se perdeu ao sair do app) ou é um erro da Luna.
             val ultima = mensagensVisiveis.lastOrNull()
-            val podeRetry = ultima != null &&
-                (!ultima.isLuna || ultima.erro || respostaEhErro(ultima.texto))
-            if (podeRetry) {
-                item(key = "retry", contentType = "retry") {
-                    RetryChip(onClick = onRetry)
+            // A Luna fez uma pergunta e a última bolha é dela: cartão de opções logo abaixo.
+            if (pergunta != null && ultima?.isLuna == true && !ultima.erro) {
+                item(key = "pergunta", contentType = "pergunta") {
+                    LunaPerguntaCard(
+                        pergunta = pergunta,
+                        onResponder = onResponderPergunta,
+                    )
+                }
+            } else {
+                // Retomar: última é SUA (resposta se perdeu ao sair do app) ou é um erro da Luna.
+                val podeRetry = ultima != null &&
+                    (!ultima.isLuna || ultima.erro || respostaEhErro(ultima.texto))
+                if (podeRetry) {
+                    item(key = "retry", contentType = "retry") {
+                        RetryChip(onClick = onRetry)
+                    }
                 }
             }
         }
@@ -1155,6 +1201,15 @@ private fun MessageBubble(
                     onReferenciarMedia = onReferenciarMedia,
                 )
                 if (temTexto || temReferencia) Spacer(Modifier.height(6.dp))
+            }
+
+            // Imagem que a Luna DESENHOU: cartão no lado dela (esquerda), acima da fala.
+            if (msg.isLuna && msg.imagensGeradas.isNotEmpty()) {
+                LunaImagemGeradaLista(
+                    imagens = msg.imagensGeradas,
+                    modifier = Modifier.align(Alignment.Start),
+                )
+                if (temTexto) Spacer(Modifier.height(8.dp))
             }
 
             if (dossieRun != null && temTexto) {

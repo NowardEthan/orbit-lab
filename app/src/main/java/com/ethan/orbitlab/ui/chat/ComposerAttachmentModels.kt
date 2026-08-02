@@ -21,6 +21,25 @@ data class ComposerAttachment(
     val swatch: Color = Color(0xFF3A4558),
 )
 
+/**
+ * Uma imagem que a LUNA desenhou (ferramenta `gerar_imagem` no core). Diferente de um anexo do
+ * usuário: nasce de um `prompt` e vive numa URL do Storage. Vira um cartão no lado dela do chat.
+ */
+data class ImagemGerada(
+    val url: String,
+    val prompt: String,
+)
+
+/**
+ * Uma pergunta que a LUNA fez antes de agir (ferramenta `perguntar` no core), quando uma escolha
+ * de gosto mudaria o resultado. Vira um cartão com opções tocáveis sob a bolha dela; tocar numa
+ * opção envia aquela resposta na hora. É efêmera — some quando você responde. 🌙
+ */
+data class PerguntaLuna(
+    val texto: String,
+    val opcoes: List<String>,
+)
+
 data class GalleryAlbum(
     val id: String,
     val title: String,
