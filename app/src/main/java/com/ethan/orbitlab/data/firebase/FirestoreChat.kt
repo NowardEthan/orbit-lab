@@ -43,8 +43,13 @@ object FirestoreChat {
     fun messagesCol(uid: String, conversationId: String) =
         conversationDoc(uid, conversationId).collection("messages")
 
+    /** Conversa fixa do módulo Finanças — id estável no Firestore (sobrevive a rebuild). */
+    const val ID_CONVERSA_FINANCAS = "financas"
+    const val TITULO_CONVERSA_FINANCAS = "Finanças"
+
     fun isSessaoDeBloco(id: String): Boolean = id.startsWith("rotina-")
     fun isSessaoDeCaixa(id: String): Boolean = id == "ideias-geral"
+    fun isSessaoFinancas(id: String): Boolean = id == ID_CONVERSA_FINANCAS
 
     fun subscribeConversations(
         uid: String,
@@ -118,21 +123,43 @@ object FirestoreChat {
             }
     }
 
+    /**
+     * Garante que o doc da conversa existe. Se já existe, NÃO zera `messageCount`
+     * nem sobrescreve título (salvo [titleLocked] + título pedido — caso Finanças).
+     */
     suspend fun ensureConversation(
         uid: String,
         conversationId: String,
         title: String = "Nova conversa",
+        titleLocked: Boolean = false,
     ) {
-        conversationDoc(uid, conversationId).set(
+        val ref = conversationDoc(uid, conversationId)
+        val snap = ref.get().await()
+        if (snap.exists()) {
+            val patch = mutableMapOf<String, Any>(
+                "lunaSessaoId" to conversationId,
+                "updatedAt" to FieldValue.serverTimestamp(),
+            )
+            if (snap.get("deletedAt") != null) {
+                patch["deletedAt"] = FieldValue.delete()
+            }
+            if (titleLocked) {
+                patch["title"] = title.trim().ifBlank { "Conversa" }.take(48)
+                patch["titleLocked"] = true
+            }
+            ref.set(patch, SetOptions.merge()).await()
+            return
+        }
+        ref.set(
             mapOf(
-                "title" to title,
+                "title" to title.trim().ifBlank { "Nova conversa" }.take(48),
                 "preview" to "Nenhuma mensagem ainda.",
                 "lunaSessaoId" to conversationId,
                 "createdAt" to FieldValue.serverTimestamp(),
                 "updatedAt" to FieldValue.serverTimestamp(),
                 "messageCount" to 0,
+                "titleLocked" to titleLocked,
             ),
-            SetOptions.merge(),
         ).await()
     }
 

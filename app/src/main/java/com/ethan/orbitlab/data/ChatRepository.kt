@@ -268,24 +268,44 @@ object ChatRepository {
     }
 
     /**
-     * Conversa fixa do módulo Finanças (FAB). Reusa a salva nas prefs ou a que já se chama
-     * «Finanças»; senão cria e batiza — assim o título não vira assunto aleatório no 1º turno.
+     * Conversa fixa do módulo Finanças (FAB).
+     *
+     * Id estável [`FirestoreChat.ID_CONVERSA_FINANCAS`] no Firestore — não depende de
+     * SharedPreferences nem de UUID aleatório. Rebuild/reinstall reabre a MESMA
+     * conversa e o histórico volta com o listener.
      */
     fun garantirConversaFinancas(): String {
-        val salva = PrefsRepository.conversaFinancas
-        if (salva != null && getConversa(salva) != null) return salva
-        val porTitulo = _conversas.value.firstOrNull {
-            it.titulo.equals("Finanças", ignoreCase = true)
-        }
-        if (porTitulo != null) {
-            PrefsRepository.conversaFinancas = porTitulo.id
-            return porTitulo.id
-        }
-        val id = criarConversa()
-        renomearConversa(id, "Finanças")
+        val id = FirestoreChat.ID_CONVERSA_FINANCAS
+        val titulo = FirestoreChat.TITULO_CONVERSA_FINANCAS
         PrefsRepository.conversaFinancas = id
+        val existente = getConversa(id)
+        if (existente == null) {
+            val nova = Conversa(id = id, titulo = titulo)
+            _conversas.update { listOf(nova) + it.filterNot { c -> c.id == id } }
+        } else if (!existente.titulo.equals(titulo, ignoreCase = true)) {
+            _conversas.update { lista ->
+                lista.map { c -> if (c.id == id) c.copy(titulo = titulo) else c }
+            }
+        }
+        ensureMessagesListener(id)
+        val uid = currentUid
+        if (uid != null) {
+            scope.launch {
+                runCatching {
+                    FirestoreChat.ensureConversation(
+                        uid = uid,
+                        conversationId = id,
+                        title = titulo,
+                        titleLocked = true,
+                    )
+                }
+            }
+        }
         return id
     }
+
+    fun ehConversaFinancas(conversaId: String): Boolean =
+        FirestoreChat.isSessaoFinancas(conversaId)
 
     fun getConversa(id: String): Conversa? {
         return _conversas.value.find { it.id == id }
@@ -328,6 +348,8 @@ object ChatRepository {
      * (ex.: sem rede), o título fica no palpite imediato e não tenta de novo.
      */
     fun talvezRenomearPelaLuna(conversaId: String) {
+        // Módulo Finanças: o título é identidade do lugar — não vira assunto do 1º turno.
+        if (ehConversaFinancas(conversaId)) return
         val conv = getConversa(conversaId) ?: return
         val turnosUsuario = conv.mensagens.count { !it.isLuna && !it.erro }
         val deveRenomear = turnosUsuario == 1
@@ -453,6 +475,7 @@ object ChatRepository {
             if (idx < 0) return@update lista
             val conv = lista[idx]
             val tituloBase = when {
+                ehConversaFinancas(conversaId) -> null
                 !isLuna && texto.isNotBlank() -> texto
                 !isLuna && attachments.isNotEmpty() -> attachments.first().name
                 !isLuna && reference != null -> "Sobre referência"
