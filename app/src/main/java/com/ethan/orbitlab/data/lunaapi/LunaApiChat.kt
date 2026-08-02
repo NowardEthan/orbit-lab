@@ -254,6 +254,12 @@ object LunaApiChat {
             put("pesquisaProfunda", PrefsRepository.pesquisaProfunda.value)
             put("modoTecnico", modoTecnico)
             put("modoAgentico", modoAgentico)
+            // Conversa dedicada do módulo Finanças: o core injeta briefing + pré-carga
+            // pra ela saber que está ali falando de grana (não só quando cita «gastei»).
+            put(
+                "moduloFinancas",
+                conversaId == PrefsRepository.conversaFinancas,
+            )
             // Artefatos: só o lab liga. Libera a ferramenta criar_artefato (o core é
             // partilhado com o estável, então a flag é o que a mantém invisível lá fora).
             put("documentosAtivo", true)
