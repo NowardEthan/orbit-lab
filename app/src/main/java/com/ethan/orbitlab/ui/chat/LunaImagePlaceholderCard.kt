@@ -27,13 +27,15 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -41,12 +43,13 @@ import com.ethan.orbitlab.ui.theme.OrbitTokens
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
-import kotlin.random.Random
 
 /**
- * Cartão-fantasma enquanto a Luna desenha/edita — estilo ChatGPT (campo abstrato vivo),
- * com a cara do Orbit: grafite + azul pastel + um fio de violeta/dourado, sem mascote no
- * centro. O quadrado inteiro “pensa” a imagem; o rótulo embaixo diz o gesto.
+ * Cartão-fantasma enquanto a Luna desenha/edita.
+ *
+ * Visual na linha dos loaders abstratos geométricos (anéis de pontos, espiral, alvo) —
+ * tipo o pack Craftwork Abstract Loading Animations — em grafite + azul pastel Orbit,
+ * sem mascote e sem névoa.
  */
 @Composable
 fun LunaImagePlaceholderCard(
@@ -56,31 +59,30 @@ fun LunaImagePlaceholderCard(
     val forma = RoundedCornerShape(18.dp)
     val infinite = rememberInfiniteTransition(label = "img-gen")
 
-    // Tempo contínuo — fases das manchas se desencontram pra não parecer um loop rígido.
-    val t by infinite.animateFloat(
+    val giro by infinite.animateFloat(
         initialValue = 0f,
-        targetValue = (PI * 2).toFloat(),
-        animationSpec = infiniteRepeatable(tween(14_000, easing = LinearEasing)),
-        label = "tempo",
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(4_200, easing = LinearEasing)),
+        label = "giro",
     )
-    val tLento by infinite.animateFloat(
-        initialValue = 0f,
-        targetValue = (PI * 2).toFloat(),
-        animationSpec = infiniteRepeatable(tween(22_000, easing = LinearEasing)),
-        label = "tempo-lento",
+    val giroContrario by infinite.animateFloat(
+        initialValue = 360f,
+        targetValue = 0f,
+        animationSpec = infiniteRepeatable(tween(6_800, easing = LinearEasing)),
+        label = "giro-contrario",
     )
     val pulso by infinite.animateFloat(
-        initialValue = 0.55f,
+        initialValue = 0.72f,
         targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(2_400, easing = LinearEasing), RepeatMode.Reverse),
+        animationSpec = infiniteRepeatable(tween(1_600, easing = LinearEasing), RepeatMode.Reverse),
         label = "pulso",
     )
-    // Grão estável por sessão do card (não dança a cada frame).
-    val grao = remember {
-        List(96) {
-            Triple(Random.nextFloat(), Random.nextFloat(), 0.03f + Random.nextFloat() * 0.07f)
-        }
-    }
+    val faseEspiral by infinite.animateFloat(
+        initialValue = 0f,
+        targetValue = (PI * 2).toFloat(),
+        animationSpec = infiniteRepeatable(tween(5_500, easing = LinearEasing)),
+        label = "espiral",
+    )
 
     Column(
         modifier = modifier
@@ -94,122 +96,163 @@ fun LunaImagePlaceholderCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f)
-                .background(OrbitTokens.ink1),
+                .background(OrbitTokens.graphiteBg),
+            contentAlignment = Alignment.Center,
         ) {
             Canvas(modifier = Modifier.fillMaxSize()) {
-                val w = size.width
-                val h = size.height
+                val cx = size.width / 2f
+                val cy = size.height / 2f
+                val centro = Offset(cx, cy)
                 val min = size.minDimension
+                val escala = min / 280f
 
-                // Base: grafite com um sopro frio no canto.
-                drawRect(
-                    brush = Brush.linearGradient(
-                        colors = listOf(
-                            Color(0xFF12141A),
-                            Color(0xFF1A1D26),
-                            Color(0xFF151820),
-                        ),
-                        start = Offset(0f, 0f),
-                        end = Offset(w, h),
-                    ),
-                )
+                val azul = OrbitTokens.bluePastel
+                val azulDim = OrbitTokens.bluePastelDim
+                val fio = OrbitTokens.textLowN.copy(alpha = 0.35f)
+                val ouro = OrbitTokens.gold.copy(alpha = 0.55f)
 
-                // Manchas de névoa (radial soft) — “procedural” sem shader.
-                fun mancha(
-                    cx: Float,
-                    cy: Float,
-                    raio: Float,
-                    cor: Color,
-                    alpha: Float,
-                ) {
+                // Anel alvo externo (tracejado contínuo que gira).
+                rotate(giroContrario, centro) {
                     drawCircle(
-                        brush = Brush.radialGradient(
-                            colors = listOf(cor.copy(alpha = alpha), Color.Transparent),
-                            center = Offset(cx, cy),
-                            radius = raio,
-                        ),
-                        radius = raio,
-                        center = Offset(cx, cy),
+                        color = fio,
+                        radius = 88f * escala,
+                        center = centro,
+                        style = Stroke(width = 1.2f * escala),
+                    )
+                    // Arcos curtos no anel — “scanner”.
+                    drawArc(
+                        color = azul.copy(alpha = 0.55f),
+                        startAngle = -18f,
+                        sweepAngle = 52f,
+                        useCenter = false,
+                        topLeft = Offset(cx - 88f * escala, cy - 88f * escala),
+                        size = Size(176f * escala, 176f * escala),
+                        style = Stroke(width = 2.4f * escala, cap = StrokeCap.Round),
+                    )
+                    drawArc(
+                        color = azulDim.copy(alpha = 0.35f),
+                        startAngle = 140f,
+                        sweepAngle = 40f,
+                        useCenter = false,
+                        topLeft = Offset(cx - 88f * escala, cy - 88f * escala),
+                        size = Size(176f * escala, 176f * escala),
+                        style = Stroke(width = 1.8f * escala, cap = StrokeCap.Round),
                     )
                 }
 
-                // Azul pastel — mancha principal (deriva lenta).
-                mancha(
-                    cx = w * (0.32f + 0.10f * cos(t)),
-                    cy = h * (0.38f + 0.08f * sin(t * 0.9f)),
-                    raio = min * (0.55f + 0.06f * pulso),
-                    cor = OrbitTokens.bluePastel,
-                    alpha = 0.22f + 0.08f * pulso,
-                )
-                // Violeta discreto — segundo plano, fora de fase.
-                mancha(
-                    cx = w * (0.72f + 0.08f * sin(tLento)),
-                    cy = h * (0.30f + 0.10f * cos(tLento * 1.1f)),
-                    raio = min * 0.48f,
-                    cor = OrbitTokens.violet,
-                    alpha = 0.14f + 0.05f * (1f - pulso),
-                )
-                // Acento frio / accent — passa pelo meio como um “pensamento”.
-                mancha(
-                    cx = w * (0.50f + 0.18f * cos(t * 0.7f + 1.2f)),
-                    cy = h * (0.62f + 0.12f * sin(t * 0.8f)),
-                    raio = min * 0.42f,
-                    cor = OrbitTokens.accentText,
-                    alpha = 0.16f,
-                )
-                // Sopro dourado bem baixo — assinatura Luna, sem virar o foco.
-                mancha(
-                    cx = w * (0.28f + 0.06f * sin(tLento + 0.4f)),
-                    cy = h * (0.78f + 0.05f * cos(t)),
-                    raio = min * 0.28f,
-                    cor = OrbitTokens.gold,
-                    alpha = 0.07f + 0.03f * pulso,
-                )
-                // Halo central suave (como se a imagem estivesse a nascer).
-                mancha(
-                    cx = w * 0.5f,
-                    cy = h * 0.48f,
-                    raio = min * (0.34f + 0.04f * pulso),
-                    cor = Color.White,
-                    alpha = 0.045f + 0.025f * pulso,
-                )
-
-                // Grão fino — textura de “ainda não é pixel final”.
-                for ((nx, ny, a) in grao) {
-                    val twinkle = 0.55f + 0.45f * (0.5f + 0.5f * sin(t * 3f + nx * 12f + ny * 9f))
+                // Anel de pontos (dot ring) — gira no sentido horário.
+                val rPontos = 64f * escala
+                val nPontos = 16
+                for (i in 0 until nPontos) {
+                    val ang = Math.toRadians((giro + i * (360f / nPontos)).toDouble())
+                    val p = Offset(
+                        cx + cos(ang).toFloat() * rPontos,
+                        cy + sin(ang).toFloat() * rPontos,
+                    )
+                    val destaque = i % 4 == 0
                     drawCircle(
-                        color = Color.White.copy(alpha = a * twinkle),
-                        radius = 1.1f,
-                        center = Offset(nx * w, ny * h),
+                        color = if (destaque) azul.copy(alpha = 0.85f) else azul.copy(alpha = 0.28f),
+                        radius = if (destaque) 3.2f * escala * pulso else 2.1f * escala,
+                        center = p,
                     )
                 }
 
-                // Vinheta — empurra o olho pro centro sem parecer moldura.
-                drawRect(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            Color.Transparent,
-                            Color.Black.copy(alpha = 0.35f),
-                        ),
-                        center = Offset(w * 0.5f, h * 0.48f),
-                        radius = min * 0.78f,
-                    ),
+                // Segundo anel de pontos, mais interno, sentido contrário.
+                val rPontosIn = 42f * escala
+                val nIn = 10
+                for (i in 0 until nIn) {
+                    val ang = Math.toRadians((giroContrario + i * (360f / nIn)).toDouble())
+                    val p = Offset(
+                        cx + cos(ang).toFloat() * rPontosIn,
+                        cy + sin(ang).toFloat() * rPontosIn,
+                    )
+                    drawCircle(
+                        color = azulDim.copy(alpha = 0.5f),
+                        radius = 2.4f * escala,
+                        center = p,
+                    )
+                }
+
+                // Espiral de pontos (dot spiral) — “desenrola” com o tempo.
+                val voltas = 2.15f
+                val passos = 28
+                for (i in 0 until passos) {
+                    val u = i / (passos - 1f)
+                    val ang = faseEspiral + u * voltas * (PI * 2).toFloat()
+                    val r = (12f + u * 52f) * escala
+                    val p = Offset(
+                        cx + cos(ang.toDouble()).toFloat() * r,
+                        cy + sin(ang.toDouble()).toFloat() * r,
+                    )
+                    drawCircle(
+                        color = azul.copy(alpha = 0.15f + 0.55f * (1f - u)),
+                        radius = (1.4f + 1.6f * (1f - u)) * escala,
+                        center = p,
+                    )
+                }
+
+                // Núcleo — alvo mínimo que respira (sem virar mascote).
+                drawCircle(
+                    color = azul.copy(alpha = 0.12f * pulso),
+                    radius = 18f * escala * pulso,
+                    center = centro,
+                )
+                drawCircle(
+                    color = azul.copy(alpha = 0.75f),
+                    radius = 4.5f * escala,
+                    center = centro,
+                )
+                // Faísca dourada bem discreta no núcleo — assinatura Luna.
+                drawCircle(
+                    color = ouro,
+                    radius = 1.6f * escala,
+                    center = Offset(cx + 7f * escala, cy - 6f * escala),
                 )
 
-                // Faixa de luz bem suave atravessando (shimmer orgânico, não skeleton duro).
-                val sweep = (0.5f + 0.5f * sin(t * 1.4f))
-                val x0 = w * (sweep - 0.35f)
-                drawRect(
-                    brush = Brush.linearGradient(
-                        colors = listOf(
-                            Color.Transparent,
-                            Color.White.copy(alpha = 0.05f),
-                            Color.Transparent,
-                        ),
-                        start = Offset(x0, 0f),
-                        end = Offset(x0 + w * 0.45f, h),
-                    ),
-                )
+                // Triângulos geométricos leves orbitando (motif do pack).
+                rotate(giro * 0.35f, centro) {
+                    val rTri = 74f * escala
+                    for (k in 0 until 3) {
+                        val baseAng = k * 120f
+                        val a0 = Math.toRadians(baseAng.toDouble())
+                        val tip = Offset(
+                            cx + cos(a0).toFloat() * rTri,
+                            cy + sin(a0).toFloat() * rTri,
+                        )
+                        val s = 5.5f * escala
+                        val perp = baseAng + 90f
+                        val a1 = Math.toRadians((perp).toDouble())
+                        val left = Offset(
+                            tip.x + cos(a1).toFloat() * s - cos(a0).toFloat() * s * 0.6f,
+                            tip.y + sin(a1).toFloat() * s - sin(a0).toFloat() * s * 0.6f,
+                        )
+                        val right = Offset(
+                            tip.x - cos(a1).toFloat() * s - cos(a0).toFloat() * s * 0.6f,
+                            tip.y - sin(a1).toFloat() * s - sin(a0).toFloat() * s * 0.6f,
+                        )
+                        drawLine(
+                            color = azul.copy(alpha = 0.35f),
+                            start = tip,
+                            end = left,
+                            strokeWidth = 1.3f * escala,
+                            cap = StrokeCap.Round,
+                        )
+                        drawLine(
+                            color = azul.copy(alpha = 0.35f),
+                            start = tip,
+                            end = right,
+                            strokeWidth = 1.3f * escala,
+                            cap = StrokeCap.Round,
+                        )
+                        drawLine(
+                            color = azul.copy(alpha = 0.22f),
+                            start = left,
+                            end = right,
+                            strokeWidth = 1.1f * escala,
+                            cap = StrokeCap.Round,
+                        )
+                    }
+                }
             }
         }
 
