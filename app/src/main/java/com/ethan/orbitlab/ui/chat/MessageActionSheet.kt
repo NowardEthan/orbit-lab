@@ -129,7 +129,7 @@ fun MessageActionSheet(
                 listOf(
                     AcaoItem(
                         icone = Icons.Rounded.Refresh,
-                        label = "Reenviar a partir daqui",
+                        label = "Reenviar",
                         subtitle = "A Luna responde de novo; o que vem depois é apagado",
                         aviso = true,
                         onClick = { onReenviar(); onDismiss() },

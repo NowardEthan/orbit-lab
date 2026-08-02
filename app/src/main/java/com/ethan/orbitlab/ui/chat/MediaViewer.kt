@@ -43,6 +43,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.FormatQuote
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Share
@@ -100,6 +101,10 @@ fun MediaViewerDialog(
     initialIndex: Int = 0,
     onDismiss: () -> Unit,
     onReferenciar: ((ComposerAttachment) -> Unit)? = null,
+    // Ações extra pra imagens que vivem numa URL remota (ex.: as da Luna): baixar e
+    // compartilhar precisam trazer os bytes de volta, então quem chama injeta a lógica.
+    onDownload: (() -> Unit)? = null,
+    onShareOverride: (() -> Unit)? = null,
 ) {
     val media = remember(items) {
         items.filter {
@@ -208,7 +213,8 @@ fun MediaViewerDialog(
                     title = if (contador.isNotBlank()) "$titulo · $contador" else titulo,
                     subtitle = atual.sizeLabel.takeIf { it != "—" } ?: "",
                     onClose = onDismiss,
-                    onShare = {
+                    onDownload = onDownload,
+                    onShare = onShareOverride ?: {
                         val send = Intent(Intent.ACTION_SEND).apply {
                             type = atual.mime.ifBlank { "*/*" }
                             putExtra(Intent.EXTRA_STREAM, uri)
@@ -260,12 +266,16 @@ fun MediaViewerDialog(
     item: ComposerAttachment,
     onDismiss: () -> Unit,
     onReferenciar: ((ComposerAttachment) -> Unit)? = null,
+    onDownload: (() -> Unit)? = null,
+    onShareOverride: (() -> Unit)? = null,
 ) {
     MediaViewerDialog(
         items = listOf(item),
         initialIndex = 0,
         onDismiss = onDismiss,
         onReferenciar = onReferenciar,
+        onDownload = onDownload,
+        onShareOverride = onShareOverride,
     )
 }
 
@@ -365,6 +375,7 @@ private fun ViewerChrome(
     onClose: () -> Unit,
     onShare: () -> Unit,
     onReferenciar: (() -> Unit)? = null,
+    onDownload: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -403,6 +414,17 @@ private fun ViewerChrome(
             ChromeIconButton(onClick = onReferenciar, contentDescription = "Referenciar") {
                 Icon(
                     Icons.Rounded.FormatQuote,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            Spacer(Modifier.width(4.dp))
+        }
+        if (onDownload != null) {
+            ChromeIconButton(onClick = onDownload, contentDescription = "Salvar na galeria") {
+                Icon(
+                    Icons.Rounded.Download,
                     contentDescription = null,
                     tint = Color.White,
                     modifier = Modifier.size(20.dp),

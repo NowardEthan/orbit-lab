@@ -10,6 +10,8 @@ import com.ethan.orbitlab.data.latencia.LatenciaProbe
 import com.ethan.orbitlab.data.local.LocationRepository
 import com.ethan.orbitlab.ui.chat.AttachmentKind
 import com.ethan.orbitlab.ui.chat.ComposerAttachment
+import com.ethan.orbitlab.ui.chat.ImagemGerada
+import com.ethan.orbitlab.ui.chat.PerguntaLuna
 import com.ethan.orbitlab.ui.chat.LunaActionProfile
 import com.ethan.orbitlab.ui.chat.LunaActionRun
 import com.ethan.orbitlab.ui.chat.LunaActionRunStatus
@@ -136,6 +138,10 @@ object LunaApiChat {
         reference: ThreadReference?,
         userMessageId: String,
         lunaMessageId: String,
+        // «Reenviar»: manda o histórico ANTERIOR (truncado) pro servidor reescrever o buffer
+        // da sessão. Sem isto, a fala antiga sobrevive na memória quente e a Luna diz que
+        // você «já mandou isso». Só o reenvio liga — o turno normal confia no buffer do servidor.
+        reenvio: Boolean = false,
         onEstado: (LunaStreamEstado) -> Unit,
     ): LunaStreamResultado {
         if (!LunaApiConfig.isConfigured()) {
@@ -266,6 +272,24 @@ object LunaApiChat {
             if (nome.isNotBlank()) put("userDisplayName", nome.take(64))
             if (attachmentsJson.length() > 0) put("attachments", attachmentsJson)
             if (documentsJson.length() > 0) put("documents", documentsJson)
+            if (reenvio) {
+                // Histórico autoritativo (já sem a mensagem reenviada e o que vinha depois).
+                // O servidor reescreve o buffer com ele; cap de 200 (limite do schema) mantém
+                // o contexto recente — reenvio quase sempre acontece perto do fim.
+                val histArr = JSONArray()
+                historico.takeLast(200).forEach { m ->
+                    if (m.erro) return@forEach
+                    val conteudo = m.texto.trim()
+                    if (conteudo.isEmpty()) return@forEach
+                    histArr.put(
+                        JSONObject().apply {
+                            put("papel", if (m.isLuna) "assistant" else "user")
+                            put("conteudo", conteudo.take(16_000))
+                        },
+                    )
+                }
+                put("reenvio", JSONObject().apply { put("historico", histArr) })
+            }
         }
 
         val t0 = System.currentTimeMillis()
@@ -283,6 +307,14 @@ object LunaApiChat {
         // passo RUNNING no `inicio_ferramenta` e fecha DONE/ERROR no `fim_ferramenta`. É o que
         // acende o painel de pesquisa que já existe — antes a gente só ignorava esses eventos.
         val acaoSteps = mutableListOf<LunaActionStep>()
+
+        // Imagens que a Luna desenhou neste turno. A URL nasce no servidor (depois do upload) e
+        // chega no `fim_ferramenta` de `gerar_imagem` — não está nos argumentos, viaja no evento.
+        val imagensGeradas = mutableListOf<ImagemGerada>()
+
+        // Pergunta que a Luna fez (ferramenta `perguntar`) — chega no `fim_ferramenta`, viaja no
+        // campo `pergunta` do evento. Efêmera: só a última vale, vira o cartão de opções.
+        var perguntaPendente: PerguntaLuna? = null
 
         fun montarRun(status: LunaActionRunStatus): LunaActionRun? {
             if (acaoSteps.isEmpty()) return null
@@ -328,6 +360,26 @@ object LunaApiChat {
             } else if (tipo == "fim_ferramenta") {
                 val sucesso = json.optBoolean("sucesso", true)
                 val fontes = parseFontesAcao(ferramenta, json.optJSONArray("fontes"))
+                // A Luna desenhou: guarda a imagem pra virar cartão na bolha dela.
+                json.optJSONObject("imagem")?.let { img ->
+                    val url = img.optString("url").takeIf { it.isNotBlank() }
+                    if (url != null) {
+                        imagensGeradas += ImagemGerada(url = url, prompt = img.optString("prompt"))
+                    }
+                }
+                // A Luna perguntou algo: guarda pergunta + opções pra virar o cartão de escolha.
+                json.optJSONObject("pergunta")?.let { p ->
+                    val texto = p.optString("texto").trim()
+                    val arr = p.optJSONArray("opcoes")
+                    val opcoes = buildList {
+                        if (arr != null) for (i in 0 until arr.length()) {
+                            arr.optString(i).trim().takeIf { it.isNotEmpty() }?.let { add(it) }
+                        }
+                    }
+                    if (texto.isNotEmpty() && opcoes.size >= 2) {
+                        perguntaPendente = PerguntaLuna(texto = texto, opcoes = opcoes)
+                    }
+                }
                 // Fecha o último passo aberto dessa ferramenta (pareia inicio↔fim).
                 val idx = acaoSteps.indexOfLast {
                     it.ferramenta == ferramenta && it.status == LunaActionStepStatus.RUNNING
@@ -407,6 +459,8 @@ object LunaApiChat {
             faseAtual = ""
             rotuloAtual = ""
             acaoSteps.clear()
+            imagensGeradas.clear()
+            perguntaPendente = null
             result = LunaApiClient.chatStream(idToken, body) { event ->
                 when (event) {
                     is LunaApiClient.StreamEvent.Status -> {
@@ -501,6 +555,8 @@ object LunaApiChat {
             reasoningDuracao = "${dur}s",
             resposta = texto,
             actionRun = montarRun(LunaActionRunStatus.DONE),
+            imagensGeradas = imagensGeradas.toList(),
+            pergunta = perguntaPendente,
         )
     }
 }

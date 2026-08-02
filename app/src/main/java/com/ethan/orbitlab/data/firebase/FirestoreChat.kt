@@ -7,6 +7,7 @@ import com.ethan.orbitlab.data.formatarHoraCurta
 import com.ethan.orbitlab.data.limparPreviewMensagem
 import com.ethan.orbitlab.data.ordenarMensagensChat
 import com.ethan.orbitlab.ui.chat.ComposerAttachment
+import com.ethan.orbitlab.ui.chat.ImagemGerada
 import com.ethan.orbitlab.ui.chat.LunaActionRun
 import com.ethan.orbitlab.ui.chat.LunaActionRunStatus
 import com.ethan.orbitlab.ui.chat.LunaActionStepKind
@@ -271,6 +272,7 @@ object FirestoreChat {
         text: String,
         reasoning: String?,
         actionRun: LunaActionRun?,
+        imagensGeradas: List<ImagemGerada> = emptyList(),
     ) {
         conversationDoc(uid, conversationId).set(
             mapOf(
@@ -288,6 +290,14 @@ object FirestoreChat {
         actionRun?.let { run ->
             val mapped = actionRunToFirestore(run)
             if (mapped.isNotEmpty()) msg["research"] = mapped
+        }
+        if (imagensGeradas.isNotEmpty()) {
+            msg["imagens"] = imagensGeradas.map { img ->
+                buildMap<String, Any> {
+                    put("url", img.url)
+                    img.prompt.takeIf { it.isNotBlank() }?.let { put("prompt", it) }
+                }
+            }
         }
         val msgRef = messagesCol(uid, conversationId).document(messageId)
         val existing = msgRef.get().await()
@@ -377,6 +387,7 @@ object FirestoreChat {
             else -> return null
         }
         val attachments = parseAttachments(data["attachments"])
+        val imagensGeradas = parseImagensGeradas(data["imagens"])
         val reference = parseReference(data["reference"])
         val actionRun = parseActionRun(data["research"])
         // serverTimestamp pendente = null → ASC coloca no início (fio invertido).
@@ -396,8 +407,19 @@ object FirestoreChat {
             reasoning = data["reasoning"] as? String,
             actionRun = actionRun,
             attachments = attachments,
+            imagensGeradas = imagensGeradas,
             reference = reference,
         )
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun parseImagensGeradas(raw: Any?): List<ImagemGerada> {
+        val lista = raw as? List<*> ?: return emptyList()
+        return lista.mapNotNull { item ->
+            val m = item as? Map<String, Any?> ?: return@mapNotNull null
+            val url = (m["url"] as? String)?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            ImagemGerada(url = url, prompt = (m["prompt"] as? String).orEmpty())
+        }
     }
 
     @Suppress("UNCHECKED_CAST")

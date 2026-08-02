@@ -4,4 +4,5 @@
     <cache-path name="capture" path="capture/" />
     <cache-path name="updates" path="." />
     <cache-path name="export" path="export/" />
+    <cache-path name="imagens" path="imagens/" />
 </paths>

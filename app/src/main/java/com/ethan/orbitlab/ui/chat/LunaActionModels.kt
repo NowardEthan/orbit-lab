@@ -65,6 +65,19 @@ data class LunaActionRun(
 fun LunaActionRun.isDeepResearch(): Boolean =
     profile == LunaActionProfile.DEEP_RESEARCH
 
+/**
+ * Há uma imagem sendo desenhada/editada AGORA neste run? (passo de `gerar_imagem`/`editar_imagem`
+ * ainda RUNNING). Devolve o rótulo do gesto — "Desenhando" ou "Ajustando" — pro cartão-fantasma,
+ * ou `null` se não há imagem em geração. É o gatilho do placeholder estilo ChatGPT.
+ */
+fun LunaActionRun.imagemEmGeracao(): String? {
+    val passo = steps.lastOrNull {
+        it.status == LunaActionStepStatus.RUNNING &&
+            (it.ferramenta == "gerar_imagem" || it.ferramenta == "editar_imagem")
+    } ?: return null
+    return if (passo.ferramenta == "editar_imagem") "Ajustando" else "Desenhando"
+}
+
 fun LunaActionRun.toolSteps(): List<LunaActionStep> =
     steps.filter { step ->
         val f = step.ferramenta
@@ -247,6 +260,21 @@ fun toolMeta(ferramenta: String): ToolMeta = when (ferramenta) {
         kind = LunaActionStepKind.SUMMARIZE,
         live = { arg -> if (arg.isBlank()) "Buscando no documento" else "Buscando por \"$arg\"" },
         done = { arg -> if (arg.isBlank()) "Buscou no documento" else "Buscou por \"$arg\"" },
+    )
+    "gerar_imagem" -> ToolMeta(
+        kind = LunaActionStepKind.WRITE,
+        live = { "Desenhando a imagem" },
+        done = { "Desenhou a imagem" },
+    )
+    "editar_imagem" -> ToolMeta(
+        kind = LunaActionStepKind.WRITE,
+        live = { "Ajustando a imagem" },
+        done = { "Ajustou a imagem" },
+    )
+    "perguntar" -> ToolMeta(
+        kind = LunaActionStepKind.PLAN,
+        live = { "Pensando numa pergunta" },
+        done = { "Te perguntou algo" },
     )
     "anotar_canone" -> ToolMeta(
         kind = LunaActionStepKind.MEMORY,

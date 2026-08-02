@@ -70,6 +70,10 @@ data class LunaStreamResultado(
     val reasoningDuracao: String,
     val resposta: String,
     val actionRun: LunaActionRun? = null,
+    /** Imagens que a Luna desenhou neste turno (ferramenta `gerar_imagem`). */
+    val imagensGeradas: List<ImagemGerada> = emptyList(),
+    /** Pergunta que a Luna fez antes de agir (ferramenta `perguntar`) — efêmera, vira cartão de opções. */
+    val pergunta: PerguntaLuna? = null,
     /** true = a "resposta" é um aviso de falha, não fala real da Luna (não persistir/nem virar memória). */
     val erro: Boolean = false,
 )
@@ -299,12 +303,21 @@ fun LunaStreamDraft(
                     )
                 }
             } else {
+                // Desenhando/editando uma imagem AGORA: o quadrado-fantasma toma o lugar do
+                // "Pensando…" — é ele o indicador de progresso enquanto a imagem não chega.
+                val labelImagem = estado.actionRun?.imagemEmGeracao()
                 Column(modifier.fillMaxWidth(0.92f)) {
                     estado.actionRun?.let { run ->
                         LunaActionTimeline(run = run, inicialmenteAberto = false)
                         Spacer(Modifier.height(8.dp))
                     }
                     when {
+                        labelImagem != null -> {
+                            LunaImagePlaceholderCard(
+                                label = labelImagem,
+                                modifier = Modifier.align(Alignment.Start),
+                            )
+                        }
                         mostrarRaciocinio && estado.parcial.isNotBlank() -> {
                             Column(modifier.fillMaxWidth(0.85f)) {
                                 LunaReasoning(

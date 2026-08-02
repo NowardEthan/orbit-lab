@@ -110,6 +110,36 @@ fun buildImageReference(
     )
 }
 
+/**
+ * A referência que uma mensagem vira ao ser PUXADA (swipe, estilo WhatsApp).
+ *
+ * Referencia o que a mensagem É: se ela carrega uma imagem — sua (anexo) ou dela (desenhada) —
+ * aponta a imagem, pra a Luna se basear nela; senão, aponta o texto. `null` quando não há nada
+ * citável (mensagem vazia sem mídia).
+ */
+fun referenciaAoPuxar(msg: Mensagem, mensagens: List<Mensagem>): ThreadReference? {
+    // Imagem/vídeo que VOCÊ anexou.
+    msg.attachments
+        .firstOrNull { it.kind == AttachmentKind.IMAGE || it.kind == AttachmentKind.VIDEO }
+        ?.let { return buildImageReference(msg, mensagens, it) }
+
+    // Imagem que a LUNA desenhou (vive numa URL do Storage — sintetizamos um anexo pra citar).
+    msg.imagensGeradas.firstOrNull()?.let { img ->
+        val att = ComposerAttachment(
+            id = "img-gerada-${msg.id}",
+            kind = AttachmentKind.IMAGE,
+            name = "Imagem da Luna",
+            sizeLabel = "—",
+            mime = "image/png",
+            uri = runCatching { Uri.parse(img.url) }.getOrNull(),
+        )
+        return buildImageReference(msg, mensagens, att)
+    }
+
+    // Só texto.
+    return buildMessageReference(msg, mensagens)
+}
+
 fun referenceChipLabel(ref: ThreadReference): String = when (ref) {
     is ThreadReference.Message -> {
         val autor = if (ref.isLuna) "Luna" else "Você"

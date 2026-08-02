@@ -6,6 +6,7 @@ import com.ethan.orbitlab.data.firebase.ConversaMeta
 import com.ethan.orbitlab.data.firebase.FirestoreChat
 import com.ethan.orbitlab.data.firebase.toConversa
 import com.ethan.orbitlab.ui.chat.ComposerAttachment
+import com.ethan.orbitlab.ui.chat.ImagemGerada
 import com.ethan.orbitlab.ui.chat.LunaActionRun
 import com.ethan.orbitlab.ui.chat.ThreadReference
 import com.google.firebase.firestore.ListenerRegistration
@@ -42,6 +43,8 @@ data class Mensagem(
     val actionRun: LunaActionRun? = null,
     /** Anexos (imagens / arquivos) — tipicamente do usuário. */
     val attachments: List<ComposerAttachment> = emptyList(),
+    /** Imagens que a LUNA desenhou (ferramenta `gerar_imagem`) — viram cartões no lado dela. */
+    val imagensGeradas: List<ImagemGerada> = emptyList(),
     /** Referência contextual (mensagem / imagem citada). */
     val reference: ThreadReference? = null,
     /** Balão de falha (rede/servidor) — local, some no retry, NUNCA vira memória da Luna. */
@@ -456,6 +459,8 @@ object ChatRepository {
         reasoningDuracao: String? = null,
         actionRun: LunaActionRun? = null,
         attachments: List<ComposerAttachment> = emptyList(),
+        /** Imagens desenhadas pela Luna neste turno (só Luna). */
+        imagensGeradas: List<ImagemGerada> = emptyList(),
         reference: ThreadReference? = null,
         /** Id fixo (Railway/idempotência) — se omitido, gera UUID. */
         messageId: String? = null,
@@ -467,6 +472,7 @@ object ChatRepository {
         val id = messageId?.takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString()
         val agora = System.currentTimeMillis()
         val localAttachments = if (isLuna) emptyList() else attachments
+        val localImagens = if (isLuna) imagensGeradas else emptyList()
         val localRef = if (isLuna) null else reference
 
         // Optimista na UI — upsert pelo id (evita duplicar quando o Firestore já syncou)
@@ -506,6 +512,7 @@ object ChatRepository {
                 reasoningDuracao = if (isLuna) reasoningDuracao else null,
                 actionRun = if (isLuna) actionRun else null,
                 attachments = localAttachments,
+                imagensGeradas = localImagens,
                 reference = localRef,
                 erro = if (isLuna) erro else false,
             )
@@ -520,6 +527,7 @@ object ChatRepository {
                             reasoningDuracao = nova.reasoningDuracao ?: it.reasoningDuracao,
                             actionRun = nova.actionRun ?: it.actionRun,
                             attachments = localAttachments.ifEmpty { it.attachments },
+                            imagensGeradas = localImagens.ifEmpty { it.imagensGeradas },
                             reference = localRef ?: it.reference,
                             // Retry reusa o id: uma resposta real (erro=false) limpa o balão de falha.
                             erro = if (isLuna) erro else it.erro,
@@ -566,6 +574,7 @@ object ChatRepository {
                         text = texto,
                         reasoning = reasoning,
                         actionRun = actionRun,
+                        imagensGeradas = localImagens,
                     )
                 } else {
                     val ctx = app?.applicationContext
