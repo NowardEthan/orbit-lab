@@ -154,6 +154,36 @@ fun toolMeta(ferramenta: String): ToolMeta = when (ferramenta) {
         live = { "Anotando o passo" },
         done = { "Passo adicionado" },
     )
+    "registrar_lancamento" -> ToolMeta(
+        kind = LunaActionStepKind.WRITE,
+        live = { "Registrando lançamento" },
+        done = { "Lançamento registrado" },
+    )
+    "listar_lancamentos" -> ToolMeta(
+        kind = LunaActionStepKind.READ,
+        live = { "Lendo o extrato" },
+        done = { "Extrato lido" },
+    )
+    "resumo_financeiro" -> ToolMeta(
+        kind = LunaActionStepKind.READ,
+        live = { "Lendo as finanças" },
+        done = { "Resumo financeiro" },
+    )
+    "gerir_recorrente" -> ToolMeta(
+        kind = LunaActionStepKind.WRITE,
+        live = { "Ajustando recorrente" },
+        done = { "Recorrente atualizado" },
+    )
+    "gerir_carteira" -> ToolMeta(
+        kind = LunaActionStepKind.WRITE,
+        live = { "Ajustando carteira" },
+        done = { "Carteira atualizada" },
+    )
+    "transferir" -> ToolMeta(
+        kind = LunaActionStepKind.WRITE,
+        live = { "Transferindo" },
+        done = { "Transferência feita" },
+    )
     "criar_artefato" -> ToolMeta(
         kind = LunaActionStepKind.WRITE,
         live = { arg ->

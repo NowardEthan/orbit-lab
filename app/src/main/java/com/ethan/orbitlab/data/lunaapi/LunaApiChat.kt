@@ -173,7 +173,8 @@ object LunaApiChat {
         if (modoTecnico) PrefsRepository.marcarMensagemTecnica(lunaMessageId)
         // «Mãos à obra»: força o caminho agêntico no servidor (planejar/documentos/ferramentas
         // em todo turno). Exclusivo com o técnico — a PrefsRepository garante que só um fica ligado.
-        val modoAgentico = PrefsRepository.modoAgentico.value
+        val modoAgentico = PrefsRepository.modoAgentico.value ||
+            (conversaId == PrefsRepository.conversaFinancas)
 
         val displayMessage = textoUsuario.trim()
         val message = when {

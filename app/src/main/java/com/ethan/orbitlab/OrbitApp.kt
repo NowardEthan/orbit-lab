@@ -11,6 +11,8 @@ import com.ethan.orbitlab.data.AuthRepository
 import com.ethan.orbitlab.data.ChatRepository
 import com.ethan.orbitlab.data.PrefsRepository
 import com.ethan.orbitlab.data.UserProfileRepository
+import com.ethan.orbitlab.data.captura.CapturaRepository
+import com.ethan.orbitlab.data.financas.FinancasLuzEngine
 import com.ethan.orbitlab.data.local.LocationRepository
 import com.ethan.orbitlab.data.updates.UpdatesRepository
 import com.ethan.orbitlab.data.firebase.FirebaseBootstrap
@@ -19,6 +21,8 @@ class OrbitApp : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         PrefsRepository.init(this)
+        FinancasLuzEngine.init(this)
+        CapturaRepository.init(this)
         FirebaseBootstrap.init(this)
         AuthRepository.init(this)
         ChatRepository.bindApp(this)

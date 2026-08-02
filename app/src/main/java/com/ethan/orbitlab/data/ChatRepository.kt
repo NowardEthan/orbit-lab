@@ -267,6 +267,26 @@ object ChatRepository {
         return id
     }
 
+    /**
+     * Conversa fixa do módulo Finanças (FAB). Reusa a salva nas prefs ou a que já se chama
+     * «Finanças»; senão cria e batiza — assim o título não vira assunto aleatório no 1º turno.
+     */
+    fun garantirConversaFinancas(): String {
+        val salva = PrefsRepository.conversaFinancas
+        if (salva != null && getConversa(salva) != null) return salva
+        val porTitulo = _conversas.value.firstOrNull {
+            it.titulo.equals("Finanças", ignoreCase = true)
+        }
+        if (porTitulo != null) {
+            PrefsRepository.conversaFinancas = porTitulo.id
+            return porTitulo.id
+        }
+        val id = criarConversa()
+        renomearConversa(id, "Finanças")
+        PrefsRepository.conversaFinancas = id
+        return id
+    }
+
     fun getConversa(id: String): Conversa? {
         return _conversas.value.find { it.id == id }
     }

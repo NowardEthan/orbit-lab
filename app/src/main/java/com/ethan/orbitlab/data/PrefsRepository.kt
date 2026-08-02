@@ -20,6 +20,8 @@ object PrefsRepository {
     private const val KEY_ULTIMA_ABA = "orbit.lab.lugar.aba"
     private const val KEY_ULTIMA_CONVERSA = "orbit.lab.lugar.conversa"
     private const val KEY_ANCORA = "orbit.lab.lugar.ancora"
+    private const val KEY_GAVETA_FINANCAS = "orbit.lab.gaveta.financas.aberta"
+    private const val KEY_CONVERSA_FINANCAS = "orbit.lab.financas.conversa"
     private const val KEY_LOCALIZACAO = "orbit.lab.localizacao.ativa"
     private const val KEY_LOCAL_SNAPSHOT = "orbit.lab.localizacao.snapshot"
     private const val KEY_TECNICO_IDS = "orbit.lab.tecnico.msgids"
@@ -146,6 +148,22 @@ object PrefsRepository {
     var ultimaConversa: String?
         get() = texto(KEY_ULTIMA_CONVERSA)
         set(value) = setTexto(KEY_ULTIMA_CONVERSA, value)
+
+    /**
+     * Seção Finanças da gaveta expandida? Default fechado.
+     * Persiste o gesto — colapsar/expandir não reseta a cada abertura do app.
+     */
+    var gavetaFinancasAberta: Boolean
+        get() = if (::prefs.isInitialized) prefs.getBoolean(KEY_GAVETA_FINANCAS, false) else false
+        set(value) {
+            if (!::prefs.isInitialized) return
+            prefs.edit().putBoolean(KEY_GAVETA_FINANCAS, value).apply()
+        }
+
+    /** Conversa dedicada «Finanças» — FAB da Luna nas telas do módulo. */
+    var conversaFinancas: String?
+        get() = texto(KEY_CONVERSA_FINANCAS)
+        set(value) = setTexto(KEY_CONVERSA_FINANCAS, value)
 
     /** Mensagem no topo da tela quando ele saiu de [conversaId] — null se estava no fim. */
     fun ancoraDe(conversaId: String): String? {

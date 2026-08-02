@@ -3,6 +3,11 @@ package com.ethan.orbitlab.shell
 import android.app.Activity
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -28,12 +33,21 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.MenuBook
+import androidx.compose.material.icons.rounded.AccountBalanceWallet
+import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.CreditCard
 import androidx.compose.material.icons.rounded.Email
+import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.Flag
+import androidx.compose.material.icons.rounded.Hearing
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.SwapHoriz
+import androidx.compose.material.icons.rounded.SwapVert
 import androidx.compose.material.icons.automirrored.rounded.Chat
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
@@ -54,6 +68,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -70,12 +85,24 @@ import com.ethan.orbitlab.data.ChatRepository
 import com.ethan.orbitlab.data.Conversa
 import com.ethan.orbitlab.data.PrefsRepository
 import com.ethan.orbitlab.data.UserProfileRepository
+import com.ethan.orbitlab.data.financas.FinancasNav
+import com.ethan.orbitlab.data.financas.FinancasRepository
+import com.ethan.orbitlab.data.financas.TransferenciaLauncher
 import com.ethan.orbitlab.data.updates.UpdatesRepository
 import com.ethan.orbitlab.ui.ajustes.AjustesScreen
 import com.ethan.orbitlab.ui.auth.LoginScreen
 import com.ethan.orbitlab.ui.chat.ChatScreen
 import com.ethan.orbitlab.ui.conversas.ConversasScreen
 import com.ethan.orbitlab.ui.estante.EstanteScreen
+import com.ethan.orbitlab.ui.financas.CapturaScreen
+import com.ethan.orbitlab.ui.financas.CartoesScreen
+import com.ethan.orbitlab.ui.financas.ConstanciaScreen
+import com.ethan.orbitlab.ui.financas.ExtratoScreen
+import com.ethan.orbitlab.ui.financas.FinancasDashboardScreen
+import com.ethan.orbitlab.ui.financas.FinancasLunaFab
+import com.ethan.orbitlab.ui.financas.MetasScreen
+import com.ethan.orbitlab.ui.financas.RecorrentesScreen
+import com.ethan.orbitlab.ui.financas.TransferenciaScreen
 import com.ethan.orbitlab.ui.inicio.InicioScreen
 import com.ethan.orbitlab.ui.novidades.NovidadesScreen
 import com.ethan.orbitlab.ui.perfil.PerfilScreen
@@ -90,17 +117,46 @@ import com.ethan.orbitlab.ui.theme.orbitTabReveal
 /**
  * OrbitShell — a moldura do app na direção 1.0: gaveta lateral (à esquerda) no
  * lugar da barra de baixo, + uma barra de cima fininha com o ☰. As telas seguem
- * uma-por-vez com micro-reveal; chat/novidades/estante são overlays full-screen.
+ * uma-por-vez com micro-reveal; chat/novidades são overlays full-screen.
+ *
+ * Finanças vive na gaveta como destinos próprios (Entradas e saídas, Cartões) —
+ * não como chips internos. Dashboard "Finanças" (F3) entra depois nesta seção.
  */
 private enum class OrbitTab(
     val label: String,
     val icone: ImageVector,
 ) {
     INICIO("Início", Icons.Rounded.Home),
+    FINANCAS("Finanças", Icons.Rounded.AccountBalanceWallet),
+    CONSTANCIA("Constância", Icons.Rounded.AutoAwesome),
+    EXTRATO("Movimentações", Icons.Rounded.SwapVert),
+    CARTOES("Cartões", Icons.Rounded.CreditCard),
+    RECORRENTES("Recorrentes", Icons.Rounded.Repeat),
+    TRANSFERENCIA("Transferência", Icons.Rounded.SwapHoriz),
+    METAS("Metas", Icons.Rounded.Flag),
+    CAPTURA("Captura", Icons.Rounded.Hearing),
     CONVERSAS("Conversas", Icons.Rounded.Email),
     ESTANTE("Estante", Icons.AutoMirrored.Rounded.MenuBook),
     PERFIL("Perfil", Icons.Rounded.Person),
     AJUSTES("Ajustes", Icons.Rounded.Settings),
+}
+
+private fun OrbitTab.ehFinancas(): Boolean = when (this) {
+    OrbitTab.FINANCAS,
+    OrbitTab.CONSTANCIA,
+    OrbitTab.EXTRATO,
+    OrbitTab.CARTOES,
+    OrbitTab.RECORRENTES,
+    OrbitTab.TRANSFERENCIA,
+    OrbitTab.METAS,
+    OrbitTab.CAPTURA,
+    -> true
+    else -> false
+}
+
+private fun orbitTabFromPrefs(salva: String?): OrbitTab? {
+    if (salva.isNullOrBlank()) return null
+    return OrbitTab.entries.firstOrNull { it.name == salva }
 }
 
 @Composable
@@ -153,11 +209,24 @@ fun OrbitShell() {
 
     // Volta exatamente onde ele parou (o Android mata o app por fome de memória).
     var abaAtual by remember {
-        mutableStateOf(
-            PrefsRepository.ultimaAba
-                ?.let { salva -> OrbitTab.entries.firstOrNull { it.name == salva } }
-                ?: OrbitTab.INICIO,
-        )
+        mutableStateOf(orbitTabFromPrefs(PrefsRepository.ultimaAba) ?: OrbitTab.INICIO)
+    }
+
+    // Finanças: um listener compartilhado enquanto a sessão existir.
+    LaunchedEffect(session?.uid) {
+        FinancasRepository.garantirSessao(session?.uid)
+    }
+    // Cartões → "Pagar fatura" abre a aba Transferência já pré-preenchida.
+    val transferenciaNav by TransferenciaLauncher.navegarTick.collectAsState()
+    LaunchedEffect(transferenciaNav) {
+        if (transferenciaNav > 0L) abaAtual = OrbitTab.TRANSFERENCIA
+    }
+    // Painel / outras telas → Extrato, Captura, etc.
+    val financasNavTick by FinancasNav.navegarTick.collectAsState()
+    LaunchedEffect(financasNavTick) {
+        if (financasNavTick <= 0L) return@LaunchedEffect
+        val nome = FinancasNav.consumir() ?: return@LaunchedEffect
+        orbitTabFromPrefs(nome)?.let { abaAtual = it }
     }
     var conversaAtivaId by remember { mutableStateOf(PrefsRepository.ultimaConversa) }
     var chatAberto by remember { mutableStateOf(conversaAtivaId != null) }
@@ -242,6 +311,12 @@ fun OrbitShell() {
             chatAberto = true
         }
     }
+    val onAbrirConversaFinancas = remember {
+        {
+            conversaAtivaId = ChatRepository.garantirConversaFinancas()
+            chatAberto = true
+        }
+    }
 
     val temOverlay = chatAberto || novidadesAberto
 
@@ -296,6 +371,7 @@ fun OrbitShell() {
             onAbrirPerfil = onAbrirPerfil,
             onFecharChat = onFecharChat,
             onFecharNovidades = onFecharNovidades,
+            onAbrirConversaFinancas = onAbrirConversaFinancas,
         )
     }
 }
@@ -321,6 +397,7 @@ private fun ShellConteudo(
     onAbrirPerfil: () -> Unit,
     onFecharChat: () -> Unit,
     onFecharNovidades: () -> Unit,
+    onAbrirConversaFinancas: () -> Unit,
 ) {
     Box(Modifier.fillMaxSize().background(OrbitTokens.graphiteBg)) {
         Column(Modifier.fillMaxSize()) {
@@ -345,6 +422,14 @@ private fun ShellConteudo(
                                 onNovaConversaComTexto = onNovaConversaComTexto,
                                 idleAtivo = true,
                             )
+                            OrbitTab.FINANCAS -> FinancasDashboardScreen()
+                            OrbitTab.CONSTANCIA -> ConstanciaScreen()
+                            OrbitTab.EXTRATO -> ExtratoScreen()
+                            OrbitTab.CARTOES -> CartoesScreen()
+                            OrbitTab.RECORRENTES -> RecorrentesScreen()
+                            OrbitTab.TRANSFERENCIA -> TransferenciaScreen()
+                            OrbitTab.METAS -> MetasScreen()
+                            OrbitTab.CAPTURA -> CapturaScreen()
                             OrbitTab.CONVERSAS -> ConversasScreen(
                                 onOpenChat = onOpenChat,
                                 onAbrirEstante = onAbrirEstante,
@@ -357,6 +442,16 @@ private fun ShellConteudo(
                             OrbitTab.AJUSTES -> AjustesScreen(onAbrirPerfil = onAbrirPerfil)
                         }
                     }
+                }
+
+                // FAB da Luna — só nas abas de Finanças, por cima do conteúdo.
+                if (!temOverlay && abaAtual.ehFinancas()) {
+                    FinancasLunaFab(
+                        onClick = onAbrirConversaFinancas,
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(end = OrbitMetrics.pagePadding, bottom = 20.dp),
+                    )
                 }
             }
         }
@@ -483,11 +578,94 @@ private fun OrbitDrawer(
                 .weight(1f)
                 .verticalScroll(rememberScrollState()),
         ) {
-            DrawerNavItem(Icons.Rounded.Home, "Início", atual == OrbitTab.INICIO) { onAba(OrbitTab.INICIO) }
-            DrawerNavItem(Icons.Rounded.Email, "Conversas", atual == OrbitTab.CONVERSAS) { onAba(OrbitTab.CONVERSAS) }
-            DrawerNavItem(Icons.AutoMirrored.Rounded.MenuBook, "Estante", atual == OrbitTab.ESTANTE) { onAba(OrbitTab.ESTANTE) }
-            DrawerNavItem(Icons.Rounded.Person, "Perfil", atual == OrbitTab.PERFIL) { onAba(OrbitTab.PERFIL) }
-            DrawerNavItem(Icons.Rounded.Settings, "Ajustes", atual == OrbitTab.AJUSTES) { onAba(OrbitTab.AJUSTES) }
+            DrawerNavItem(Icons.Rounded.Home, "Início", atual == OrbitTab.INICIO) {
+                onAba(OrbitTab.INICIO)
+            }
+            DrawerNavItem(Icons.Rounded.Email, "Conversas", atual == OrbitTab.CONVERSAS) {
+                onAba(OrbitTab.CONVERSAS)
+            }
+            DrawerNavItem(Icons.AutoMirrored.Rounded.MenuBook, "Estante", atual == OrbitTab.ESTANTE) {
+                onAba(OrbitTab.ESTANTE)
+            }
+
+            val emFinancas = atual.ehFinancas()
+            var financasAberta by remember {
+                mutableStateOf(PrefsRepository.gavetaFinancasAberta || emFinancas)
+            }
+            // Se entrou numa tela de Finanças com a seção fechada, abre sozinho.
+            LaunchedEffect(emFinancas) {
+                if (emFinancas && !financasAberta) {
+                    financasAberta = true
+                    PrefsRepository.gavetaFinancasAberta = true
+                }
+            }
+
+            DrawerSecaoColapsavel(
+                titulo = "Finanças",
+                aberta = financasAberta,
+                destacada = emFinancas,
+                onToggle = {
+                    financasAberta = !financasAberta
+                    PrefsRepository.gavetaFinancasAberta = financasAberta
+                },
+            ) {
+                // Subitens: indentados + mais leves — não competem com Início/Conversas/…
+                Column(
+                    Modifier
+                        .padding(start = 10.dp, end = 2.dp, bottom = 4.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(OrbitTokens.graphiteSurf.copy(alpha = 0.55f))
+                        .padding(vertical = 4.dp),
+                ) {
+                    DrawerSubNavItem(
+                        Icons.Rounded.AccountBalanceWallet,
+                        "Painel",
+                        atual == OrbitTab.FINANCAS,
+                    ) { onAba(OrbitTab.FINANCAS) }
+                    DrawerSubNavItem(
+                        Icons.Rounded.AutoAwesome,
+                        "Constância",
+                        atual == OrbitTab.CONSTANCIA,
+                    ) { onAba(OrbitTab.CONSTANCIA) }
+                    DrawerSubNavItem(
+                        Icons.Rounded.SwapVert,
+                        "Movimentações",
+                        atual == OrbitTab.EXTRATO,
+                    ) { onAba(OrbitTab.EXTRATO) }
+                    DrawerSubNavItem(
+                        Icons.Rounded.CreditCard,
+                        "Cartões",
+                        atual == OrbitTab.CARTOES,
+                    ) { onAba(OrbitTab.CARTOES) }
+                    DrawerSubNavItem(
+                        Icons.Rounded.Repeat,
+                        "Recorrentes",
+                        atual == OrbitTab.RECORRENTES,
+                    ) { onAba(OrbitTab.RECORRENTES) }
+                    DrawerSubNavItem(
+                        Icons.Rounded.SwapHoriz,
+                        "Transferência",
+                        atual == OrbitTab.TRANSFERENCIA,
+                    ) { onAba(OrbitTab.TRANSFERENCIA) }
+                    DrawerSubNavItem(
+                        Icons.Rounded.Flag,
+                        "Metas",
+                        atual == OrbitTab.METAS,
+                    ) { onAba(OrbitTab.METAS) }
+                    DrawerSubNavItem(
+                        Icons.Rounded.Hearing,
+                        "Captura",
+                        atual == OrbitTab.CAPTURA,
+                    ) { onAba(OrbitTab.CAPTURA) }
+                }
+            }
+
+            DrawerNavItem(Icons.Rounded.Person, "Perfil", atual == OrbitTab.PERFIL) {
+                onAba(OrbitTab.PERFIL)
+            }
+            DrawerNavItem(Icons.Rounded.Settings, "Ajustes", atual == OrbitTab.AJUSTES) {
+                onAba(OrbitTab.AJUSTES)
+            }
 
             if (recentes.isNotEmpty()) {
                 Spacer(Modifier.height(10.dp))
@@ -593,6 +771,56 @@ private fun OrbitDrawer(
     }
 }
 
+/**
+ * Cabeçalho de seção que abre/fecha os filhos — pra Finanças (e futuras seções densas)
+ * não engolir a gaveta inteira.
+ */
+@Composable
+private fun DrawerSecaoColapsavel(
+    titulo: String,
+    aberta: Boolean,
+    destacada: Boolean,
+    onToggle: () -> Unit,
+    conteudo: @Composable () -> Unit,
+) {
+    val rotacao by animateFloatAsState(
+        targetValue = if (aberta) 180f else 0f,
+        label = "chevron-financas",
+    )
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .orbitPressable(onClick = onToggle)
+            .padding(start = 12.dp, end = 8.dp, top = 10.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            titulo.uppercase(),
+            color = if (destacada) OrbitTokens.bluePastel else OrbitTokens.textLowN,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 1.2.sp,
+            modifier = Modifier.weight(1f),
+        )
+        Icon(
+            Icons.Rounded.ExpandMore,
+            contentDescription = if (aberta) "Recolher $titulo" else "Expandir $titulo",
+            tint = if (destacada) OrbitTokens.bluePastel else OrbitTokens.textLowN,
+            modifier = Modifier
+                .size(18.dp)
+                .rotate(rotacao),
+        )
+    }
+    AnimatedVisibility(
+        visible = aberta,
+        enter = expandVertically() + fadeIn(),
+        exit = shrinkVertically() + fadeOut(),
+    ) {
+        Column { conteudo() }
+    }
+}
+
 @Composable
 private fun DrawerNavItem(
     icone: ImageVector,
@@ -621,6 +849,55 @@ private fun DrawerNavItem(
             color = if (ativo) OrbitTokens.textHiN else OrbitTokens.textMidN,
             fontSize = 15.5.sp,
             fontWeight = if (ativo) FontWeight.SemiBold else FontWeight.Medium,
+        )
+    }
+}
+
+/** Destino dentro de uma seção (Finanças) — indentado, menor, sem “peso” de aba raiz. */
+@Composable
+private fun DrawerSubNavItem(
+    icone: ImageVector,
+    label: String,
+    ativo: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 6.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(
+                if (ativo) OrbitTokens.graphiteRaised
+                else androidx.compose.ui.graphics.Color.Transparent,
+            )
+            .orbitPressable(onClick = onClick)
+            .padding(start = 14.dp, end = 10.dp, top = 9.dp, bottom = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Tracinho + ícone menor = hierarquia visual de submenu
+        Box(
+            Modifier
+                .padding(end = 10.dp)
+                .width(2.dp)
+                .height(14.dp)
+                .clip(RoundedCornerShape(99.dp))
+                .background(
+                    if (ativo) OrbitTokens.bluePastel
+                    else OrbitTokens.graphiteHair,
+                ),
+        )
+        Icon(
+            icone,
+            contentDescription = null,
+            tint = if (ativo) OrbitTokens.bluePastel else OrbitTokens.textLowN,
+            modifier = Modifier.size(17.dp),
+        )
+        Spacer(Modifier.width(10.dp))
+        Text(
+            label,
+            color = if (ativo) OrbitTokens.textHiN else OrbitTokens.textMidN,
+            fontSize = 13.5.sp,
+            fontWeight = if (ativo) FontWeight.SemiBold else FontWeight.Normal,
         )
     }
 }
