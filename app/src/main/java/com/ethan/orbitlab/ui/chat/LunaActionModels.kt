@@ -179,6 +179,11 @@ fun toolMeta(ferramenta: String): ToolMeta = when (ferramenta) {
         live = { "Ajustando carteira" },
         done = { "Carteira atualizada" },
     )
+    "gerir_meta" -> ToolMeta(
+        kind = LunaActionStepKind.WRITE,
+        live = { "Ajustando meta" },
+        done = { "Meta atualizada" },
+    )
     "transferir" -> ToolMeta(
         kind = LunaActionStepKind.WRITE,
         live = { "Transferindo" },

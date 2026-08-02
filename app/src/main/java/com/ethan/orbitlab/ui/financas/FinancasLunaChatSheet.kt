@@ -215,9 +215,10 @@ private fun FinancasLunaChatConteudo(
 
     val sugPrompts = listOf(
         "💰 Quanto gastei este mês?",
-        "📊 Resumo dos cartões",
-        "✍️ Registrar gasto de R$ 50",
-        "🔄 Próximas recorrentes",
+        "💳 Cria um cartão Nubank",
+        "🎯 Meta de reserva R$ 1000",
+        "✍️ Gastei 50 no almoço",
+        "🔄 Lista as recorrentes",
     )
 
     Column(modifier) {
