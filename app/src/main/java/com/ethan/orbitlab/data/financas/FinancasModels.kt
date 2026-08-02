@@ -308,6 +308,79 @@ fun faixaDoMesOffset(offsetMeses: Int, agoraMs: Long = System.currentTimeMillis(
     return FaixaPeriodo(ini, c.timeInMillis)
 }
 
+/**
+ * Dia / semana / mês com offset (0 = período corrente, -1 = anterior…).
+ * O extrato é contínuo: o filtro só recorta a linha do tempo, não «zera» a conta.
+ */
+fun faixaDoPeriodoOffset(
+    periodo: PeriodoExtrato,
+    offset: Int,
+    agoraMs: Long = System.currentTimeMillis(),
+): FaixaPeriodo {
+    if (offset == 0) return faixaDoPeriodo(periodo, agoraMs)
+    val c = calendarioLocal()
+    c.timeInMillis = agoraMs
+    when (periodo) {
+        PeriodoExtrato.DIA -> c.add(java.util.Calendar.DAY_OF_MONTH, offset)
+        PeriodoExtrato.SEMANA -> c.add(java.util.Calendar.DAY_OF_MONTH, offset * 7)
+        PeriodoExtrato.MES -> c.add(java.util.Calendar.MONTH, offset)
+    }
+    return faixaDoPeriodo(periodo, c.timeInMillis)
+}
+
+/** Rótulo curto da faixa pra UI («31 de jul», «28 jul – 3 ago», «Julho 2026»). */
+fun rotuloFaixaExtrato(periodo: PeriodoExtrato, faixa: FaixaPeriodo): String {
+    val loc = Locale.forLanguageTag("pt-BR")
+    return when (periodo) {
+        PeriodoExtrato.DIA ->
+            java.text.SimpleDateFormat("d 'de' MMM", loc).format(java.util.Date(faixa.inicioMs))
+        PeriodoExtrato.SEMANA -> {
+            val a = java.text.SimpleDateFormat("d MMM", loc).format(java.util.Date(faixa.inicioMs))
+            val b = java.text.SimpleDateFormat("d MMM", loc)
+                .format(java.util.Date(faixa.fimMsExclusivo - 1L))
+            "$a – $b"
+        }
+        PeriodoExtrato.MES ->
+            java.text.SimpleDateFormat("MMMM yyyy", loc)
+                .format(java.util.Date(faixa.inicioMs))
+                .replaceFirstChar { if (it.isLowerCase()) it.titlecase(loc) else it.toString() }
+    }
+}
+
+/** Diferença em meses de calendário: data no passado → negativo. */
+fun offsetMesDe(dataMs: Long, agoraMs: Long = System.currentTimeMillis()): Int {
+    val atual = calendarioLocal().apply { timeInMillis = inicioDoMes(agoraMs) }
+    val alvo = calendarioLocal().apply { timeInMillis = inicioDoMes(dataMs) }
+    val anos = alvo.get(java.util.Calendar.YEAR) - atual.get(java.util.Calendar.YEAR)
+    val meses = alvo.get(java.util.Calendar.MONTH) - atual.get(java.util.Calendar.MONTH)
+    return anos * 12 + meses
+}
+
+/**
+ * Se o período corrente está vazio mas há lançamentos, aponta pro período do mais recente.
+ * Assim o Extrato não «some» só porque virou o mês.
+ */
+fun offsetPeriodoComMovimento(
+    periodo: PeriodoExtrato,
+    lancamentos: List<Lancamento>,
+    agoraMs: Long = System.currentTimeMillis(),
+): Int {
+    if (lancamentos.isEmpty()) return 0
+    if (filtrarPorPeriodo(lancamentos, faixaDoPeriodo(periodo, agoraMs)).isNotEmpty()) return 0
+    val alvo = lancamentos.maxByOrNull { it.dataMs } ?: return 0
+    return when (periodo) {
+        PeriodoExtrato.MES -> offsetMesDe(alvo.dataMs, agoraMs)
+        PeriodoExtrato.DIA -> {
+            val delta = inicioDoDia(alvo.dataMs) - inicioDoDia(agoraMs)
+            (delta / (24L * 60 * 60 * 1000)).toInt()
+        }
+        PeriodoExtrato.SEMANA -> {
+            val delta = inicioDaSemana(alvo.dataMs) - inicioDaSemana(agoraMs)
+            (delta / (7L * 24 * 60 * 60 * 1000)).toInt()
+        }
+    }
+}
+
 /** Ontem 00:00 local. */
 fun ontemMs(agoraMs: Long = System.currentTimeMillis()): Long {
     val c = calendarioLocal()

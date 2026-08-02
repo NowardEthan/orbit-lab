@@ -22,6 +22,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.ChevronLeft
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -29,18 +31,22 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -56,11 +62,13 @@ import com.ethan.orbitlab.data.financas.RecorrenteRascunho
 import com.ethan.orbitlab.data.financas.TipoLancamento
 import com.ethan.orbitlab.data.financas.agruparPorDia
 import com.ethan.orbitlab.data.financas.diaDoMesDe
-import com.ethan.orbitlab.data.financas.faixaDoPeriodo
+import com.ethan.orbitlab.data.financas.faixaDoPeriodoOffset
 import com.ethan.orbitlab.data.financas.filtrarPorPeriodo
 import com.ethan.orbitlab.data.financas.formatarReais
+import com.ethan.orbitlab.data.financas.offsetPeriodoComMovimento
 import com.ethan.orbitlab.data.financas.resumoDoPeriodo
 import com.ethan.orbitlab.data.financas.rotuloDiaExtrato
+import com.ethan.orbitlab.data.financas.rotuloFaixaExtrato
 import com.ethan.orbitlab.ui.theme.Bricolage
 import com.ethan.orbitlab.ui.theme.OrbitMetrics
 import com.ethan.orbitlab.ui.theme.OrbitTokens
@@ -83,6 +91,9 @@ fun ExtratoScreen() {
     val carteiras by FinancasRepository.carteiras.collectAsState()
     val lancamentos by FinancasRepository.lancamentos.collectAsState()
     var periodo by remember { mutableStateOf(PeriodoExtrato.MES) }
+    /** 0 = período corrente; negativo = passado. O extrato é contínuo — só recorta a linha do tempo. */
+    var offsetPeriodo by remember { mutableIntStateOf(0) }
+    var ancorouPeriodo by remember { mutableStateOf(false) }
     var formulario by remember { mutableStateOf<FormularioLancamento?>(null) }
     var filtrosAberto by remember { mutableStateOf(false) }
     var filtroCarteiraId by remember { mutableStateOf<String?>(null) }
@@ -90,7 +101,16 @@ fun ExtratoScreen() {
     var soPendentes by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
-    val faixa = remember(periodo) { faixaDoPeriodo(periodo) }
+    // Se o mês/semana/dia atual está vazio mas há histórico, abre já no período com movimento.
+    LaunchedEffect(lancamentos.size) {
+        if (ancorouPeriodo || lancamentos.isEmpty()) return@LaunchedEffect
+        val off = offsetPeriodoComMovimento(periodo, lancamentos)
+        if (off != 0) offsetPeriodo = off
+        ancorouPeriodo = true
+    }
+
+    val faixa = remember(periodo, offsetPeriodo) { faixaDoPeriodoOffset(periodo, offsetPeriodo) }
+    val rotuloFaixa = remember(periodo, faixa) { rotuloFaixaExtrato(periodo, faixa) }
     val doPeriodo = remember(lancamentos, faixa) { filtrarPorPeriodo(lancamentos, faixa) }
     val filtrados = remember(doPeriodo, filtroCarteiraId, filtroCategoriaId, soPendentes) {
         doPeriodo.filter { l ->
@@ -103,6 +123,19 @@ fun ExtratoScreen() {
     val grupos = remember(filtrados) { agruparPorDia(filtrados) }
     val carteiraPorId = remember(carteiras) { carteiras.associateBy { it.id } }
     val filtrosAtivos = filtroCarteiraId != null || filtroCategoriaId != null || soPendentes
+    val saltoComMovimento = remember(lancamentos, periodo, filtrados) {
+        if (filtrados.isNotEmpty() || lancamentos.isEmpty()) null
+        else {
+            val off = offsetPeriodoComMovimento(periodo, lancamentos)
+            if (off == 0 || off == offsetPeriodo) null
+            else {
+                val faixaAlvo = faixaDoPeriodoOffset(periodo, off)
+                val qtd = filtrarPorPeriodo(lancamentos, faixaAlvo).size
+                if (qtd == 0) null
+                else Triple(off, qtd, rotuloFaixaExtrato(periodo, faixaAlvo))
+            }
+        }
+    }
 
     fun marcarPago(lanc: Lancamento) {
         val u = uid ?: return
@@ -162,8 +195,21 @@ fun ExtratoScreen() {
                     )
                 }
                 Spacer(Modifier.height(14.dp))
-                FiltroPeriodo(atual = periodo, onEscolher = { periodo = it })
-                Spacer(Modifier.height(14.dp))
+                FiltroPeriodo(
+                    atual = periodo,
+                    onEscolher = {
+                        periodo = it
+                        offsetPeriodo = offsetPeriodoComMovimento(it, lancamentos)
+                    },
+                )
+                Spacer(Modifier.height(10.dp))
+                NavegadorPeriodo(
+                    label = rotuloFaixa,
+                    onAnterior = { offsetPeriodo -= 1 },
+                    onProximo = { if (offsetPeriodo < 0) offsetPeriodo += 1 },
+                    podeProximo = offsetPeriodo < 0,
+                )
+                Spacer(Modifier.height(12.dp))
                 FaixaSaldoConcept(
                     entrou = resumo.entrouCentavos,
                     saiu = resumo.saiuCentavos,
@@ -180,7 +226,11 @@ fun ExtratoScreen() {
             } else if (grupos.isEmpty()) {
                 item {
                     Spacer(Modifier.height(8.dp))
-                    ExtratoVazio(onRegistrar = { formulario = FormularioLancamento.Novo })
+                    ExtratoVazio(
+                        onRegistrar = { formulario = FormularioLancamento.Novo },
+                        salto = saltoComMovimento,
+                        onIrParaSalto = { off -> offsetPeriodo = off },
+                    )
                 }
             } else {
                 grupos.forEach { grupo ->
@@ -366,6 +416,58 @@ private fun FiltroPeriodo(atual: PeriodoExtrato, onEscolher: (PeriodoExtrato) ->
 }
 
 @Composable
+private fun NavegadorPeriodo(
+    label: String,
+    onAnterior: () -> Unit,
+    onProximo: () -> Unit,
+    podeProximo: Boolean,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(OrbitTokens.graphiteSurf)
+            .padding(horizontal = 4.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            Icons.Rounded.ChevronLeft,
+            contentDescription = "Período anterior",
+            tint = OrbitTokens.textHiN,
+            modifier = Modifier
+                .size(36.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .orbitPressable(onClick = onAnterior)
+                .padding(6.dp),
+        )
+        Text(
+            label,
+            color = OrbitTokens.textHiN,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        Icon(
+            Icons.Rounded.ChevronRight,
+            contentDescription = "Período seguinte",
+            tint = if (podeProximo) OrbitTokens.textHiN else OrbitTokens.textMidN,
+            modifier = Modifier
+                .size(36.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .alpha(if (podeProximo) 1f else 0.35f)
+                .then(
+                    if (podeProximo) Modifier.orbitPressable(onClick = onProximo)
+                    else Modifier,
+                )
+                .padding(6.dp),
+        )
+    }
+}
+
+@Composable
 private fun FaixaSaldoConcept(entrou: Long, saiu: Long, saldo: Long) {
     Row(
         Modifier
@@ -540,7 +642,11 @@ private fun LinhaLancamentoConcept(
 }
 
 @Composable
-private fun ExtratoVazio(onRegistrar: () -> Unit) {
+private fun ExtratoVazio(
+    onRegistrar: () -> Unit,
+    salto: Triple<Int, Int, String>? = null,
+    onIrParaSalto: (Int) -> Unit = {},
+) {
     Column(
         Modifier
             .fillMaxWidth()
@@ -556,20 +662,47 @@ private fun ExtratoVazio(onRegistrar: () -> Unit) {
             fontWeight = FontWeight.SemiBold,
         )
         Spacer(Modifier.height(6.dp))
-        Text(
-            "Registra uma saída ou entrada — a Luna ajuda depois; agora a base é manual.",
-            color = OrbitTokens.textMidN,
-            fontSize = 13.5.sp,
-            lineHeight = 19.sp,
-        )
-        Spacer(Modifier.height(14.dp))
-        Text(
-            "+ Registrar",
-            color = OrbitTokens.bluePastel,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.orbitPressable(onClick = onRegistrar),
-        )
+        if (salto != null) {
+            val (_, qtd, rotulo) = salto
+            Text(
+                "Teu histórico continua — há $qtd movimentação(ões) em $rotulo. " +
+                    "O filtro só recorta a linha do tempo; a conta não zera.",
+                color = OrbitTokens.textMidN,
+                fontSize = 13.5.sp,
+                lineHeight = 19.sp,
+            )
+            Spacer(Modifier.height(14.dp))
+            Text(
+                "Ver $rotulo",
+                color = OrbitTokens.bluePastel,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.orbitPressable { onIrParaSalto(salto.first) },
+            )
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "+ Registrar neste período",
+                color = OrbitTokens.textMidN,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.orbitPressable(onClick = onRegistrar),
+            )
+        } else {
+            Text(
+                "Registra uma saída ou entrada — a Luna ajuda depois; agora a base é manual.",
+                color = OrbitTokens.textMidN,
+                fontSize = 13.5.sp,
+                lineHeight = 19.sp,
+            )
+            Spacer(Modifier.height(14.dp))
+            Text(
+                "+ Registrar",
+                color = OrbitTokens.bluePastel,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.orbitPressable(onClick = onRegistrar),
+            )
+        }
     }
 }
 

@@ -30,6 +30,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -75,9 +76,11 @@ import com.ethan.orbitlab.data.financas.gastoPorDiaDoMes
 import com.ethan.orbitlab.data.financas.gerarInsightFinancas
 import com.ethan.orbitlab.data.financas.inicioDoMes
 import com.ethan.orbitlab.data.financas.metaGastoMes
+import com.ethan.orbitlab.data.financas.offsetPeriodoComMovimento
 import com.ethan.orbitlab.data.financas.progressosMetas
 import com.ethan.orbitlab.data.financas.resumoDoPeriodo
 import com.ethan.orbitlab.data.financas.resumoRecorrentes
+import com.ethan.orbitlab.data.financas.rotuloFaixaExtrato
 import com.ethan.orbitlab.ui.theme.Bricolage
 import com.ethan.orbitlab.ui.theme.OrbitMetrics
 import com.ethan.orbitlab.ui.theme.OrbitTokens
@@ -107,10 +110,18 @@ fun FinancasDashboardScreen() {
     val capturaPendentes by CapturaRepository.pendentes.collectAsState()
     val scope = rememberCoroutineScope()
     var offsetMes by remember { mutableIntStateOf(0) }
+    var ancorouMes by remember { mutableStateOf(false) }
     var formulario by remember { mutableStateOf<Lancamento?>(null) }
     var pickerMes by remember { mutableStateOf(false) }
 
     val agora = System.currentTimeMillis()
+    // Contínuo: se agosto está vazio e julho tem gasto, abre já em julho.
+    LaunchedEffect(lancamentos.size) {
+        if (ancorouMes || lancamentos.isEmpty()) return@LaunchedEffect
+        val off = offsetPeriodoComMovimento(PeriodoExtrato.MES, lancamentos, agora)
+        if (off != 0) offsetMes = off
+        ancorouMes = true
+    }
     val faixaMes = remember(offsetMes) { faixaDoMesOffset(offsetMes, agora) }
     val faixaMesAnt = remember(offsetMes) { faixaDoMesOffset(offsetMes - 1, agora) }
     val refMesMs = faixaMes.inicioMs
@@ -251,7 +262,7 @@ fun FinancasDashboardScreen() {
 
         item {
             Text(
-                "Este mês",
+                if (offsetMes == 0) "Este mês" else mesLabel,
                 color = OrbitTokens.textHiN,
                 fontSize = 17.sp,
                 fontFamily = Bricolage,
@@ -385,7 +396,7 @@ fun FinancasDashboardScreen() {
 
         item {
             Text(
-                "Gasto do mês",
+                if (offsetMes == 0) "Gasto do mês" else "Gasto · $mesLabel",
                 color = OrbitTokens.textHiN,
                 fontSize = 17.sp,
                 fontFamily = Bricolage,
@@ -800,11 +811,17 @@ private fun MesOffsetSheet(
     onEscolher: (Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val opcoes = listOf(
-        0 to "Mês atual",
-        -1 to "Mês passado",
-        -2 to "Há 2 meses",
-    )
+    // Linha do tempo contínua — não só «mês atual / passado».
+    val agora = System.currentTimeMillis()
+    val opcoes = (0 downTo -11).map { off ->
+        val faixa = faixaDoMesOffset(off, agora)
+        val label = when (off) {
+            0 -> "Mês atual · ${rotuloFaixaExtrato(PeriodoExtrato.MES, faixa)}"
+            -1 -> "Mês passado · ${rotuloFaixaExtrato(PeriodoExtrato.MES, faixa)}"
+            else -> rotuloFaixaExtrato(PeriodoExtrato.MES, faixa)
+        }
+        off to label
+    }
     androidx.compose.material3.ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = OrbitTokens.graphiteSurf,
