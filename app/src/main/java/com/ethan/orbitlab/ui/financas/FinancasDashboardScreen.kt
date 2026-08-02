@@ -30,10 +30,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -109,19 +107,18 @@ fun FinancasDashboardScreen() {
     val luz by FinancasLuzEngine.estado.collectAsState()
     val capturaPendentes by CapturaRepository.pendentes.collectAsState()
     val scope = rememberCoroutineScope()
-    var offsetMes by remember { mutableIntStateOf(0) }
-    var ancorouMes by remember { mutableStateOf(false) }
+    /** null = segue o mês com movimento; Int = escolha manual no picker. */
+    var offsetMesManual by remember { mutableStateOf<Int?>(null) }
     var formulario by remember { mutableStateOf<Lancamento?>(null) }
     var pickerMes by remember { mutableStateOf(false) }
 
     val agora = System.currentTimeMillis()
-    // Contínuo: se agosto está vazio e julho tem gasto, abre já em julho.
-    LaunchedEffect(lancamentos.size) {
-        if (ancorouMes || lancamentos.isEmpty()) return@LaunchedEffect
-        val off = offsetPeriodoComMovimento(PeriodoExtrato.MES, lancamentos, agora)
-        if (off != 0) offsetMes = off
-        ancorouMes = true
+    // Síncrono (não LaunchedEffect): no 1º frame com dados o resumo já usa julho se agosto
+    // estiver vazio — senão o painel pintava R$ 0 e parecia que «não registrou».
+    val offsetMesAuto = remember(lancamentos) {
+        offsetPeriodoComMovimento(PeriodoExtrato.MES, lancamentos, agora)
     }
+    val offsetMes = offsetMesManual ?: offsetMesAuto
     val faixaMes = remember(offsetMes) { faixaDoMesOffset(offsetMes, agora) }
     val faixaMesAnt = remember(offsetMes) { faixaDoMesOffset(offsetMes - 1, agora) }
     val refMesMs = faixaMes.inicioMs
@@ -139,6 +136,12 @@ fun FinancasDashboardScreen() {
     val deHoje = remember(lancamentos) {
         filtrarPorPeriodo(lancamentos, hojeIni).sortedByDescending { it.dataMs }
     }
+    // Lista contínua: se hoje está vazio, mostra os mais recentes (não some o histórico).
+    val listaPainel = remember(deHoje, lancamentos) {
+        if (deHoje.isNotEmpty()) deHoje
+        else lancamentos.sortedByDescending { it.dataMs }
+    }
+    val tituloListaPainel = if (deHoje.isNotEmpty()) "Hoje" else "Recentes"
     val pendentes = remember(doMes) {
         doMes.filter { !it.pago && it.tipo == TipoLancamento.SAIDA }
     }
@@ -321,7 +324,7 @@ fun FinancasDashboardScreen() {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    "Hoje",
+                    tituloListaPainel,
                     color = OrbitTokens.textHiN,
                     fontSize = 17.sp,
                     fontFamily = Bricolage,
@@ -339,7 +342,7 @@ fun FinancasDashboardScreen() {
             }
         }
 
-        if (deHoje.isEmpty() && pendentes.none { it.dataMs >= hojeIni.inicioMs }) {
+        if (listaPainel.isEmpty() && pendentes.none { it.dataMs >= hojeIni.inicioMs }) {
             item {
                 Text(
                     "Nada por aqui ainda — o Extrato e o Registrar cobrem o resto.",
@@ -353,7 +356,7 @@ fun FinancasDashboardScreen() {
                 )
             }
         } else {
-            items(deHoje.take(8), key = { it.id }) { lanc ->
+            items(listaPainel.take(8), key = { it.id }) { lanc ->
                 LinhaHojeConcept(
                     lancamento = lanc,
                     carteiraNome = carteiraPorId[lanc.carteiraId]?.apelido,
@@ -411,7 +414,7 @@ fun FinancasDashboardScreen() {
         MesOffsetSheet(
             offsetAtual = offsetMes,
             onEscolher = {
-                offsetMes = it
+                offsetMesManual = it
                 pickerMes = false
             },
             onDismiss = { pickerMes = false },

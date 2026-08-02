@@ -31,10 +31,8 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -91,9 +89,8 @@ fun ExtratoScreen() {
     val carteiras by FinancasRepository.carteiras.collectAsState()
     val lancamentos by FinancasRepository.lancamentos.collectAsState()
     var periodo by remember { mutableStateOf(PeriodoExtrato.MES) }
-    /** 0 = período corrente; negativo = passado. O extrato é contínuo — só recorta a linha do tempo. */
-    var offsetPeriodo by remember { mutableIntStateOf(0) }
-    var ancorouPeriodo by remember { mutableStateOf(false) }
+    /** null = segue período com movimento; Int = setas / escolha manual. */
+    var offsetPeriodoManual by remember { mutableStateOf<Int?>(null) }
     var formulario by remember { mutableStateOf<FormularioLancamento?>(null) }
     var filtrosAberto by remember { mutableStateOf(false) }
     var filtroCarteiraId by remember { mutableStateOf<String?>(null) }
@@ -101,13 +98,10 @@ fun ExtratoScreen() {
     var soPendentes by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
-    // Se o mês/semana/dia atual está vazio mas há histórico, abre já no período com movimento.
-    LaunchedEffect(lancamentos.size) {
-        if (ancorouPeriodo || lancamentos.isEmpty()) return@LaunchedEffect
-        val off = offsetPeriodoComMovimento(periodo, lancamentos)
-        if (off != 0) offsetPeriodo = off
-        ancorouPeriodo = true
+    val offsetPeriodoAuto = remember(periodo, lancamentos) {
+        offsetPeriodoComMovimento(periodo, lancamentos)
     }
+    val offsetPeriodo = offsetPeriodoManual ?: offsetPeriodoAuto
 
     val faixa = remember(periodo, offsetPeriodo) { faixaDoPeriodoOffset(periodo, offsetPeriodo) }
     val rotuloFaixa = remember(periodo, faixa) { rotuloFaixaExtrato(periodo, faixa) }
@@ -123,7 +117,7 @@ fun ExtratoScreen() {
     val grupos = remember(filtrados) { agruparPorDia(filtrados) }
     val carteiraPorId = remember(carteiras) { carteiras.associateBy { it.id } }
     val filtrosAtivos = filtroCarteiraId != null || filtroCategoriaId != null || soPendentes
-    val saltoComMovimento = remember(lancamentos, periodo, filtrados) {
+    val saltoComMovimento = remember(lancamentos, periodo, filtrados, offsetPeriodo) {
         if (filtrados.isNotEmpty() || lancamentos.isEmpty()) null
         else {
             val off = offsetPeriodoComMovimento(periodo, lancamentos)
@@ -199,14 +193,16 @@ fun ExtratoScreen() {
                     atual = periodo,
                     onEscolher = {
                         periodo = it
-                        offsetPeriodo = offsetPeriodoComMovimento(it, lancamentos)
+                        offsetPeriodoManual = null // volta a seguir o período com movimento
                     },
                 )
                 Spacer(Modifier.height(10.dp))
                 NavegadorPeriodo(
                     label = rotuloFaixa,
-                    onAnterior = { offsetPeriodo -= 1 },
-                    onProximo = { if (offsetPeriodo < 0) offsetPeriodo += 1 },
+                    onAnterior = { offsetPeriodoManual = offsetPeriodo - 1 },
+                    onProximo = {
+                        if (offsetPeriodo < 0) offsetPeriodoManual = offsetPeriodo + 1
+                    },
                     podeProximo = offsetPeriodo < 0,
                 )
                 Spacer(Modifier.height(12.dp))
@@ -229,7 +225,7 @@ fun ExtratoScreen() {
                     ExtratoVazio(
                         onRegistrar = { formulario = FormularioLancamento.Novo },
                         salto = saltoComMovimento,
-                        onIrParaSalto = { off -> offsetPeriodo = off },
+                        onIrParaSalto = { off -> offsetPeriodoManual = off },
                     )
                 }
             } else {
