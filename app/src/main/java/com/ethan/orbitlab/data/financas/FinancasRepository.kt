@@ -1,5 +1,6 @@
 package com.ethan.orbitlab.data.financas
 
+import android.util.Log
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.ListenerRegistration
 import kotlinx.coroutines.CoroutineScope
@@ -15,6 +16,7 @@ import kotlinx.coroutines.launch
  * Liga/desliga com a sessão (chamado pelo [com.ethan.orbitlab.shell.OrbitShell]).
  */
 object FinancasRepository {
+    private const val TAG = "OrbitFinancas"
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private val _carteiras = MutableStateFlow<List<Carteira>>(emptyList())
@@ -58,7 +60,7 @@ object FinancasRepository {
         regCarteiras = FirestoreFinancas.subscribeCarteiras(
             uid = uid,
             onChange = { _carteiras.value = it },
-            onError = {},
+            onError = { Log.e(TAG, "listener carteiras: ${it.message}", it) },
         )
         regLancamentos = FirestoreFinancas.subscribeLancamentos(
             uid = uid,
@@ -67,7 +69,7 @@ object FinancasRepository {
                 tentarGerar()
                 reconciliarLuz()
             },
-            onError = {},
+            onError = { Log.e(TAG, "listener lancamentos: ${it.message}", it) },
         )
         regRecorrentes = FirestoreFinancas.subscribeRecorrentes(
             uid = uid,
@@ -76,17 +78,17 @@ object FinancasRepository {
                 tentarGerar()
                 reconciliarLuz()
             },
-            onError = {},
+            onError = { Log.e(TAG, "listener recorrentes: ${it.message}", it) },
         )
         regTransferencias = FirestoreFinancas.subscribeTransferencias(
             uid = uid,
             onChange = { _transferencias.value = it },
-            onError = {},
+            onError = { Log.e(TAG, "listener transferencias: ${it.message}", it) },
         )
         regMetas = FirestoreFinancas.subscribeMetas(
             uid = uid,
             onChange = { _metas.value = it },
-            onError = {},
+            onError = { Log.e(TAG, "listener metas: ${it.message}", it) },
         )
     }
 
