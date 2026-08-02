@@ -173,9 +173,23 @@ fun formatMessageWithReference(userText: String, ref: ThreadReference): String {
         }
         is ThreadReference.Image -> {
             val name = ref.attachmentName.replace("\"", "\\\"")
+            val url = ref.uri?.toString()?.takeIf {
+                it.startsWith("http://") || it.startsWith("https://")
+            }
             buildString {
                 appendLine("[Referência contextual]")
                 appendLine("- Imagem: \"$name\" (mensagem #${ref.messageIndex})")
+                if (ref.isLuna && !url.isNullOrBlank()) {
+                    // Base explícita pra editar_imagem — sem isto ela caía na ÚLTIMA arte.
+                    appendLine("- Esta é uma arte DA LUNA (não um anexo dele).")
+                    appendLine("- URL da BASE para editar_imagem (base_url): $url")
+                    appendLine(
+                        "- Se fores CONTINUAR/EDITAR esta arte, chama editar_imagem com " +
+                            "base_url = esta URL (não uses outra imagem da conversa).",
+                    )
+                } else if (!url.isNullOrBlank()) {
+                    appendLine("- URL da imagem: $url")
+                }
                 appendLine()
                 if (question.isNotBlank()) {
                     append("Pergunta sobre esta imagem:\n$question")

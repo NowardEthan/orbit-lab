@@ -272,6 +272,13 @@ object LunaApiChat {
             if (nome.isNotBlank()) put("userDisplayName", nome.take(64))
             if (attachmentsJson.length() > 0) put("attachments", attachmentsJson)
             if (documentsJson.length() > 0) put("documents", documentsJson)
+            // Swipe numa arte ANTERIOR dela: manda a URL como base do editar_imagem.
+            // Sem isto o core só conhecia a «última gerada» e ignorava o que ele apontou.
+            val imagemBaseEdicao = (reference as? ThreadReference.Image)
+                ?.takeIf { it.isLuna && ChatMediaUpload.isRemoteUri(it.uri) }
+                ?.uri
+                ?.toString()
+            if (!imagemBaseEdicao.isNullOrBlank()) put("imagemBaseEdicao", imagemBaseEdicao)
             if (reenvio) {
                 // Histórico autoritativo (já sem a mensagem reenviada e o que vinha depois).
                 // O servidor reescreve o buffer com ele; cap de 200 (limite do schema) mantém
