@@ -115,16 +115,33 @@ fun FinancasDashboardScreen() {
     val agora = System.currentTimeMillis()
     // Síncrono (não LaunchedEffect): no 1º frame com dados o resumo já usa julho se agosto
     // estiver vazio — senão o painel pintava R$ 0 e parecia que «não registrou».
-    val offsetMesAuto = remember(lancamentos) {
-        offsetPeriodoComMovimento(PeriodoExtrato.MES, lancamentos, agora)
+    // Chave por size+max data — evita remember “preso” se a lista mudar de identidade sem equals.
+    val chaveLanc = remember(lancamentos) {
+        "${lancamentos.size}:${lancamentos.maxOfOrNull { it.dataMs } ?: 0L}"
+    }
+    val offsetMesAuto = remember(chaveLanc) {
+        offsetPeriodoComMovimento(PeriodoExtrato.MES, lancamentos, System.currentTimeMillis())
     }
     val offsetMes = offsetMesManual ?: offsetMesAuto
-    val faixaMes = remember(offsetMes) { faixaDoMesOffset(offsetMes, agora) }
-    val faixaMesAnt = remember(offsetMes) { faixaDoMesOffset(offsetMes - 1, agora) }
+    val faixaMes = remember(offsetMes, chaveLanc) {
+        faixaDoMesOffset(offsetMes, System.currentTimeMillis())
+    }
+    val faixaMesAnt = remember(offsetMes, chaveLanc) {
+        faixaDoMesOffset(offsetMes - 1, System.currentTimeMillis())
+    }
     val refMesMs = faixaMes.inicioMs
-    val doMes = remember(lancamentos, faixaMes) { filtrarPorPeriodo(lancamentos, faixaMes) }
-    val doMesAnt = remember(lancamentos, faixaMesAnt) { filtrarPorPeriodo(lancamentos, faixaMesAnt) }
-    val resumo = remember(doMes) { resumoDoPeriodo(doMes) }
+    val doMes = remember(chaveLanc, faixaMes) { filtrarPorPeriodo(lancamentos, faixaMes) }
+    val doMesAnt = remember(chaveLanc, faixaMesAnt) { filtrarPorPeriodo(lancamentos, faixaMesAnt) }
+    // Fallback contínuo: se o mês (mesmo auto) vier vazio, resume os últimos 30 dias.
+    val resumo = remember(doMes, chaveLanc) {
+        val doMesR = resumoDoPeriodo(doMes)
+        if (doMes.isNotEmpty()) {
+            doMesR
+        } else {
+            val corte = System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000
+            resumoDoPeriodo(lancamentos.filter { it.dataMs >= corte })
+        }
+    }
     val meta = remember(recorrentes, metas) { metaGastoMes(recorrentes, metas) }
     val pctMeta = if (meta > 0) (resumo.saiuCentavos.toFloat() / meta.toFloat()).coerceIn(0f, 1.2f) else 0f
     val dentroMeta = resumo.saiuCentavos <= meta
