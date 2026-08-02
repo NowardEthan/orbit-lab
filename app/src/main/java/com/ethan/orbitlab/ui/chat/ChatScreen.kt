@@ -1235,11 +1235,14 @@ private fun MessageBubble(
 }
 
 @Composable
-private fun ChatInputArea(
+fun ChatInputArea(
     onSend: (String, List<ComposerAttachment>, ThreadReference?) -> Unit,
     streamState: MutableState<LunaStreamEstado>,
     messageReference: ThreadReference? = null,
     onClearReference: () -> Unit = {},
+    modifier: Modifier = Modifier,
+    containerColor: Color = OrbitTokens.graphiteSurf,
+    exibirSeletorModo: Boolean = true,
 ) {
     val enabled = streamState.value is LunaStreamEstado.Idle
     val modoTecnico by PrefsRepository.modoTecnico.collectAsState()
@@ -1349,13 +1352,7 @@ private fun ChatInputArea(
         onDismiss = { modoSheetAberto = false },
     )
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(OrbitTokens.graphiteBg)
-            .padding(horizontal = OrbitMetrics.pagePadding, vertical = 12.dp)
-            .graphicsLayer { alpha = if (enabled) 1f else 0.45f },
-    ) {
+    Column(modifier = modifier.fillMaxWidth()) {
         if (messageReference != null) {
             ComposerReferenceChip(
                 reference = messageReference,
@@ -1380,7 +1377,7 @@ private fun ChatInputArea(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(OrbitTokens.graphiteSurf, ComposerFieldShape)
+            .background(containerColor, ComposerFieldShape)
             .border(1.dp, OrbitTokens.graphiteHair, ComposerFieldShape),
     ) {
     Column(modifier = Modifier.fillMaxWidth().padding(6.dp)) {
@@ -1561,7 +1558,7 @@ private fun ChatInputArea(
         // ATIVO (ícone + nome) e abre o seletor. Discreto tipo Claude: pílula-fantasma neutra
         // sempre — SEM preenchimento colorido; o modo aceso (Técnico/Ação) só tinge o texto e o
         // ícone de azul pastel, Conversa fica cinza. O chevron avisa que abre um menu, não alterna.
-        if (!gravando) {
+        if (!gravando && exibirSeletorModo) {
             Spacer(Modifier.width(8.dp))
             val modoAceso = modoAtivo != ModoLunaOpcao.Conversa
             val tecShape = RoundedCornerShape(50)

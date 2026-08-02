@@ -99,7 +99,9 @@ import com.ethan.orbitlab.ui.financas.CartoesScreen
 import com.ethan.orbitlab.ui.financas.ConstanciaScreen
 import com.ethan.orbitlab.ui.financas.ExtratoScreen
 import com.ethan.orbitlab.ui.financas.FinancasDashboardScreen
+import com.ethan.orbitlab.ui.financas.FinancasLunaChatSheet
 import com.ethan.orbitlab.ui.financas.FinancasLunaFab
+import com.ethan.orbitlab.ui.financas.FinancasLunaWidget
 import com.ethan.orbitlab.ui.financas.MetasScreen
 import com.ethan.orbitlab.ui.financas.RecorrentesScreen
 import com.ethan.orbitlab.ui.financas.TransferenciaScreen
@@ -230,6 +232,10 @@ fun OrbitShell() {
     }
     var conversaAtivaId by remember { mutableStateOf(PrefsRepository.ultimaConversa) }
     var chatAberto by remember { mutableStateOf(conversaAtivaId != null) }
+    // FAB Finanças → widget flutuante e sheet modal.
+    var financasWidgetAberto by remember { mutableStateOf(false) }
+    var financasChatAberto by remember { mutableStateOf(false) }
+    var financasConversaId by remember { mutableStateOf<String?>(null) }
     // Texto digitado no composer do Início: abre uma conversa nova JÁ mandando esta 1ª mensagem.
     var mensagemInicial by remember { mutableStateOf<String?>(null) }
     var novidadesAberto by remember { mutableStateOf(false) }
@@ -254,17 +260,12 @@ fun OrbitShell() {
     val notificacoesCount = remember(manifest, seenSignature, seenLoaded, updateAvailable) {
         if (!seenLoaded) return@remember 0
         val news = manifest?.news.orEmpty()
-        // Quantas news são MAIS NOVAS que a última que você viu. A assinatura guardada é
-        // "versão::idDaNewsDoTopo"; o índice desse id na lista atual = quantos itens entraram
-        // desde então. Antes o badge somava news.size (o histórico INTEIRO) toda vez que a
-        // assinatura mudava — a cada release "reapareciam todas", como se não salvasse o "já vi".
         val seenTopId = seenSignature?.substringAfter("::", "")?.takeIf { it.isNotEmpty() }
         val unseen = when {
             news.isEmpty() -> 0
             seenTopId == null -> news.size // nunca abriu Novidades → tudo é novo
             else -> news.indexOfFirst { it.id == seenTopId }.let { if (it >= 0) it else news.size }
         }
-        // Update pendente mas nenhuma news nova (raro): ao menos 1, pra o sino não ficar mudo.
         if (unseen == 0 && updateAvailable) 1 else unseen
     }
     val temNovidade = notificacoesCount > 0
@@ -313,17 +314,20 @@ fun OrbitShell() {
     }
     val onAbrirConversaFinancas = remember {
         {
-            conversaAtivaId = ChatRepository.garantirConversaFinancas()
-            chatAberto = true
+            financasConversaId = ChatRepository.garantirConversaFinancas()
+            financasChatAberto = true
         }
     }
 
     val temOverlay = chatAberto || novidadesAberto
+    val temModalFinancas = financasChatAberto
 
-    // Botão 'Voltar' nativo: gaveta primeiro, depois os overlays.
-    BackHandler(enabled = drawerState.isOpen || temOverlay) {
+    // Botão 'Voltar' nativo: gaveta → widget Finanças → sheet Finanças → overlays.
+    BackHandler(enabled = drawerState.isOpen || temOverlay || financasWidgetAberto || temModalFinancas) {
         when {
             drawerState.isOpen -> scope.launch { drawerState.close() }
+            financasWidgetAberto -> financasWidgetAberto = false
+            financasChatAberto -> financasChatAberto = false
             chatAberto -> chatAberto = false
             novidadesAberto -> novidadesAberto = false
         }
@@ -331,7 +335,7 @@ fun OrbitShell() {
 
     ModalNavigationDrawer(
         drawerState = drawerState,
-        gesturesEnabled = drawerState.isOpen || !temOverlay,
+        gesturesEnabled = drawerState.isOpen || (!temOverlay && !temModalFinancas),
         drawerContent = {
             ModalDrawerSheet(
                 drawerContainerColor = OrbitTokens.graphiteBg,
@@ -372,6 +376,24 @@ fun OrbitShell() {
             onFecharChat = onFecharChat,
             onFecharNovidades = onFecharNovidades,
             onAbrirConversaFinancas = onAbrirConversaFinancas,
+            financasWidgetAberto = financasWidgetAberto,
+            onToggleFinancasWidget = {
+                if (!financasWidgetAberto) {
+                    financasConversaId = ChatRepository.garantirConversaFinancas()
+                }
+                financasWidgetAberto = !financasWidgetAberto
+            },
+            onFecharFinancasWidget = { financasWidgetAberto = false },
+            financasChatAberto = financasChatAberto,
+            financasConversaId = financasConversaId,
+            onFecharFinancasChat = { financasChatAberto = false },
+            onExpandirFinancasChat = {
+                val id = financasConversaId ?: ChatRepository.garantirConversaFinancas()
+                financasWidgetAberto = false
+                financasChatAberto = false
+                conversaAtivaId = id
+                chatAberto = true
+            },
         )
     }
 }
@@ -398,6 +420,13 @@ private fun ShellConteudo(
     onFecharChat: () -> Unit,
     onFecharNovidades: () -> Unit,
     onAbrirConversaFinancas: () -> Unit,
+    financasWidgetAberto: Boolean,
+    onToggleFinancasWidget: () -> Unit,
+    onFecharFinancasWidget: () -> Unit,
+    financasChatAberto: Boolean,
+    financasConversaId: String?,
+    onFecharFinancasChat: () -> Unit,
+    onExpandirFinancasChat: () -> Unit,
 ) {
     Box(Modifier.fillMaxSize().background(OrbitTokens.graphiteBg)) {
         Column(Modifier.fillMaxSize()) {
@@ -444,16 +473,40 @@ private fun ShellConteudo(
                     }
                 }
 
-                // FAB da Luna — só nas abas de Finanças, por cima do conteúdo.
+                // FAB da Luna + Widget Flutuante em Finanças
                 if (!temOverlay && abaAtual.ehFinancas()) {
+                    val id = financasConversaId ?: ChatRepository.garantirConversaFinancas()
+
+                    // Widget Flutuante da Luna (emerge sobre o FAB)
+                    FinancasLunaWidget(
+                        conversaId = id,
+                        visivel = financasWidgetAberto,
+                        onFechar = onFecharFinancasWidget,
+                        onAbrirFullscreen = onExpandirFinancasChat,
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(start = OrbitMetrics.pagePadding, bottom = 80.dp),
+                    )
+
+                    // FAB circular de 54dp no canto inferior esquerdo
                     FinancasLunaFab(
+                        ativo = financasChatAberto,
                         onClick = onAbrirConversaFinancas,
                         modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(end = OrbitMetrics.pagePadding, bottom = 20.dp),
+                            .align(Alignment.BottomStart)
+                            .padding(start = OrbitMetrics.pagePadding, bottom = 20.dp),
                     )
                 }
             }
+        }
+
+        if (financasChatAberto) {
+            val id = financasConversaId ?: ChatRepository.garantirConversaFinancas()
+            FinancasLunaChatSheet(
+                conversaId = id,
+                onDismiss = onFecharFinancasChat,
+                onAbrirFullscreen = onExpandirFinancasChat,
+            )
         }
 
         AnimatedVisibility(
