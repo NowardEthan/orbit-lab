@@ -66,16 +66,16 @@ fun LunaActionRun.isDeepResearch(): Boolean =
     profile == LunaActionProfile.DEEP_RESEARCH
 
 fun LunaActionRun.toolSteps(): List<LunaActionStep> =
-    steps.filter { it.kind !in WEB_KINDS }
+    steps.filter { step ->
+        val f = step.ferramenta
+        f == null || !ehFerramentaDeWeb(f)
+    }
 
 fun LunaActionRun.webSteps(): List<LunaActionStep> =
-    steps.filter { it.kind in WEB_KINDS }
-
-private val WEB_KINDS = setOf(
-    LunaActionStepKind.SEARCH,
-    LunaActionStepKind.READ,
-    LunaActionStepKind.VERIFY,
-)
+    steps.filter { step ->
+        val f = step.ferramenta
+        f != null && ehFerramentaDeWeb(f)
+    }
 
 data class ToolMeta(
     val kind: LunaActionStepKind,
@@ -260,10 +260,17 @@ fun toolMeta(ferramenta: String): ToolMeta = when (ferramenta) {
     )
 }
 
-fun ehFerramentaDeWeb(ferramenta: String): Boolean {
-    val kind = toolMeta(ferramenta).kind
-    return kind == LunaActionStepKind.SEARCH || kind == LunaActionStepKind.READ
-}
+/**
+ * Só ferramentas de internet abrem o painel «PESQUISA PROFUNDA».
+ *
+ * Não dá pra olhar o [LunaActionStepKind]: `resumo_financeiro` / `listar_lancamentos`
+ * também usam `READ` («ler o extrato»), e isso fazia o Lab pintar grana como pesquisa
+ * web — 0 fontes, 0 consultas, modal errado.
+ */
+fun ehFerramentaDeWeb(ferramenta: String): Boolean =
+    ferramenta == "web_search" ||
+        ferramenta == "ler_url" ||
+        ferramenta == "verificar_fontes"
 
 fun LunaActionStepKind.icone(): String = when (this) {
     LunaActionStepKind.REASON -> "◎"
