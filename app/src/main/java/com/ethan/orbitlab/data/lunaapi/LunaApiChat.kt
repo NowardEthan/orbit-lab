@@ -2,6 +2,7 @@ package com.ethan.orbitlab.data.lunaapi
 
 import android.content.Context
 import com.ethan.orbitlab.data.AuthRepository
+import com.ethan.orbitlab.data.ChatRepository
 import com.ethan.orbitlab.data.PrefsRepository
 import com.ethan.orbitlab.data.UserProfileRepository
 import com.ethan.orbitlab.data.firebase.ChatMediaUpload
@@ -173,8 +174,9 @@ object LunaApiChat {
         if (modoTecnico) PrefsRepository.marcarMensagemTecnica(lunaMessageId)
         // «Mãos à obra»: força o caminho agêntico no servidor (planejar/documentos/ferramentas
         // em todo turno). Exclusivo com o técnico — a PrefsRepository garante que só um fica ligado.
-        val modoAgentico = PrefsRepository.modoAgentico.value ||
-            (conversaId == PrefsRepository.conversaFinancas)
+        val conversaFinancas = ChatRepository.ehConversaFinancas(conversaId) ||
+            conversaId == PrefsRepository.conversaFinancas
+        val modoAgentico = PrefsRepository.modoAgentico.value || conversaFinancas
 
         val displayMessage = textoUsuario.trim()
         val message = when {
@@ -256,10 +258,7 @@ object LunaApiChat {
             put("modoAgentico", modoAgentico)
             // Conversa dedicada do módulo Finanças: o core injeta briefing + pré-carga
             // pra ela saber que está ali falando de grana (não só quando cita «gastei»).
-            put(
-                "moduloFinancas",
-                conversaId == PrefsRepository.conversaFinancas,
-            )
+            put("moduloFinancas", conversaFinancas)
             // Artefatos: só o lab liga. Libera a ferramenta criar_artefato (o core é
             // partilhado com o estável, então a flag é o que a mantém invisível lá fora).
             put("documentosAtivo", true)
