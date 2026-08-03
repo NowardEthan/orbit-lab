@@ -32,7 +32,7 @@ Signing **antes** de R8 (uma variável por release).
 - [x] `AGENTS.md` deixa de dizer “não é produção” / “só lab de UI”
 - [x] `RELEASING.md` descreve flavor `lab` + `updates-lab.json` + Actions
 - [x] Este arquivo (`HARDENING.md`) com DoD das fases
-- [ ] Mapa do monorepo (`luna-workspace/AGENTS.md`) aponta Lab como cliente sideload atual
+- [x] Mapa do monorepo (`luna-workspace/AGENTS.md`) aponta Lab como cliente sideload atual
 
 **Humano:** nenhum passo de console nesta fase.
 
