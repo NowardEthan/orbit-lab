@@ -544,19 +544,7 @@ fun ChatScreen(
             }
 
             // Parede graciosa: cota no teto (medidor zerado) OU 429 do servidor.
-            // Antes só o 429 acendia — e um bypass no servidor deixava a mensagem passar
-            // mesmo com remaining=0. Agora o composer some assim que não há saldo pro chat.
-            val cotaBloqueada by com.ethan.orbitlab.data.billing.UsageRepository.bloqueado.collectAsState()
-            val usageCota by com.ethan.orbitlab.data.billing.UsageRepository.usage.collectAsState()
-            val semSaldo =
-                !usageCota.loading && !usageCota.ilimitado && !usageCota.temSaldoParaChat
-            if (cotaBloqueada || semSaldo) {
-                com.ethan.orbitlab.ui.planos.LimiteAtingidoCard(
-                    usage = usageCota,
-                    onVerPlanos = { com.ethan.orbitlab.data.billing.PlanosNav.abrir() },
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                )
-            } else {
+            com.ethan.orbitlab.ui.planos.CotaComposerOuParede {
                 ChatInputArea(
                     streamState = streamState,
                     messageReference = messageReference,

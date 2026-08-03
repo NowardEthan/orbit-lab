@@ -67,6 +67,7 @@ import com.ethan.orbitlab.ui.chat.LunaMarkdown
 import com.ethan.orbitlab.ui.chat.LunaMarkdownVariante
 import com.ethan.orbitlab.ui.chat.LunaStreamEstado
 import com.ethan.orbitlab.ui.chat.ThreadReference
+import com.ethan.orbitlab.ui.planos.CotaComposerOuParede
 import com.ethan.orbitlab.ui.theme.Bricolage
 import com.ethan.orbitlab.ui.theme.OrbitTokens
 import com.ethan.orbitlab.ui.theme.orbitPressable
@@ -474,15 +475,19 @@ fun FinancasLunaWidget(
 
             Spacer(Modifier.height(10.dp))
 
-            // ── Composer Oficial do Orbit (Áudio, Anexos, Câmera, Modos e Referências) ──
-            ChatInputArea(
-                onSend = { texto, anexos, ref ->
-                    enviar(texto, anexos, ref)
-                },
-                streamState = streamState,
-                containerColor = OrbitTokens.graphiteRaised,
-                exibirSeletorModo = false,
-            )
+            // Composer oficial — mesma parede de cota do chat normal.
+            CotaComposerOuParede(
+                cardModifier = Modifier.padding(vertical = 4.dp),
+            ) {
+                ChatInputArea(
+                    onSend = { texto, anexos, ref ->
+                        enviar(texto, anexos, ref)
+                    },
+                    streamState = streamState,
+                    containerColor = OrbitTokens.graphiteRaised,
+                    exibirSeletorModo = false,
+                )
+            }
         }
     }
 }

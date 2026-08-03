@@ -59,6 +59,7 @@ import com.ethan.orbitlab.ui.chat.LunaMarkdown
 import com.ethan.orbitlab.ui.chat.LunaMarkdownVariante
 import com.ethan.orbitlab.ui.chat.LunaStreamEstado
 import com.ethan.orbitlab.ui.chat.ThreadReference
+import com.ethan.orbitlab.ui.planos.CotaComposerOuParede
 import com.ethan.orbitlab.ui.theme.Bricolage
 import com.ethan.orbitlab.ui.theme.OrbitMetrics
 import com.ethan.orbitlab.ui.theme.OrbitTokens
@@ -443,12 +444,16 @@ private fun FinancasLunaChatConteudo(
                 .padding(horizontal = OrbitMetrics.pagePadding)
                 .padding(bottom = 12.dp),
         ) {
-            ChatInputArea(
-                onSend = { t, a, r -> enviar(t, a, r) },
-                streamState = streamState,
-                containerColor = OrbitTokens.graphiteRaised,
-                exibirSeletorModo = false,
-            )
+            CotaComposerOuParede(
+                cardModifier = Modifier.padding(vertical = 4.dp),
+            ) {
+                ChatInputArea(
+                    onSend = { t, a, r -> enviar(t, a, r) },
+                    streamState = streamState,
+                    containerColor = OrbitTokens.graphiteRaised,
+                    exibirSeletorModo = false,
+                )
+            }
         }
     }
 }
