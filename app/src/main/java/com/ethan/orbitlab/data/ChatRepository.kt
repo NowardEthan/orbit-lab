@@ -275,8 +275,17 @@ object ChatRepository {
                         //    recalcula agora()) e faz os balões pularem de lugar. O local é
                         //    estável e já está na ordem certa (tua fala antes da Luna).
                         val daNuvem = msgs.map { nuvem ->
-                            val local = locaisPorId[nuvem.id]
-                            if (local != null) nuvem.copy(timestamp = local.timestamp) else nuvem
+                            val local = locaisPorId[nuvem.id] ?: return@map nuvem
+                            // O Railway às vezes grava a bolha dela sem `imagens[]` (ou o
+                            // snapshot chega antes do write local). Sem isto o cartão some
+                            // mesmo com a URL já na UI — pior no free, onde o sync bate mais.
+                            nuvem.copy(
+                                timestamp = local.timestamp,
+                                imagensGeradas = nuvem.imagensGeradas.ifEmpty { local.imagensGeradas },
+                                attachments = nuvem.attachments.ifEmpty { local.attachments },
+                                actionRun = nuvem.actionRun ?: local.actionRun,
+                                reasoning = nuvem.reasoning ?: local.reasoning,
+                            )
                         }
                         // 2. Mensagens que só existem local (otimista recém-enviada que a nuvem
                         //    ainda não devolveu, ou balão de erro). Mantém até sincronizar —
