@@ -13,7 +13,7 @@ Princípio: **cota e billing são verdade no servidor.** Parede no app é UX.
 
 | Fase | Tema | Status |
 |------|------|--------|
-| **0** | Docs: Lab = produção sideload | **em curso** |
+| **0** | Docs: Lab = produção sideload | **feita** |
 | **1** | Signing de release + CI + SHA Firebase | pendente |
 | **2** | Minify / R8 no `labRelease` | pendente |
 | **3** | Crash reporting (Crashlytics preferido) | pendente |
