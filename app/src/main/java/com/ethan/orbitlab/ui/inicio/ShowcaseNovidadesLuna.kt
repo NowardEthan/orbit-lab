@@ -145,7 +145,7 @@ fun ShowcaseNovidadesLuna(
             ShowcaseLinha(
                 icone = Icons.Rounded.MenuBook,
                 titulo = "Artefatos",
-                sub = "Documentos e criações guardados na Estante",
+                sub = "Documentos e criações guardados na Galeria",
                 onClick = onAbrirEstante,
             )
         }

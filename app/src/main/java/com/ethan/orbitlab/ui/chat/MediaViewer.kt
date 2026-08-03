@@ -105,6 +105,9 @@ fun MediaViewerDialog(
     // compartilhar precisam trazer os bytes de volta, então quem chama injeta a lógica.
     onDownload: (() -> Unit)? = null,
     onShareOverride: (() -> Unit)? = null,
+    // Avisa quem chama qual imagem está visível agora — a galeria usa pra que «baixar/partilhar»
+    // ajam sobre a imagem certa ao deslizar (o índice é sobre a lista JÁ filtrada de mídia).
+    onPageChange: ((Int) -> Unit)? = null,
 ) {
     val media = remember(items) {
         items.filter {
@@ -128,6 +131,7 @@ fun MediaViewerDialog(
     // Ao trocar de página, libera zoom e centraliza a miniatura
     LaunchedEffect(pagerState.currentPage) {
         pageZoomed = false
+        onPageChange?.invoke(pagerState.currentPage)
         if (media.size > 1) {
             val target = (pagerState.currentPage - 1).coerceAtLeast(0)
             stripState.animateScrollToItem(target)

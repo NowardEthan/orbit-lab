@@ -43,6 +43,7 @@ import androidx.compose.material.icons.rounded.Hearing
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.Settings
@@ -143,7 +144,7 @@ private enum class OrbitTab(
     METAS("Metas", Icons.Rounded.Flag),
     CAPTURA("Captura", Icons.Rounded.Hearing),
     CONVERSAS("Conversas", Icons.Rounded.Email),
-    ESTANTE("Estante", Icons.AutoMirrored.Rounded.MenuBook),
+    ESTANTE("Galeria", Icons.Rounded.PhotoLibrary),
     PLANO("Planos", Icons.Rounded.WorkspacePremium),
     PERFIL("Perfil", Icons.Rounded.Person),
     AJUSTES("Ajustes", Icons.Rounded.Settings),
@@ -661,7 +662,7 @@ private fun OrbitDrawer(
             DrawerNavItem(Icons.Rounded.Email, "Conversas", atual == OrbitTab.CONVERSAS) {
                 onAba(OrbitTab.CONVERSAS)
             }
-            DrawerNavItem(Icons.AutoMirrored.Rounded.MenuBook, "Estante", atual == OrbitTab.ESTANTE) {
+            DrawerNavItem(Icons.Rounded.PhotoLibrary, "Galeria", atual == OrbitTab.ESTANTE) {
                 onAba(OrbitTab.ESTANTE)
             }
 
