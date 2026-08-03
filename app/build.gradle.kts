@@ -63,6 +63,47 @@ fun loadLunaApiUrl(): String {
 
 val lunaApiUrl = loadLunaApiUrl()
 
+/** Credenciais da keystore de release (local: keystore.properties; CI: env LAB_*). */
+fun loadReleaseSigning(): Properties {
+    val props = Properties()
+    val file = rootProject.file("keystore.properties")
+    if (file.exists()) {
+        file.inputStream().use { props.load(it) }
+    }
+    fun envOrProp(env: String, prop: String): String? =
+        System.getenv(env)?.trim()?.takeIf { it.isNotEmpty() }
+            ?: props.getProperty(prop)?.trim()?.takeIf { it.isNotEmpty() }
+
+    val storeFile = envOrProp("LAB_KEYSTORE_FILE", "storeFile")
+    val storePassword = envOrProp("LAB_KEYSTORE_PASSWORD", "storePassword")
+    val keyAlias = envOrProp("LAB_KEY_ALIAS", "keyAlias")
+    val keyPassword = envOrProp("LAB_KEY_PASSWORD", "keyPassword")
+    if (
+        !storeFile.isNullOrBlank() &&
+        !storePassword.isNullOrBlank() &&
+        !keyAlias.isNullOrBlank() &&
+        !keyPassword.isNullOrBlank()
+    ) {
+        props.setProperty("storeFile", storeFile)
+        props.setProperty("storePassword", storePassword)
+        props.setProperty("keyAlias", keyAlias)
+        props.setProperty("keyPassword", keyPassword)
+    }
+    return props
+}
+
+val releaseSigningProps = loadReleaseSigning()
+val releaseStorePath = releaseSigningProps.getProperty("storeFile")
+val releaseStoreFile = releaseStorePath?.let { path ->
+    val fromRoot = rootProject.file(path)
+    if (fromRoot.exists()) fromRoot else file(path)
+}
+val hasReleaseKeystore =
+    releaseStoreFile?.exists() == true &&
+        !releaseSigningProps.getProperty("storePassword").isNullOrBlank() &&
+        !releaseSigningProps.getProperty("keyAlias").isNullOrBlank() &&
+        !releaseSigningProps.getProperty("keyPassword").isNullOrBlank()
+
 android {
     namespace = "com.ethan.orbitlab"
     compileSdk {
@@ -96,6 +137,14 @@ android {
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
+        if (hasReleaseKeystore) {
+            create("release") {
+                storeFile = releaseStoreFile
+                storePassword = releaseSigningProps.getProperty("storePassword")
+                keyAlias = releaseSigningProps.getProperty("keyAlias")
+                keyPassword = releaseSigningProps.getProperty("keyPassword")
+            }
+        }
     }
 
     // Canal lab = o auto-update do OrbitLab. O CI sobe a versão com -PlabVersionCode / -PlabVersionName.
@@ -115,7 +164,17 @@ android {
         }
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("debugKey")
+            // Produção sideload: release key quando existir.
+            // Sem keystore local → fallback debug (só dev); no CI a Fase 1 exige a release key.
+            signingConfig = if (hasReleaseKeystore) {
+                signingConfigs.getByName("release")
+            } else {
+                logger.warn(
+                    "labRelease sem keystore de release — assinando com debug. " +
+                        "Ver SIGNING.md (Fase 1). No CI isso deve falhar.",
+                )
+                signingConfigs.getByName("debugKey")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

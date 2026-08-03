@@ -1,8 +1,11 @@
 name: Build & Release Lab
 
 # Builda o APK Compose (flavor lab) no GitHub — sem notebook.
-# Para publicar no canal público (orbit-releases), precisa do secret ORBIT_RELEASES_TOKEN
-# (PAT com contents:write no repo NowardEthan/orbit-releases).
+#
+# Secrets necessários:
+# - ORBIT_RELEASES_TOKEN — PAT com contents:write no NowardEthan/orbit-releases (só se publish)
+# - LAB_KEYSTORE_BASE64, LAB_KEYSTORE_PASSWORD, LAB_KEY_ALIAS, LAB_KEY_PASSWORD
+#   → assinatura de release (Fase 1 / SIGNING.md). Obrigatórios em todo labRelease no CI.
 #
 # Como correr: Actions → Build & Release Lab → Run workflow
 
@@ -52,6 +55,34 @@ jobs:
       - name: Aceitar licenças SDK
         run: yes | sdkmanager --licenses >/dev/null || true
 
+      - name: Decodificar keystore de release
+        env:
+          LAB_KEYSTORE_BASE64: ${{ secrets.LAB_KEYSTORE_BASE64 }}
+          LAB_KEYSTORE_PASSWORD: ${{ secrets.LAB_KEYSTORE_PASSWORD }}
+          LAB_KEY_ALIAS: ${{ secrets.LAB_KEY_ALIAS }}
+          LAB_KEY_PASSWORD: ${{ secrets.LAB_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for v in LAB_KEYSTORE_BASE64 LAB_KEYSTORE_PASSWORD LAB_KEY_ALIAS LAB_KEY_PASSWORD; do
+            if [ -z "${!v}" ]; then
+              echo "::error::Falta o secret $v. Siga SIGNING.md (Fase 1)."
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+          echo "$LAB_KEYSTORE_BASE64" | base64 -d > orbit-lab-release.keystore
+          test -s orbit-lab-release.keystore
+          printf '%s\n' \
+            "storeFile=orbit-lab-release.keystore" \
+            "storePassword=${LAB_KEYSTORE_PASSWORD}" \
+            "keyAlias=${LAB_KEY_ALIAS}" \
+            "keyPassword=${LAB_KEY_PASSWORD}" \
+            > keystore.properties
+          echo "Keystore de release pronta ($(wc -c < orbit-lab-release.keystore) bytes)."
+
       - name: Build APK labRelease
         run: |
           chmod +x gradlew
@@ -59,7 +90,7 @@ jobs:
             -PlabVersionCode=${{ inputs.version_code }} \
             -PlabVersionName=${{ inputs.version_name }}
 
-      - name: Preparar artefactos
+      - name: Preparar artefatos
         run: |
           SRC="app/build/outputs/apk/lab/release/app-lab-release.apk"
           test -f "$SRC"
@@ -68,7 +99,18 @@ jobs:
           cp -f "$SRC" "dist/orbit-${{ inputs.version_name }}.apk"
           ls -lh dist/
 
-      - name: Upload artefact (sempre — podes baixar na UI do Actions)
+      - name: Verificar assinatura (não pode ser debug)
+        run: |
+          set -euo pipefail
+          BT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          "$BT/apksigner" verify --print-certs dist/orbit.apk | tee /tmp/apk-certs.txt
+          if grep -qiE 'CN=Android Debug|OU=Android' /tmp/apk-certs.txt; then
+            echo "::error::APK ainda assinado com debug key. Secrets LAB_* ou Gradle incorretos."
+            exit 1
+          fi
+          echo "Assinatura de release OK."
+
+      - name: Upload artefato (sempre — baixe na UI do Actions)
         uses: actions/upload-artifact@v4
         with:
           name: orbit-lab-${{ inputs.version_name }}
@@ -137,7 +179,7 @@ jobs:
             echo "::error::Falta o secret ORBIT_RELEASES_TOKEN."
             echo "Cria um PAT (contents:write no NowardEthan/orbit-releases) e adiciona em:"
             echo "orbit-lab → Settings → Secrets → Actions → ORBIT_RELEASES_TOKEN"
-            echo "O APK ficou nos Artefactos deste run — podes baixar manualmente."
+            echo "O APK ficou nos Artefatos deste run — você pode baixar manualmente."
             exit 1
           fi
 
@@ -161,7 +203,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add updates-lab.json
           if git diff --staged --quiet; then
-            echo "Manifesto já estava actualizado."
+            echo "Manifesto já estava atualizado."
           else
             git commit -m "release: lab ${{ inputs.version_name }} (code ${{ inputs.version_code }})"
             git push origin main

@@ -1,25 +1,32 @@
-# OrbitLab — diretrizes (repo do lab)
+# OrbitLab — diretrizes (app de produção sideload)
 
-> Laboratório Android **nativo** (Kotlin + Jetpack Compose). Não é o app de produção.
-> Produção = [`orbit-mobile/`](../orbit-mobile/AGENTS.md) (Expo).
-> Idioma: **pt-BR** (Brasil) em UI, comentários e docs — **nunca pt-PT** (sem “ecrã”, “ficheiro”, “controlo”, “sítio”, “actual”).
+> App Android **nativo** (Kotlin + Jetpack Compose) da Luna / Orbit.
+> **Este é o cliente de produção atual** (distribuição sideload via `orbit-releases`).
+> O Expo em [`orbit-mobile/`](../orbit-mobile/) ficou em desenvolvimento / legado — não misturar.
+> Idioma: **pt-BR** (Brasil) em UI, comentários e docs — **nunca pt-PT**
+> (sem “ecrã”, “ficheiro”, “controlo”, “sítio”, “actual”).
 
 ## O que é
 
-App de experimentação de UI/shell Orbit (`com.ethan.orbitlab`), para validar telas e navegação
-em Compose **sem** tocar no `android/` versionado do Expo.
+Cliente mobile da Luna (`com.ethan.orbitlab`): chat, planos/billing, finanças, galeria,
+perfil e auto-update. Backend = **luna-core** (Railway). Canal de update =
+`updates-lab.json` no repo público `orbit-releases`.
 
 | | |
 |---|---|
 | Repo | https://github.com/NowardEthan/orbit-lab (privado) |
 | Guarda-chuva | submódulo `OrbitLab/` em `luna-workspace` |
 | Abrir | Android Studio → pasta `OrbitLab` |
+| Release | [`RELEASING.md`](RELEASING.md) · assinatura [`SIGNING.md`](SIGNING.md) · endurecimento [`HARDENING.md`](HARDENING.md) |
+| Build/CI | [`.github/workflows/build-lab.yml`](.github/workflows/build-lab.yml) · [`TESTE-UPDATE.md`](TESTE-UPDATE.md) |
 
 ## Armadilhas
 
-1. **Não misturar com `orbit-mobile`.** Mudanças de produto estáveis vão para o Expo; aqui é lab.
-2. **Não commitar** `local.properties`, APKs, nem segredos.
+1. **Não misturar com `orbit-mobile`.** Produto estável vive aqui; o Expo não é o caminho de ship.
+2. **Não commitar** `local.properties`, APKs, keystores, nem segredos.
 3. Copy de UI em **pt-BR** (Brasil). Se soar a Portugal, reescreva.
+4. **Cota / billing** são verdade no **luna-core**. Parede no app é UX; APK antiga não fura carteira.
+5. Release ainda endurecendo (signing, R8, crash, rate limit) — ver [`HARDENING.md`](HARDENING.md).
 
 ## Visual — base cinza, cor como detalhe
 
@@ -53,37 +60,41 @@ Animações via [`OrbitMotion`](app/src/main/java/com/ethan/orbitlab/ui/theme/Or
 
 ## Google Sign-In (Firebase)
 
-O Lab usa o projeto Firebase **`luna-8787d`** (mesmo do mobile), com
-`WEB_CLIENT_ID` em `data/firebase/FirebaseBootstrap.kt`. O botão Google usa
-Credential Manager (`GetSignInWithGoogleOption`).
+Projeto Firebase **`luna-8787d`**, com `WEB_CLIENT_ID` em
+`data/firebase/FirebaseBootstrap.kt`. O botão Google usa Credential Manager
+(`GetSignInWithGoogleOption`).
 
-**Package do Lab:** `com.ethan.orbitlab` (≠ `com.luna.orbitmobile` do Expo).
+**Package:** `com.ethan.orbitlab` (≠ `com.luna.orbitmobile` do Expo).
 
-Se o login diz «cancelado» sem o utilizador cancelar, falta o **cliente OAuth Android**
-para este package + SHA-1 do `app/debug.keystore`:
+Se o login diz «cancelado» sem o usuário cancelar, falta o **cliente OAuth Android**
+para este package + fingerprint do keystore em uso.
+
+### SHA-1 do debug (dev / builds atuais com debug key)
 
 ```
 SHA-1: 5E:8F:16:06:2E:A3:CD:2C:4A:0D:54:78:76:BA:A6:F3:8C:AB:F6:25
 ```
 
-Passos (Ethan, consola):
+Passos (Ethan, console):
 
-1. [Firebase](https://console.firebase.google.com/) → `luna-8787d` → ⚙ Project settings  
-2. **Add app** → Android → package `com.ethan.orbitlab`  
-   (ou, na app Android já existente, **Add fingerprint**)  
-3. Cola o SHA-1 acima (e o SHA-256 se pedir)  
-4. Em Google Cloud → APIs & Services → Credentials: confirma que existe
-   OAuth client tipo **Android** com esse package + SHA-1  
-5. Espera 5–10 min a propagar e tenta de novo no telemóvel
+1. [Firebase](https://console.firebase.google.com/) → `luna-8787d` → ⚙ Project settings
+2. App Android `com.ethan.orbitlab` → **Add fingerprint**
+3. Cola o SHA-1 (e o SHA-256 se pedir)
+4. Em Google Cloud → APIs & Services → Credentials: confirma OAuth client tipo **Android**
+   com esse package + SHA-1
+5. Espera 5–10 min e tenta de novo no celular
 
-O `WEB_CLIENT_ID` (tipo Web) **não muda** — continua o que está no código.
+Quando existir **keystore de release** (Fase 1 do hardening), cadastrar também o SHA-1/256
+dessa chave — senão o Google login quebra só no APK de produção.
 
-## Latência (bench PAIA vs OpenRouter)
+O `WEB_CLIENT_ID` (tipo Web) **não muda**.
+
+## Latência (bench)
 
 Harness CLI no guarda-chuva: [`scripts/bench-luna-latencia/`](../scripts/bench-luna-latencia/README.md).
 
-No dispositivo, cada turno regista no Logcat (`OrbitLatencia`) via
-`data/latencia/LatenciaProbe` — caminhos `openrouter_direct`, `paia_json` e `paia_stream`.
+No dispositivo, cada turno registra no Logcat (`OrbitLatencia`) via
+`data/latencia/LatenciaProbe`.
 
 ```bash
 adb logcat -s OrbitLatencia
@@ -94,16 +105,8 @@ adb logcat -s OrbitLatencia
 ```
 app/src/main/java/com/ethan/orbitlab/
   shell/     # OrbitShell + navegação
-  ui/        # telas
-  data/      # repositórios
+  ui/        # telas (início, chat, finanças, planos, …)
+  data/      # repositórios (auth, luna-api, billing, finanças, updates)
   demo/      # fixtures de demo
   ui/theme/  # OrbitTokens + OrbitFills + OrbitMetrics + OrbitMotion
 ```
-
-
-## Rotina (MVP local)
-
-Tela completa em `ui/rotina/` — chips Normal/alternativas, cartão Agora, dias,
-lista com buracos, detalhe Hoje/Fixas. Dados em `RotinaRepository` (memória).
-
-Ainda stub: alarme nativo, painel Agora, chat Luna do bloco, Firestore.
