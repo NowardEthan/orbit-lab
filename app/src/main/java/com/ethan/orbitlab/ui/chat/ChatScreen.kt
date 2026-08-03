@@ -1221,14 +1221,7 @@ private fun MessageBubble(
                 LunaImagemGeradaLista(
                     imagens = msg.imagensGeradas,
                     modifier = Modifier.align(Alignment.Start),
-                    onRegerarAspecto = { aspectoLabel, aspectoRatio ->
-                        val ref = referenciaAoPuxar(msg, historico)
-                        onSend(
-                            "Refaz esta imagem no formato $aspectoLabel ($aspectoRatio), mantendo a mesma cena e estilo.",
-                            emptyList(),
-                            ref,
-                        )
-                    },
+                    onRegerarAspecto = onRegerarAspecto,
                 )
                 if (temTexto) Spacer(Modifier.height(8.dp))
             }

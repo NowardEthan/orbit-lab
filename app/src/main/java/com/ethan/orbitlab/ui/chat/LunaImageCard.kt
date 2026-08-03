@@ -10,6 +10,8 @@ import android.provider.MediaStore
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -181,14 +183,15 @@ private fun LunaImageCard(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
                     .padding(horizontal = 2.dp),
                 horizontalArrangement = Arrangement.spacedBy(5.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                AspectoChip(label = "16:9", emoji = "📺", onClick = { onRegerarAspecto("widescreen 16:9", "16:9") })
-                AspectoChip(label = "9:16", emoji = "📱", onClick = { onRegerarAspecto("vertical 9:16", "9:16") })
-                AspectoChip(label = "1:1", emoji = "🔲", onClick = { onRegerarAspecto("quadrado 1:1", "1:1") })
-                AspectoChip(label = "21:9", emoji = "🖼️", onClick = { onRegerarAspecto("ultrawide 21:9", "21:9") })
+                AspectoChip(label = "16:9", emoji = "📺", onClick = { onRegerarAspecto?.invoke("widescreen 16:9", "16:9") })
+                AspectoChip(label = "9:16", emoji = "📱", onClick = { onRegerarAspecto?.invoke("vertical 9:16", "9:16") })
+                AspectoChip(label = "1:1", emoji = "🔲", onClick = { onRegerarAspecto?.invoke("quadrado 1:1", "1:1") })
+                AspectoChip(label = "21:9", emoji = "🖼️", onClick = { onRegerarAspecto?.invoke("ultrawide 21:9", "21:9") })
             }
         }
     }
