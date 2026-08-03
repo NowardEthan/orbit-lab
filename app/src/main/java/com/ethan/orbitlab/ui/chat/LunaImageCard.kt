@@ -65,6 +65,7 @@ import java.util.concurrent.TimeUnit
 fun LunaImagemGeradaLista(
     imagens: List<ImagemGerada>,
     modifier: Modifier = Modifier,
+    onRegerarAspecto: ((aspectoLabel: String, aspectoRatio: String) -> Unit)? = null,
 ) {
     if (imagens.isEmpty()) return
     Column(
@@ -72,7 +73,10 @@ fun LunaImagemGeradaLista(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         imagens.forEach { imagem ->
-            LunaImageCard(imagem = imagem)
+            LunaImageCard(
+                imagem = imagem,
+                onRegerarAspecto = onRegerarAspecto,
+            )
         }
     }
 }
@@ -81,6 +85,7 @@ fun LunaImagemGeradaLista(
 private fun LunaImageCard(
     imagem: ImagemGerada,
     modifier: Modifier = Modifier,
+    onRegerarAspecto: ((aspectoLabel: String, aspectoRatio: String) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -88,85 +93,103 @@ private fun LunaImageCard(
     var salvando by remember { mutableStateOf(false) }
 
     val forma = RoundedCornerShape(18.dp)
-    // Card imersivo: só a imagem, cantos arredondados, com uma etiqueta discreta da Luna
-    // sobreposta no rodapé. As ações (salvar/compartilhar) moram no visualizador em tela cheia,
-    // que abre ao tocar.
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(forma)
-            .border(1.dp, OrbitTokens.borderSoft, forma)
-            .orbitPressable(onClick = { visualizando = true }),
-    ) {
-        SubcomposeAsyncImage(
-            model = ImageRequest.Builder(context)
-                .data(imagem.url)
-                .crossfade(true)
-                .build(),
-            contentDescription = imagem.prompt.ifBlank { "Imagem gerada pela Luna" },
-            contentScale = ContentScale.FillWidth,
-            loading = {
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 200.dp)
-                        .background(OrbitTokens.surfaceRaised),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator(
-                        color = OrbitTokens.accentText,
-                        strokeWidth = 2.dp,
-                        modifier = Modifier.size(26.dp),
-                    )
-                }
-            },
-            error = {
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 120.dp)
-                        .background(OrbitTokens.surfaceRaised),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        "não consegui carregar a imagem",
-                        color = OrbitTokens.textMid,
-                        fontSize = 13.sp,
-                    )
-                }
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 120.dp),
-        )
 
-        // Rodapé discreto: um véu escuro degradê só na base pra a etiqueta ler em qualquer imagem.
-        Row(
+    Column(
+        modifier = modifier.widthIn(max = 300.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Box(
             modifier = Modifier
-                .align(Alignment.BottomStart)
                 .fillMaxWidth()
-                .background(
-                    Brush.verticalGradient(
-                        0f to Color.Transparent,
-                        1f to Color.Black.copy(alpha = 0.45f),
-                    ),
-                )
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
+                .clip(forma)
+                .border(1.dp, OrbitTokens.borderSoft, forma)
+                .orbitPressable(onClick = { visualizando = true }),
         ) {
-            Icon(
-                Icons.Rounded.AutoAwesome,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(12.dp),
+            SubcomposeAsyncImage(
+                model = ImageRequest.Builder(context)
+                    .data(imagem.url)
+                    .crossfade(true)
+                    .build(),
+                contentDescription = imagem.prompt.ifBlank { "Imagem gerada pela Luna" },
+                contentScale = ContentScale.FillWidth,
+                loading = {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 200.dp)
+                            .background(OrbitTokens.surfaceRaised),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator(
+                            color = OrbitTokens.accentText,
+                            strokeWidth = 2.dp,
+                            modifier = Modifier.size(26.dp),
+                        )
+                    }
+                },
+                error = {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 120.dp)
+                            .background(OrbitTokens.surfaceRaised),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            "não consegui carregar a imagem",
+                            color = OrbitTokens.textMid,
+                            fontSize = 13.sp,
+                        )
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 120.dp),
             )
-            Spacer(Modifier.width(5.dp))
-            Text(
-                "Desenhada pela Luna",
-                color = Color.White,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold,
-            )
+
+            // Rodapé discreto: um véu escuro degradê só na base pra a etiqueta ler em qualquer imagem.
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth()
+                    .background(
+                        Brush.verticalGradient(
+                            0f to Color.Transparent,
+                            1f to Color.Black.copy(alpha = 0.45f),
+                        ),
+                    )
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Rounded.AutoAwesome,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(12.dp),
+                )
+                Spacer(Modifier.width(5.dp))
+                Text(
+                    "Desenhada pela Luna",
+                    color = Color.White,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
+
+        if (onRegerarAspecto != null) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                AspectoChip(label = "16:9", emoji = "📺", onClick = { onRegerarAspecto("widescreen 16:9", "16:9") })
+                AspectoChip(label = "9:16", emoji = "📱", onClick = { onRegerarAspecto("vertical 9:16", "9:16") })
+                AspectoChip(label = "1:1", emoji = "🔲", onClick = { onRegerarAspecto("quadrado 1:1", "1:1") })
+                AspectoChip(label = "21:9", emoji = "🖼️", onClick = { onRegerarAspecto("ultrawide 21:9", "21:9") })
+            }
         }
     }
 
@@ -307,5 +330,35 @@ object ImagemGeradaIO {
             )
             true
         }.getOrDefault(false)
+    }
+}
+
+@Composable
+private fun AspectoChip(
+    label: String,
+    emoji: String,
+    onClick: () -> Unit,
+) {
+    val forma = RoundedCornerShape(12.dp)
+    Row(
+        modifier = Modifier
+            .clip(forma)
+            .background(OrbitTokens.graphiteRaised)
+            .border(1.dp, OrbitTokens.borderSoft, forma)
+            .orbitPressable(onClick = onClick)
+            .padding(horizontal = 7.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = emoji,
+            fontSize = 10.sp,
+        )
+        Spacer(Modifier.width(3.dp))
+        Text(
+            text = label,
+            color = OrbitTokens.textMid,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
     }
 }

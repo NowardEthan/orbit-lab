@@ -75,8 +75,8 @@ android {
         applicationId = "com.ethan.orbitlab"
         minSdk = 24
         targetSdk = 36
-        versionCode = 72
-        versionName = "0.21.0"
+        versionCode = 81
+        versionName = "0.26.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -104,8 +104,8 @@ android {
         create("lab") {
             dimension = "canal"
             applicationId = "com.ethan.orbitlab"
-            versionCode = (findProperty("labVersionCode") as String?)?.toIntOrNull() ?: 4
-            versionName = (findProperty("labVersionName") as String?) ?: "0.5.0"
+            versionCode = (findProperty("labVersionCode") as String?)?.toIntOrNull() ?: 82
+            versionName = (findProperty("labVersionName") as String?) ?: "0.27.0"
         }
     }
 

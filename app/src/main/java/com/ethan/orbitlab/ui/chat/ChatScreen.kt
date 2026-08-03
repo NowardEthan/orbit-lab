@@ -448,6 +448,14 @@ fun ChatScreen(
                             haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         }
                     },
+                    onRegerarAspecto = { msg, aspectoLabel, aspectoRatio ->
+                        val ref = referenciaAoPuxar(msg, historico)
+                        onSend(
+                            "Refaz esta imagem no formato $aspectoLabel ($aspectoRatio), mantendo a mesma cena e estilo.",
+                            emptyList(),
+                            ref,
+                        )
+                    },
                 )
 
                 // Acesso flutuante à estante — só aparece quando há artefato nesta conversa.
@@ -731,6 +739,7 @@ private fun ChatTimeline(
     onMessageLongPress: (Mensagem) -> Unit = {},
     onReferenciarMedia: (Mensagem, ComposerAttachment) -> Unit = { _, _ -> },
     onReferenciarPorSwipe: (Mensagem) -> Unit = {},
+    onRegerarAspecto: (Mensagem, String, String) -> Unit = { _, _, _ -> },
     pergunta: PerguntaLuna? = null,
     onResponderPergunta: (String) -> Unit = {},
 ) {
@@ -926,6 +935,9 @@ private fun ChatTimeline(
                             animarEntrada = index == mensagensVisiveis.lastIndex,
                             onLongPress = { onMessageLongPress(msg) },
                             onReferenciarMedia = { att -> onReferenciarMedia(msg, att) },
+                            onRegerarAspecto = { aspectoLabel, aspectoRatio ->
+                                onRegerarAspecto(msg, aspectoLabel, aspectoRatio)
+                            },
                         )
                     }
                 }
@@ -1102,6 +1114,7 @@ private fun MessageBubble(
     animarEntrada: Boolean = false,
     onLongPress: () -> Unit = {},
     onReferenciarMedia: (ComposerAttachment) -> Unit = {},
+    onRegerarAspecto: (aspectoLabel: String, aspectoRatio: String) -> Unit = { _, _ -> },
 ) {
     val shape = if (msg.isLuna) {
         RoundedCornerShape(
@@ -1208,6 +1221,14 @@ private fun MessageBubble(
                 LunaImagemGeradaLista(
                     imagens = msg.imagensGeradas,
                     modifier = Modifier.align(Alignment.Start),
+                    onRegerarAspecto = { aspectoLabel, aspectoRatio ->
+                        val ref = referenciaAoPuxar(msg, historico)
+                        onSend(
+                            "Refaz esta imagem no formato $aspectoLabel ($aspectoRatio), mantendo a mesma cena e estilo.",
+                            emptyList(),
+                            ref,
+                        )
+                    },
                 )
                 if (temTexto) Spacer(Modifier.height(8.dp))
             }
