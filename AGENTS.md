@@ -17,7 +17,7 @@ perfil e auto-update. Backend = **luna-core** (Railway). Canal de update =
 | Repo | https://github.com/NowardEthan/orbit-lab (privado) |
 | Guarda-chuva | submódulo `OrbitLab/` em `luna-workspace` |
 | Abrir | Android Studio → pasta `OrbitLab` |
-| Release | [`RELEASING.md`](RELEASING.md) · endurecimento [`HARDENING.md`](HARDENING.md) |
+| Release | [`RELEASING.md`](RELEASING.md) · assinatura [`SIGNING.md`](SIGNING.md) · endurecimento [`HARDENING.md`](HARDENING.md) |
 | Build/CI | [`.github/workflows/build-lab.yml`](.github/workflows/build-lab.yml) · [`TESTE-UPDATE.md`](TESTE-UPDATE.md) |
 
 ## Armadilhas

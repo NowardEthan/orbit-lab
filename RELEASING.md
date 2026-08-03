@@ -41,8 +41,12 @@ manual no `orbit-releases` (tag `lab` + commit do `updates-lab.json`).
 # APK: app/build/outputs/apk/lab/release/
 ```
 
-Hoje o `labRelease` ainda assina com a **debug key** (mudança planejada na Fase 1
-do [`HARDENING.md`](HARDENING.md)).
+Assinatura: com `keystore.properties` / secrets `LAB_*`, o `labRelease` usa a
+**release key**. Sem isso, build local cai na debug key (aviso no Gradle).
+No CI a release key é **obrigatória** — ver [`SIGNING.md`](SIGNING.md).
+
+**Migração:** a primeira APK com release key não atualiza por cima de builds
+assinados com debug — desinstalar e reinstalar uma vez em cada aparelho.
 
 ## O que NÃO fazer
 

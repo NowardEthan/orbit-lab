@@ -17,3 +17,10 @@ archives/
 dist/
 .env
 .env.local
+
+# Assinatura de release (Fase 1) — nunca commitar
+keystore.properties
+*.jks
+*-release.keystore
+orbit-lab-release.keystore
+/app/orbit-lab-release.keystore

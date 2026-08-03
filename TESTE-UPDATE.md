@@ -15,7 +15,8 @@ Detalhes de cadência: [`RELEASING.md`](RELEASING.md). Endurecimento: [`HARDENIN
    → nome: `ORBIT_RELEASES_TOKEN`  
    → valor: o PAT
 
-(Na Fase 1 do hardening entram secrets extras da keystore de release.)
+Secrets da keystore de release (obrigatórios no CI): ver [`SIGNING.md`](SIGNING.md)
+(`LAB_KEYSTORE_BASE64`, `LAB_KEYSTORE_PASSWORD`, `LAB_KEY_ALIAS`, `LAB_KEY_PASSWORD`).
 
 ## 2. Rodar o build
 
@@ -49,9 +50,9 @@ https://github.com/NowardEthan/orbit-releases/releases/tag/lab
 O workflow ainda **builda** e deixa o APK nos Artefatos. Aí você baixa no PC e
 publica manual no `orbit-releases` (tag `lab` + commit do `updates-lab.json`).
 
-## Assinatura (hoje vs depois)
+## Assinatura
 
-- **Hoje:** `labRelease` usa a debug key — updates in-place funcionam entre builds
-  assinados com a mesma debug key.
-- **Fase 1:** troca para keystore de release. Aparelhos com APK debug **precisam
-  desinstalar e reinstalar uma vez**; depois os updates voltam a encadear.
+- **CI:** sempre assina com a release key (secrets `LAB_*`).
+- **Local sem keystore:** ainda pode cair na debug key (só pra dev).
+- **Migração:** aparelhos com APK antigo (debug) **desinstalam e reinstalam uma vez**
+  na primeira build release; depois o update encadeia de novo.

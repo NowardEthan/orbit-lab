@@ -14,7 +14,7 @@ Princípio: **cota e billing são verdade no servidor.** Parede no app é UX.
 | Fase | Tema | Status |
 |------|------|--------|
 | **0** | Docs: Lab = produção sideload | **feita** |
-| **1** | Signing de release + CI + SHA Firebase | pendente |
+| **1** | Signing de release + CI + SHA Firebase | **em curso** — wiring no repo; aguarda Ethan (`SIGNING.md`) |
 | **2** | Minify / R8 no `labRelease` | pendente |
 | **3** | Crash reporting (Crashlytics preferido) | pendente |
 | **4** | Rate limit no luna-core | pendente (pode paralelizar com 3) |
@@ -42,18 +42,20 @@ Signing **antes** de R8 (uma variável por release).
 
 **Problema:** `labRelease` assina com debug keystore.
 
+**Guia humano:** [`SIGNING.md`](SIGNING.md)
+
 **DoD**
 
-- [ ] Keystore de release gerada e **fora do Git** (backup seguro)
-- [ ] Secrets no GitHub Actions (`LAB_KEYSTORE_BASE64`, senhas, alias)
-- [ ] `signingConfigs.release` no Gradle; só `labRelease` usa essa chave
-- [ ] CI assina e `apksigner verify` passa
-- [ ] SHA-1/256 da release key no Firebase (`com.ethan.orbitlab`) + Google login OK no APK release
-- [ ] Nota de migração: aparelhos com APK debug **não** atualizam in-place → desinstalar/reinstalar uma vez
-- [ ] `RELEASING.md` / `TESTE-UPDATE.md` atualizados
+- [x] `signingConfigs.release` no Gradle (quando keystore/props existem)
+- [x] CI decodifica keystore, exige secrets `LAB_*`, verifica que não é debug
+- [x] `.gitignore` + `keystore.properties.example` + nota de migração
+- [ ] Keystore de release gerada e **fora do Git** (backup seguro) — Ethan
+- [ ] Secrets no GitHub Actions (`LAB_KEYSTORE_BASE64`, senhas, alias) — Ethan
+- [ ] SHA-1/256 da release key no Firebase (`com.ethan.orbitlab`) — Ethan
+- [ ] CI verde com `apksigner verify` + Google login OK no APK release
+- [ ] Primeira publish com release key + aviso de desinstalar/reinstalar no grupo
 
-**Humano (Ethan):** gerar keystore, guardar senhas, criar secrets, colar SHA no Firebase.  
-O agente ensina o passo a passo na hora.
+**Humano (Ethan):** passos 1–6 de `SIGNING.md`. Depois avisar “secrets prontos”.
 
 ---
 
