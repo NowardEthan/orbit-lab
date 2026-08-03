@@ -12,6 +12,7 @@ import com.ethan.orbitlab.ui.chat.ThreadReference
 import com.google.firebase.firestore.ListenerRegistration
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,6 +24,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import com.ethan.orbitlab.ui.chat.LunaStreamEstado
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -155,6 +157,60 @@ object ChatRepository {
     /** Escopo de app — sobrevive à tela (não usa rememberCoroutineScope). */
     fun launch(block: suspend CoroutineScope.() -> Unit) {
         scope.launch(block = block)
+    }
+
+    /**
+     * Turno da Luna em andamento por conversa — sobrevive ao leave/return do ChatScreen.
+     * Sem isto, ao voltar o auto-retry via órfã disparava um 2º HTTP com o mesmo lunaMsgId
+     * e a resposta que chegava por último sobrescrevia a outra (pior em geração de imagem).
+     */
+    private val turnosAtivos = ConcurrentHashMap<String, Job>()
+    private val streamPorConversa = ConcurrentHashMap<String, MutableStateFlow<LunaStreamEstado>>()
+    private val lunaMsgIdsEmVoo = ConcurrentHashMap<String, String>()
+
+    fun turnoEmAndamento(conversaId: String): Boolean =
+        turnosAtivos[conversaId]?.isActive == true
+
+    fun streamDaConversa(conversaId: String): StateFlow<LunaStreamEstado> =
+        streamFlowInterno(conversaId).asStateFlow()
+
+    fun lunaMsgIdEmVoo(conversaId: String): String? = lunaMsgIdsEmVoo[conversaId]
+
+    private fun streamFlowInterno(conversaId: String): MutableStateFlow<LunaStreamEstado> =
+        streamPorConversa.getOrPut(conversaId) {
+            MutableStateFlow(LunaStreamEstado.Idle)
+        }
+
+    fun publicarStream(conversaId: String, estado: LunaStreamEstado) {
+        streamFlowInterno(conversaId).value = estado
+    }
+
+    /**
+     * Lança o turno da Luna nesta conversa. Se já houver um ativo, **ignora** o 2º disparo
+     * (não cancela o primeiro — ele continua gerando fora da tela).
+     * @return false se já havia turno em andamento
+     */
+    fun launchTurno(
+        conversaId: String,
+        lunaMessageId: String?,
+        block: suspend CoroutineScope.() -> Unit,
+    ): Boolean {
+        if (turnoEmAndamento(conversaId)) return false
+        if (!lunaMessageId.isNullOrBlank()) {
+            lunaMsgIdsEmVoo[conversaId] = lunaMessageId
+        }
+        publicarStream(conversaId, LunaStreamEstado.Raciocinando(""))
+        val job = scope.launch {
+            try {
+                block()
+            } finally {
+                turnosAtivos.remove(conversaId)
+                lunaMsgIdsEmVoo.remove(conversaId)
+                publicarStream(conversaId, LunaStreamEstado.Idle)
+            }
+        }
+        turnosAtivos[conversaId] = job
+        return true
     }
 
     /** Contexto da Application — necessário pro upload de content://. */

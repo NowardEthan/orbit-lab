@@ -95,6 +95,8 @@ fun InicioScreen(
     onAbrirConversa: (String) -> Unit = {},
     onNovaConversa: () -> Unit = {},
     onNovaConversaComTexto: (String) -> Unit = {},
+    onAbrirFinancas: () -> Unit = {},
+    onAbrirEstante: () -> Unit = {},
     idleAtivo: Boolean = true,
 ) {
     val density = LocalDensity.current
@@ -149,6 +151,9 @@ fun InicioScreen(
     val nome = nomeCompleto.substringBefore(' ').ifBlank { nomeCompleto }.ifBlank { "você" }
     val saudacao = remember { saudacaoDoDia() }
     val recentes = remember(conversas) { conversas.take(5) }
+    var showcaseDismissed by remember {
+        mutableStateOf(PrefsRepository.showcaseLunaV1Dismissed)
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Transparent)) {
         InicioOrbs(idleAtivo = idleAtivo, density = density)
@@ -213,6 +218,17 @@ fun InicioScreen(
                         if (ultima != null) onAbrirConversa(ultima.id) else onNovaConversa()
                     },
                 )
+                if (!showcaseDismissed) {
+                    ShowcaseNovidadesLuna(
+                        onAbrirFinancas = onAbrirFinancas,
+                        onLunaDesenha = { onNovaConversaComTexto("Desenha algo pra mim") },
+                        onAbrirEstante = onAbrirEstante,
+                        onDismiss = {
+                            PrefsRepository.showcaseLunaV1Dismissed = true
+                            showcaseDismissed = true
+                        },
+                    )
+                }
                 ClimaSecao(
                     ativo = localizacaoAtiva,
                     local = clima,

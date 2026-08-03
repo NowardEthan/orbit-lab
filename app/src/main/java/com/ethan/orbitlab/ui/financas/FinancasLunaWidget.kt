@@ -30,12 +30,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Nightlight
@@ -55,14 +51,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ethan.orbitlab.data.ChatRepository
@@ -80,6 +71,7 @@ import com.ethan.orbitlab.ui.theme.Bricolage
 import com.ethan.orbitlab.ui.theme.OrbitTokens
 import com.ethan.orbitlab.ui.theme.orbitPressable
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.delay
 
 /**
  * Widget flutuante interativo da Luna para Finanças.
@@ -94,66 +86,80 @@ fun FinancasLunaWidget(
     modifier: Modifier = Modifier,
 ) {
     val appContext = LocalContext.current.applicationContext as Application
-    val keyboardController = LocalSoftwareKeyboardController.current
     val conversa by ChatRepository.observarConversa(conversaId).collectAsState(initial = null)
     val mensagens = conversa?.mensagens.orEmpty()
 
-    var streamState by remember { mutableStateOf<LunaStreamEstado>(LunaStreamEstado.Idle) }
-    var inputTexto by remember { mutableStateOf("") }
-    val ocioso = streamState is LunaStreamEstado.Idle
+    // Fonte da verdade do turno: ChatRepository (sincroniza com o sheet).
+    val streamState = remember { mutableStateOf<LunaStreamEstado>(LunaStreamEstado.Idle) }
+    val streamRepo by ChatRepository.streamDaConversa(conversaId).collectAsState()
+    LaunchedEffect(streamRepo) {
+        streamState.value = streamRepo
+    }
+    val ocioso = streamState.value is LunaStreamEstado.Idle &&
+        !ChatRepository.turnoEmAndamento(conversaId)
 
     val ultimasLunaMsg = remember(mensagens) {
         mensagens.lastOrNull { it.isLuna && it.texto.isNotBlank() }
     }
 
-    fun dispararResposta(
-        textoEnvio: String,
-        anexos: List<ComposerAttachment>,
-        reference: ThreadReference?,
-        historicoAntes: List<Mensagem>,
-        userMsgId: String,
-        lunaMsgId: String,
-    ) {
-        streamState = LunaStreamEstado.Raciocinando("")
-        ChatRepository.launch {
-            try {
-                val resultado = LunaApiChat.responder(
-                    context = appContext,
-                    conversaId = conversaId,
-                    historico = historicoAntes,
-                    textoUsuario = textoEnvio,
-                    anexos = anexos,
-                    reference = reference,
-                    userMessageId = userMsgId,
-                    lunaMessageId = lunaMsgId,
-                    onEstado = { streamState = it },
-                )
-                ChatRepository.enviarMensagem(
-                    conversaId = conversaId,
-                    texto = resultado.resposta,
-                    isLuna = true,
-                    reasoning = resultado.reasoning.takeIf { it.isNotBlank() && !resultado.erro },
-                    reasoningDuracao = resultado.reasoningDuracao
-                        .takeIf { it.isNotBlank() && !resultado.erro },
-                    actionRun = if (resultado.erro) null else resultado.actionRun,
-                    messageId = lunaMsgId,
-                    persistirNuvem = !resultado.erro,
-                    erro = resultado.erro,
-                )
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                ChatRepository.enviarMensagem(
-                    conversaId = conversaId,
-                    texto = "Erro no servidor Luna: ${e.message ?: e.javaClass.simpleName}",
-                    isLuna = true,
-                    messageId = lunaMsgId,
-                    persistirNuvem = false,
-                    erro = true,
-                )
-            } finally {
-                streamState = LunaStreamEstado.Idle
+    val dispararResposta = remember(conversaId, streamState, appContext) {
+        { textoEnvio: String,
+          anexos: List<ComposerAttachment>,
+          reference: ThreadReference?,
+          historicoAntes: List<Mensagem>,
+          userMsgId: String,
+          lunaMsgId: String,
+          reenvio: Boolean ->
+            streamState.value = LunaStreamEstado.Raciocinando("")
+            val onEstado: (LunaStreamEstado) -> Unit = { e ->
+                ChatRepository.publicarStream(conversaId, e)
+                streamState.value = e
             }
+            val iniciou = ChatRepository.launchTurno(conversaId, lunaMsgId) {
+                try {
+                    val resultado = LunaApiChat.responder(
+                        context = appContext,
+                        conversaId = conversaId,
+                        historico = historicoAntes,
+                        textoUsuario = textoEnvio,
+                        anexos = anexos,
+                        reference = reference,
+                        userMessageId = userMsgId,
+                        lunaMessageId = lunaMsgId,
+                        reenvio = reenvio,
+                        onEstado = onEstado,
+                    )
+                    ChatRepository.enviarMensagem(
+                        conversaId = conversaId,
+                        texto = resultado.resposta,
+                        isLuna = true,
+                        reasoning = resultado.reasoning.takeIf { it.isNotBlank() && !resultado.erro },
+                        reasoningDuracao = resultado.reasoningDuracao
+                            .takeIf { it.isNotBlank() && !resultado.erro },
+                        actionRun = if (resultado.erro) null else resultado.actionRun,
+                        messageId = lunaMsgId,
+                        persistirNuvem = !resultado.erro,
+                        erro = resultado.erro,
+                    )
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    ChatRepository.enviarMensagem(
+                        conversaId = conversaId,
+                        texto = "Erro no servidor Luna: ${e.message ?: e.javaClass.simpleName}",
+                        isLuna = true,
+                        messageId = lunaMsgId,
+                        persistirNuvem = false,
+                        erro = true,
+                    )
+                } finally {
+                    streamState.value = LunaStreamEstado.Idle
+                }
+            }
+            if (!iniciou) {
+                streamState.value = ChatRepository.streamDaConversa(conversaId).value
+            }
+            Unit
         }
     }
 
@@ -176,7 +182,60 @@ fun FinancasLunaWidget(
             attachments = anexos,
             reference = reference,
         )
-        dispararResposta(textoEnvio, anexos, reference, historicoAntes, userMsgId, lunaMsgId)
+        dispararResposta(textoEnvio, anexos, reference, historicoAntes, userMsgId, lunaMsgId, false)
+    }
+
+    val onRetry = remember(dispararResposta, conversaId) {
+        {
+            if (!ChatRepository.turnoEmAndamento(conversaId)) {
+                val msgs = ChatRepository.getConversa(conversaId)?.mensagens.orEmpty()
+                val ultima = msgs.lastOrNull()
+                if (ultima != null && streamState.value is LunaStreamEstado.Idle) {
+                    val alvo: Triple<Mensagem, List<Mensagem>, String?>? = when {
+                        !ultima.isLuna -> Triple(ultima, msgs.dropLast(1), null)
+                        ultima.erro || widgetRespostaEhErro(ultima.texto) -> {
+                            val userAntes = msgs.dropLast(1).lastOrNull { !it.isLuna }
+                            userAntes?.let { u ->
+                                val idxUser = msgs.indexOfFirst { it.id == u.id }
+                                Triple(u, msgs.subList(0, idxUser).toList(), ultima.id)
+                            }
+                        }
+                        else -> null
+                    }
+                    alvo?.let { (userMsg, historicoAntes, replyId) ->
+                        val lunaMsgId = replyId ?: lunaMessageIdForUser(userMsg.id)
+                        dispararResposta(
+                            userMsg.texto,
+                            emptyList(),
+                            userMsg.reference,
+                            historicoAntes,
+                            userMsg.id,
+                            lunaMsgId,
+                            true,
+                        )
+                    }
+                }
+            }
+            Unit
+        }
+    }
+
+    var autoRetomadoId by remember(conversaId) { mutableStateOf<String?>(null) }
+    val ultimaMsg = conversa?.mensagens?.lastOrNull()
+    LaunchedEffect(ultimaMsg?.id, ocioso) {
+        val orfa = ultimaMsg ?: return@LaunchedEffect
+        if (orfa.isLuna || !ocioso || autoRetomadoId == orfa.id) return@LaunchedEffect
+        if (ChatRepository.turnoEmAndamento(conversaId)) return@LaunchedEffect
+        if (System.currentTimeMillis() - orfa.timestamp > 30 * 60_000L) return@LaunchedEffect
+        delay(1500)
+        if (ChatRepository.turnoEmAndamento(conversaId)) return@LaunchedEffect
+        val agora = ChatRepository.getConversa(conversaId)?.mensagens?.lastOrNull()
+        if (agora == null || agora.id != orfa.id || agora.isLuna) return@LaunchedEffect
+        if (streamState.value !is LunaStreamEstado.Idle) return@LaunchedEffect
+        val lunaId = lunaMessageIdForUser(orfa.id)
+        if (ChatRepository.respostaJaChegou(conversaId, lunaId) != null) return@LaunchedEffect
+        autoRetomadoId = orfa.id
+        onRetry()
     }
 
     val sugPrompts = listOf(
@@ -328,7 +387,7 @@ fun FinancasLunaWidget(
             Spacer(Modifier.height(10.dp))
 
             // ── Área de Resposta da Luna / Streaming ──
-            val stream = streamState
+            val stream = streamState.value
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -357,6 +416,23 @@ fun FinancasLunaWidget(
                                 variante = LunaMarkdownVariante.Chat,
                             )
                         }
+                        stream is LunaStreamEstado.Pesquisando -> {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Rounded.AutoAwesome,
+                                    contentDescription = null,
+                                    tint = OrbitTokens.bluePastel,
+                                    modifier = Modifier.size(13.dp),
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    text = stream.liveLabel.ifBlank { "Usando ferramentas…" },
+                                    color = OrbitTokens.bluePastel,
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Medium,
+                                )
+                            }
+                        }
                         stream is LunaStreamEstado.Raciocinando -> {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
@@ -367,10 +443,10 @@ fun FinancasLunaWidget(
                                 )
                                 Spacer(Modifier.width(6.dp))
                                 Text(
-                                    text = if (stream.parcial.isNotBlank()) {
-                                        stream.parcial.takeLast(60)
-                                    } else {
-                                        "Analisando suas finanças…"
+                                    text = when {
+                                        stream.fase.isNotBlank() -> stream.fase
+                                        stream.parcial.isNotBlank() -> stream.parcial.takeLast(60)
+                                        else -> "Analisando suas finanças…"
                                     },
                                     color = OrbitTokens.bluePastel,
                                     fontSize = 11.5.sp,
@@ -399,19 +475,24 @@ fun FinancasLunaWidget(
             Spacer(Modifier.height(10.dp))
 
             // ── Composer Oficial do Orbit (Áudio, Anexos, Câmera, Modos e Referências) ──
-            val streamStateState = remember { mutableStateOf(streamState) }
-            LaunchedEffect(streamState) {
-                streamStateState.value = streamState
-            }
-
             ChatInputArea(
                 onSend = { texto, anexos, ref ->
                     enviar(texto, anexos, ref)
                 },
-                streamState = streamStateState,
+                streamState = streamState,
                 containerColor = OrbitTokens.graphiteRaised,
                 exibirSeletorModo = false,
             )
         }
     }
+}
+
+/** Última resposta da Luna é um erro (pra retomar sem duplicar a fala do usuário)? */
+private fun widgetRespostaEhErro(texto: String): Boolean {
+    val t = texto.trimStart()
+    return t.startsWith("Não consegui responder") ||
+        t.startsWith("Nao consegui responder") ||
+        t.startsWith("Erro ao falar") ||
+        t.startsWith("Erro ao") ||
+        t.startsWith("Erro no servidor")
 }

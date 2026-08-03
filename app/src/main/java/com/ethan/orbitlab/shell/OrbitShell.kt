@@ -297,6 +297,7 @@ fun OrbitShell() {
     val onFecharChat = remember { { chatAberto = false } }
     val onFecharNovidades = remember { { novidadesAberto = false } }
     val onAbrirEstante = remember { { abaAtual = OrbitTab.ESTANTE } }
+    val onAbrirFinancas = remember { { abaAtual = OrbitTab.FINANCAS } }
     val onNovaConversa = remember {
         {
             val newId = ChatRepository.criarConversa()
@@ -371,6 +372,7 @@ fun OrbitShell() {
             mensagemInicial = mensagemInicial,
             onMensagemInicialConsumida = { mensagemInicial = null },
             onAbrirEstante = onAbrirEstante,
+            onAbrirFinancas = onAbrirFinancas,
             onConversarComLuna = onConversarComLuna,
             onAbrirPerfil = onAbrirPerfil,
             onFecharChat = onFecharChat,
@@ -415,6 +417,7 @@ private fun ShellConteudo(
     mensagemInicial: String?,
     onMensagemInicialConsumida: () -> Unit,
     onAbrirEstante: () -> Unit,
+    onAbrirFinancas: () -> Unit,
     onConversarComLuna: () -> Unit,
     onAbrirPerfil: () -> Unit,
     onFecharChat: () -> Unit,
@@ -449,6 +452,8 @@ private fun ShellConteudo(
                                 onAbrirConversa = onOpenChat,
                                 onNovaConversa = onNovaConversa,
                                 onNovaConversaComTexto = onNovaConversaComTexto,
+                                onAbrirFinancas = onAbrirFinancas,
+                                onAbrirEstante = onAbrirEstante,
                                 idleAtivo = true,
                             )
                             OrbitTab.FINANCAS -> FinancasDashboardScreen()

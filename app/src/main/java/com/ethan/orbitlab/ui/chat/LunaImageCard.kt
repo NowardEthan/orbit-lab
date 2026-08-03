@@ -180,18 +180,53 @@ private fun LunaImageCard(
         }
 
         if (onRegerarAspecto != null) {
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 2.dp),
-                horizontalArrangement = Arrangement.spacedBy(5.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                    .padding(top = 2.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                AspectoChip(label = "16:9", emoji = "📺", onClick = { onRegerarAspecto?.invoke("widescreen 16:9", "16:9") })
-                AspectoChip(label = "9:16", emoji = "📱", onClick = { onRegerarAspecto?.invoke("vertical 9:16", "9:16") })
-                AspectoChip(label = "1:1", emoji = "🔲", onClick = { onRegerarAspecto?.invoke("quadrado 1:1", "1:1") })
-                AspectoChip(label = "21:9", emoji = "🖼️", onClick = { onRegerarAspecto?.invoke("ultrawide 21:9", "21:9") })
+                Text(
+                    "Refazer na proporção",
+                    color = OrbitTokens.textLowN,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    letterSpacing = 0.2.sp,
+                    modifier = Modifier.padding(horizontal = 2.dp),
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    AspectoChip(
+                        label = "16:9",
+                        ratioW = 16f,
+                        ratioH = 9f,
+                        onClick = { onRegerarAspecto("widescreen 16:9", "16:9") },
+                    )
+                    AspectoChip(
+                        label = "9:16",
+                        ratioW = 9f,
+                        ratioH = 16f,
+                        onClick = { onRegerarAspecto("vertical 9:16", "9:16") },
+                    )
+                    AspectoChip(
+                        label = "1:1",
+                        ratioW = 1f,
+                        ratioH = 1f,
+                        onClick = { onRegerarAspecto("quadrado 1:1", "1:1") },
+                    )
+                    AspectoChip(
+                        label = "21:9",
+                        ratioW = 21f,
+                        ratioH = 9f,
+                        onClick = { onRegerarAspecto("ultrawide 21:9", "21:9") },
+                    )
+                }
             }
         }
     }
@@ -339,7 +374,8 @@ object ImagemGeradaIO {
 @Composable
 private fun AspectoChip(
     label: String,
-    emoji: String,
+    ratioW: Float,
+    ratioH: Float,
     onClick: () -> Unit,
 ) {
     val forma = RoundedCornerShape(12.dp)
@@ -347,21 +383,40 @@ private fun AspectoChip(
         modifier = Modifier
             .clip(forma)
             .background(OrbitTokens.graphiteRaised)
-            .border(1.dp, OrbitTokens.borderSoft, forma)
+            .border(1.dp, OrbitTokens.graphiteHair, forma)
             .orbitPressable(onClick = onClick)
-            .padding(horizontal = 7.dp, vertical = 4.dp),
+            .padding(horizontal = 10.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(
-            text = emoji,
-            fontSize = 10.sp,
-        )
-        Spacer(Modifier.width(3.dp))
+        AspectoGlifo(ratioW = ratioW, ratioH = ratioH)
         Text(
             text = label,
-            color = OrbitTokens.textMid,
-            fontSize = 10.sp,
+            color = OrbitTokens.textMidN,
+            fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
         )
     }
+}
+
+/** Miniatura geométrica da proporção — substitui emoji, lê como controle de layout. */
+@Composable
+private fun AspectoGlifo(
+    ratioW: Float,
+    ratioH: Float,
+    modifier: Modifier = Modifier,
+) {
+    val maxPx = 14.dp
+    val (w, h) = if (ratioW >= ratioH) {
+        maxPx to (maxPx * (ratioH / ratioW)).coerceAtLeast(5.dp)
+    } else {
+        (maxPx * (ratioW / ratioH)).coerceAtLeast(5.dp) to maxPx
+    }
+    Box(
+        modifier
+            .size(width = w, height = h)
+            .clip(RoundedCornerShape(2.dp))
+            .border(1.dp, OrbitTokens.bluePastel.copy(alpha = 0.85f), RoundedCornerShape(2.dp))
+            .background(OrbitTokens.bluePastel.copy(alpha = 0.12f)),
+    )
 }

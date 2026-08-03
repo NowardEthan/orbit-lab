@@ -142,6 +142,11 @@ object LunaApiChat {
         // da sessão. Sem isto, a fala antiga sobrevive na memória quente e a Luna diz que
         // você «já mandou isso». Só o reenvio liga — o turno normal confia no buffer do servidor.
         reenvio: Boolean = false,
+        /**
+         * Texto rico só pro modelo (instruções de ferramenta, etc.). O balão do chat e o
+         * `displayMessage` usam [textoUsuario]; se null, os dois são iguais.
+         */
+        textoParaModelo: String? = null,
         onEstado: (LunaStreamEstado) -> Unit,
     ): LunaStreamResultado {
         if (!LunaApiConfig.isConfigured()) {
@@ -185,9 +190,10 @@ object LunaApiChat {
         val modoAgentico = PrefsRepository.modoAgentico.value || conversaFinancas
 
         val displayMessage = textoUsuario.trim()
+        val textoModelo = (textoParaModelo?.trim()?.takeIf { it.isNotEmpty() } ?: displayMessage)
         val message = when {
-            reference != null -> formatMessageWithReference(displayMessage, reference)
-            else -> displayMessage
+            reference != null -> formatMessageWithReference(textoModelo, reference)
+            else -> textoModelo
         }.ifBlank {
             if (anexos.isNotEmpty()) "Veja os anexos." else "Oi"
         }
