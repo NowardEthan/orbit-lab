@@ -160,7 +160,8 @@ keyPassword=SUA_SENHA_DA_CHAVE
 Salve e rode:
 
 ```powershell
-.\gradlew :app:assembleLabRelease -PlabVersionCode=91 -PlabVersionName=0.30.4
+# No PowerShell, aspas nos -P (senão o 0.30.4 vira "tarefa .30.4" e falha)
+.\gradlew :app:assembleLabRelease "-PlabVersionCode=91" "-PlabVersionName=0.30.4"
 ```
 
 No log do Gradle **não** deve aparecer o aviso de “assinando com debug”.  
