@@ -272,26 +272,33 @@ fun ChatScreen(
                             onEstado = onEstado,
                         )
                     }
-                    ChatRepository.enviarMensagem(
-                        conversaId = conversaId,
-                        texto = resultado.resposta,
-                        isLuna = true,
-                        reasoning = resultado.reasoning.takeIf { it.isNotBlank() && !resultado.erro },
-                        reasoningDuracao = resultado.reasoningDuracao.takeIf { it.isNotBlank() && !resultado.erro },
-                        actionRun = if (resultado.erro) null else resultado.actionRun,
-                        imagensGeradas = if (resultado.erro) emptyList() else resultado.imagensGeradas,
-                        // Reusa o id (substitui um balão de erro no lugar) ou gera novo (anexa).
-                        messageId = lunaMsgId,
-                        // Erro = aviso local: não vai pra nuvem nem vira memória; some no retry.
-                        persistirNuvem = !resultado.erro,
-                        erro = resultado.erro,
-                    )
-                    // Ela perguntou algo? Acende o cartão de opções sob a bolha dela.
-                    perguntaAtiva.value = if (resultado.erro) null else resultado.pergunta
-                    // Deu certo → a Luna rebatiza a conversa pelo assunto atual (no 1º par
-                    // e a cada 6 turnos). Barato e à parte; não trava a resposta.
-                    if (!resultado.erro) {
-                        ChatRepository.talvezRenomearPelaLuna(conversaId)
+                    if (resultado.cotaEsgotada) {
+                        // Cota esgotada: a parede graciosa (acima do composer) já dá o recado.
+                        // Não cria balão de erro nem persiste — a fala do usuário fica pra retomar
+                        // quando a carteira renovar.
+                        perguntaAtiva.value = null
+                    } else {
+                        ChatRepository.enviarMensagem(
+                            conversaId = conversaId,
+                            texto = resultado.resposta,
+                            isLuna = true,
+                            reasoning = resultado.reasoning.takeIf { it.isNotBlank() && !resultado.erro },
+                            reasoningDuracao = resultado.reasoningDuracao.takeIf { it.isNotBlank() && !resultado.erro },
+                            actionRun = if (resultado.erro) null else resultado.actionRun,
+                            imagensGeradas = if (resultado.erro) emptyList() else resultado.imagensGeradas,
+                            // Reusa o id (substitui um balão de erro no lugar) ou gera novo (anexa).
+                            messageId = lunaMsgId,
+                            // Erro = aviso local: não vai pra nuvem nem vira memória; some no retry.
+                            persistirNuvem = !resultado.erro,
+                            erro = resultado.erro,
+                        )
+                        // Ela perguntou algo? Acende o cartão de opções sob a bolha dela.
+                        perguntaAtiva.value = if (resultado.erro) null else resultado.pergunta
+                        // Deu certo → a Luna rebatiza a conversa pelo assunto atual (no 1º par
+                        // e a cada 6 turnos). Barato e à parte; não trava a resposta.
+                        if (!resultado.erro) {
+                            ChatRepository.talvezRenomearPelaLuna(conversaId)
+                        }
                     }
                 } catch (e: CancellationException) {
                     throw e
@@ -521,15 +528,27 @@ fun ChatScreen(
                 }
             }
 
-            ChatInputArea(
-                streamState = streamState,
-                messageReference = messageReference,
-                onClearReference = { messageReference = null },
-                onSend = { texto, anexos, ref ->
-                    onSend(texto, anexos, ref)
-                    messageReference = null
-                },
-            )
+            // Parede graciosa: quando o servidor recusa por cota (429), o composer some
+            // e entra o cartão "a lua recolheu" com CTA pros planos, acima da barra de envio.
+            val cotaBloqueada by com.ethan.orbitlab.data.billing.UsageRepository.bloqueado.collectAsState()
+            val usageCota by com.ethan.orbitlab.data.billing.UsageRepository.usage.collectAsState()
+            if (cotaBloqueada) {
+                com.ethan.orbitlab.ui.planos.LimiteAtingidoCard(
+                    usage = usageCota,
+                    onVerPlanos = { com.ethan.orbitlab.data.billing.PlanosNav.abrir() },
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                )
+            } else {
+                ChatInputArea(
+                    streamState = streamState,
+                    messageReference = messageReference,
+                    onClearReference = { messageReference = null },
+                    onSend = { texto, anexos, ref ->
+                        onSend(texto, anexos, ref)
+                        messageReference = null
+                    },
+                )
+            }
         }
 
         BuscaConversaOverlay(

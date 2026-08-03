@@ -76,6 +76,8 @@ data class LunaStreamResultado(
     val pergunta: PerguntaLuna? = null,
     /** true = a "resposta" é um aviso de falha, não fala real da Luna (não persistir/nem virar memória). */
     val erro: Boolean = false,
+    /** true = o turno foi recusado por cota (429 quota_exceeded) — a parede graciosa cuida do aviso; não pintar balão. */
+    val cotaEsgotada: Boolean = false,
 )
 
 suspend fun executarStreamLuna(
