@@ -22,6 +22,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Remove
@@ -50,6 +51,11 @@ import com.ethan.orbitlab.data.billing.PlanConfig
 import com.ethan.orbitlab.data.billing.PlanFeature
 import com.ethan.orbitlab.data.billing.PlanId
 import com.ethan.orbitlab.data.billing.UsageRepository
+import com.ethan.orbitlab.data.billing.UsageSnapshot
+import com.ethan.orbitlab.data.billing.CUSTO_MINIMO_CHAT
+import com.ethan.orbitlab.data.billing.formatarReset
+import com.ethan.orbitlab.data.billing.formatarTokens
+import com.ethan.orbitlab.data.billing.planoPorId
 import androidx.compose.runtime.collectAsState
 import com.ethan.orbitlab.ui.theme.Bricolage
 import com.ethan.orbitlab.ui.theme.OrbitFills
@@ -98,7 +104,10 @@ fun PlanosScreen() {
             fontWeight = FontWeight.SemiBold,
             letterSpacing = (-0.4).sp,
         )
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(16.dp))
+        CartaoUsoAtual(usage)
+
+        Spacer(Modifier.height(24.dp))
         Text(
             "Escolha o fôlego que combina com seu uso. A conversa é barata e generosa; " +
                 "gerar imagem e pesquisa profunda pesam mais na carteira.",
@@ -192,6 +201,175 @@ fun PlanosScreen() {
 
 private fun toast(context: android.content.Context, msg: String) {
     Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+}
+
+/**
+ * "Seu uso agora" — o retrato dos limites atuais, no topo dos Planos. Mostra o
+ * saldo da janela de 5 h (o que aperta no dia a dia) e o da semana, traduzido em
+ * "conversas". É a tela que o medidor da gaveta abre: aqui você vê onde está.
+ */
+@Composable
+private fun CartaoUsoAtual(usage: UsageSnapshot) {
+    val plano = planoPorId(usage.planId)
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(OrbitTokens.graphiteSurf)
+            .border(1.dp, OrbitTokens.graphiteHair, RoundedCornerShape(18.dp))
+            .padding(16.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "SEU USO AGORA",
+                color = OrbitTokens.textLowN,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 1.2.sp,
+            )
+            Spacer(Modifier.weight(1f))
+            Selo(plano.nome, OrbitTokens.graphiteRaised, OrbitTokens.bluePastel)
+        }
+
+        when {
+            usage.loading -> {
+                Spacer(Modifier.height(14.dp))
+                Text(
+                    "Carregando seu saldo…",
+                    color = OrbitTokens.textMidN,
+                    fontSize = 13.5.sp,
+                )
+            }
+
+            usage.ilimitado -> {
+                Spacer(Modifier.height(12.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Rounded.AutoAwesome,
+                        contentDescription = null,
+                        tint = OrbitTokens.bluePastel,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "Ilimitado",
+                        color = OrbitTokens.textHiN,
+                        fontSize = 24.sp,
+                        fontFamily = Bricolage,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Sua carteira não tem teto — pode usar à vontade.",
+                    color = OrbitTokens.textMidN,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
+                )
+            }
+
+            else -> {
+                val restantes = usage.remainingTokens ?: 0L
+                Spacer(Modifier.height(12.dp))
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(
+                        formatarTokens(restantes),
+                        color = OrbitTokens.textHiN,
+                        fontSize = 30.sp,
+                        fontFamily = Bricolage,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "restantes",
+                        color = OrbitTokens.textMidN,
+                        fontSize = 14.sp,
+                        modifier = Modifier.padding(bottom = 4.dp),
+                    )
+                }
+                val conversas = (restantes / CUSTO_MINIMO_CHAT).toInt()
+                if (conversas > 0) {
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        "≈ $conversas ${if (conversas == 1) "conversa" else "conversas"} de bate-papo",
+                        color = OrbitTokens.bluePastel,
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+
+                Spacer(Modifier.height(16.dp))
+                LinhaLimite(
+                    rotulo = "Nesta janela de ${usage.windowHours ?: 5} h",
+                    usados = usage.usedTokens,
+                    teto = usage.windowTokenLimit ?: 0L,
+                    restantes = restantes,
+                    resetsAtMs = usage.resetsAtMs,
+                )
+
+                usage.weeklyTokens?.let { semana ->
+                    Spacer(Modifier.height(14.dp))
+                    LinhaLimite(
+                        rotulo = "Nesta semana",
+                        usados = semana.used,
+                        teto = semana.limit,
+                        restantes = semana.remaining,
+                        resetsAtMs = semana.resetsAtMs,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Uma barra de saldo rotulada: "rótulo · usados de teto · renova em Y". */
+@Composable
+private fun LinhaLimite(
+    rotulo: String,
+    usados: Long,
+    teto: Long,
+    restantes: Long,
+    resetsAtMs: Long?,
+) {
+    val saldoFrac = if (teto > 0L) (restantes.toFloat() / teto.toFloat()).coerceIn(0f, 1f) else 0f
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            rotulo,
+            color = OrbitTokens.textMidN,
+            fontSize = 12.5.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Spacer(Modifier.weight(1f))
+        Text(
+            "${formatarTokens(usados)} de ${formatarTokens(teto)}",
+            color = OrbitTokens.textLowN,
+            fontSize = 12.sp,
+        )
+    }
+    Spacer(Modifier.height(7.dp))
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(6.dp)
+            .clip(RoundedCornerShape(99.dp))
+            .background(OrbitTokens.graphiteRaised),
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth(saldoFrac)
+                .height(6.dp)
+                .clip(RoundedCornerShape(99.dp))
+                .background(if (saldoFrac <= 0.12f) OrbitTokens.warning else OrbitTokens.bluePastel),
+        )
+    }
+    if (resetsAtMs != null && saldoFrac < 1f) {
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "renova ${formatarReset(resetsAtMs - System.currentTimeMillis())}",
+            color = OrbitTokens.textLowN,
+            fontSize = 11.5.sp,
+        )
+    }
 }
 
 @Composable
