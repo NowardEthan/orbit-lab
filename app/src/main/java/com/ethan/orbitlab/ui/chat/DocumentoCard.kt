@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -481,11 +482,14 @@ fun DocumentoReaderSheet(
         ) {
             AtmosferaArtefato()
 
+            // imePadding: o Dialog é edge-to-edge (decorFitsSystemWindows=false); sem isto o
+            // teclado sobe na frente do campo ao editar. Espelha ChatScreen / FinancasLunaChatSheet.
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .statusBarsPadding()
-                    .navigationBarsPadding(),
+                    .navigationBarsPadding()
+                    .imePadding(),
             ) {
                 // ── Cabeçalho fixo: voltar · identidade · ações ──
                 Row(
@@ -1236,7 +1240,8 @@ private fun CanoneArtefatoSheet(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
-                .navigationBarsPadding(),
+                .navigationBarsPadding()
+                .imePadding(),
         ) {
             // Cabeçalho: voltar · identidade · concluir
             Row(

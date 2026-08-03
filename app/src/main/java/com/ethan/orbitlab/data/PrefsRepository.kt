@@ -25,6 +25,8 @@ object PrefsRepository {
     private const val KEY_LOCALIZACAO = "orbit.lab.localizacao.ativa"
     private const val KEY_LOCAL_SNAPSHOT = "orbit.lab.localizacao.snapshot"
     private const val KEY_TECNICO_IDS = "orbit.lab.tecnico.msgids"
+    /** Showcase V1 da Início (Finanças / desenha / artefatos) — versionado pra reaparecer em capítulos novos. */
+    private const val KEY_SHOWCASE_LUNA_V1 = "orbit.lab.inicio.showcase.luna.v1.dismissed"
     private const val MAX_TECNICO_IDS = 500
 
     private lateinit var prefs: SharedPreferences
@@ -164,6 +166,17 @@ object PrefsRepository {
     var conversaFinancas: String?
         get() = texto(KEY_CONVERSA_FINANCAS)
         set(value) = setTexto(KEY_CONVERSA_FINANCAS, value)
+
+    /**
+     * Card «O que a Luna ganhou» na Início já foi dispensado?
+     * Chave V1 — um capítulo futuro pode usar V2 e reaparecer sem apagar o V1.
+     */
+    var showcaseLunaV1Dismissed: Boolean
+        get() = if (::prefs.isInitialized) prefs.getBoolean(KEY_SHOWCASE_LUNA_V1, false) else false
+        set(value) {
+            if (!::prefs.isInitialized) return
+            prefs.edit().putBoolean(KEY_SHOWCASE_LUNA_V1, value).apply()
+        }
 
     /** Mensagem no topo da tela quando ele saiu de [conversaId] — null se estava no fim. */
     fun ancoraDe(conversaId: String): String? {
