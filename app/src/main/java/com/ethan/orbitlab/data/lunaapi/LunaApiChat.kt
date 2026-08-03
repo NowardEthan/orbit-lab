@@ -524,6 +524,27 @@ object LunaApiChat {
             .joinToString(" ") { "${it.key}=${it.value}ms" }
             .ifBlank { null }
 
+        // Cota esgotada (429 quota_exceeded): acende a parede graciosa ACIMA do composer
+        // (via UsageRepository.bloqueado) em vez de pintar um balão de erro vermelho na thread.
+        if (result.cotaEsgotada) {
+            com.ethan.orbitlab.data.billing.UsageRepository.marcarBloqueado(result.quotaResetsAtMs)
+            LatenciaProbe.record(
+                caminho = "paia_stream",
+                totalMs = totalMs,
+                ttfbMs = result.ttfbMs,
+                chars = 0,
+                ok = false,
+                detalhe = "quota_exceeded",
+            )
+            return LunaStreamResultado(
+                reasoning = "",
+                reasoningDuracao = "${dur}s",
+                resposta = "",
+                erro = true,
+                cotaEsgotada = true,
+            )
+        }
+
         if (result.error != null && result.text.isBlank()) {
             // A resposta real pode ter chegado pelo Firestore enquanto a conexão caía —
             // adota ela em vez de pintar um erro por cima (senão apagaria a fala da Luna).
@@ -562,6 +583,16 @@ object LunaApiChat {
             ok = true,
             detalhe = phasesDetail,
         )
+
+        // Carteira: desconta otimista (o medidor reage no ato) espelhando a conta do servidor —
+        // chat + as duas lagostas — e recarrega pra reconciliar com a verdade.
+        run {
+            val custo = com.ethan.orbitlab.data.billing.CUSTO_MINIMO_CHAT +
+                imagensGeradas.size * com.ethan.orbitlab.data.billing.CUSTO_IMAGEM_GERADA +
+                (if (PrefsRepository.pesquisaProfunda.value) com.ethan.orbitlab.data.billing.CUSTO_PESQUISA_PROFUNDA else 0L)
+            com.ethan.orbitlab.data.billing.UsageRepository.descontar(custo)
+            com.ethan.orbitlab.data.billing.UsageRepository.refresh()
+        }
 
         return LunaStreamResultado(
             reasoning = reasoning,

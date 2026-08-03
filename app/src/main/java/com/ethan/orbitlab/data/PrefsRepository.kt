@@ -25,6 +25,7 @@ object PrefsRepository {
     private const val KEY_LOCALIZACAO = "orbit.lab.localizacao.ativa"
     private const val KEY_LOCAL_SNAPSHOT = "orbit.lab.localizacao.snapshot"
     private const val KEY_TECNICO_IDS = "orbit.lab.tecnico.msgids"
+    private const val KEY_CPF_CNPJ = "orbit.lab.billing.cpfcnpj"
     /** Showcase V1 da Início (Finanças / desenha / artefatos) — versionado pra reaparecer em capítulos novos. */
     private const val KEY_SHOWCASE_LUNA_V1 = "orbit.lab.inicio.showcase.luna.v1.dismissed"
     private const val MAX_TECNICO_IDS = 500
@@ -190,6 +191,11 @@ object PrefsRepository {
     fun setAncora(conversaId: String, mensagemId: String?) {
         setTexto(KEY_ANCORA, if (mensagemId == null) null else "$conversaId|$mensagemId")
     }
+
+    /** CPF/CNPJ salvo (só dígitos) pra pré-preencher o checkout — espelha o `cpfCnpj.ts` do RN. */
+    var cpfCnpjSalvo: String?
+        get() = texto(KEY_CPF_CNPJ)
+        set(value) = setTexto(KEY_CPF_CNPJ, value)
 
     private fun texto(chave: String): String? =
         if (::prefs.isInitialized) prefs.getString(chave, null)?.takeIf { it.isNotBlank() } else null

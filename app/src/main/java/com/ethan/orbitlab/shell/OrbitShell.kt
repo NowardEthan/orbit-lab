@@ -48,6 +48,7 @@ import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.SwapVert
+import androidx.compose.material.icons.rounded.WorkspacePremium
 import androidx.compose.material.icons.automirrored.rounded.Chat
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
@@ -108,6 +109,10 @@ import com.ethan.orbitlab.ui.financas.TransferenciaScreen
 import com.ethan.orbitlab.ui.inicio.InicioScreen
 import com.ethan.orbitlab.ui.novidades.NovidadesScreen
 import com.ethan.orbitlab.ui.perfil.PerfilScreen
+import com.ethan.orbitlab.ui.planos.PlanosScreen
+import com.ethan.orbitlab.ui.planos.UsageMeter
+import com.ethan.orbitlab.data.billing.PlanosNav
+import com.ethan.orbitlab.data.billing.UsageRepository
 import com.ethan.orbitlab.ui.theme.Bricolage
 import com.ethan.orbitlab.ui.theme.OrbitIconButton
 import com.ethan.orbitlab.ui.theme.OrbitMetrics
@@ -139,6 +144,7 @@ private enum class OrbitTab(
     CAPTURA("Captura", Icons.Rounded.Hearing),
     CONVERSAS("Conversas", Icons.Rounded.Email),
     ESTANTE("Estante", Icons.AutoMirrored.Rounded.MenuBook),
+    PLANO("Planos", Icons.Rounded.WorkspacePremium),
     PERFIL("Perfil", Icons.Rounded.Person),
     AJUSTES("Ajustes", Icons.Rounded.Settings),
 }
@@ -217,6 +223,9 @@ fun OrbitShell() {
     // Finanças: um listener compartilhado enquanto a sessão existir.
     LaunchedEffect(session?.uid) {
         FinancasRepository.garantirSessao(session?.uid)
+        // A carteira (medidor + parede) segue a mesma sessão: lê /v1/billing/usage e
+        // escuta o Firestore pra atualizar sozinha.
+        UsageRepository.observar(session?.uid)
     }
     // Cartões → "Pagar fatura" abre a aba Transferência já pré-preenchida.
     val transferenciaNav by TransferenciaLauncher.navegarTick.collectAsState()
@@ -239,6 +248,15 @@ fun OrbitShell() {
     // Texto digitado no composer do Início: abre uma conversa nova JÁ mandando esta 1ª mensagem.
     var mensagemInicial by remember { mutableStateOf<String?>(null) }
     var novidadesAberto by remember { mutableStateOf(false) }
+
+    // Parede do chat / medidor pedem "ver planos" → abre a aba Planos fechando os overlays.
+    val planosNavTick by PlanosNav.tick.collectAsState()
+    LaunchedEffect(planosNavTick) {
+        if (planosNavTick <= 0L) return@LaunchedEffect
+        abaAtual = OrbitTab.PLANO
+        chatAberto = false
+        novidadesAberto = false
+    }
 
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -469,6 +487,7 @@ private fun ShellConteudo(
                                 onAbrirEstante = onAbrirEstante,
                             )
                             OrbitTab.ESTANTE -> EstanteScreen()
+                            OrbitTab.PLANO -> PlanosScreen()
                             OrbitTab.PERFIL -> PerfilScreen(
                                 onConversarComLuna = onConversarComLuna,
                                 onAbrirConversa = onOpenChat,
@@ -718,6 +737,9 @@ private fun OrbitDrawer(
                 }
             }
 
+            DrawerNavItem(Icons.Rounded.WorkspacePremium, "Planos", atual == OrbitTab.PLANO) {
+                onAba(OrbitTab.PLANO)
+            }
             DrawerNavItem(Icons.Rounded.Person, "Perfil", atual == OrbitTab.PERFIL) {
                 onAba(OrbitTab.PERFIL)
             }
@@ -755,7 +777,13 @@ private fun OrbitDrawer(
             }
         }
 
-        // Rodapé: perfil + pílula Nova conversa
+        // Rodapé: medidor da carteira + perfil + pílula Nova conversa
+        val usageCarteira by UsageRepository.usage.collectAsState()
+        UsageMeter(
+            usage = usageCarteira,
+            onClick = { onAba(OrbitTab.PLANO) },
+            modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
+        )
         HorizontalDivider(color = OrbitTokens.graphiteHair)
         Spacer(Modifier.height(12.dp))
         Row(
