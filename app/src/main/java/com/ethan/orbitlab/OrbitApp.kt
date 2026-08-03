@@ -20,6 +20,15 @@ import com.ethan.orbitlab.data.firebase.FirebaseBootstrap
 class OrbitApp : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
+        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            android.util.Log.e("OrbitAppCrash", "Crash em ${thread.name}", throwable)
+            runCatching {
+                val prefs = getSharedPreferences("orbit_crash_logs", MODE_PRIVATE)
+                prefs.edit().putString("last_crash", throwable.stackTraceToString()).apply()
+            }
+            defaultHandler?.uncaughtException(thread, throwable)
+        }
         PrefsRepository.init(this)
         FinancasLuzEngine.init(this)
         CapturaRepository.init(this)
