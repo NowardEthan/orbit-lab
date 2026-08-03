@@ -80,6 +80,7 @@ import com.ethan.orbitlab.data.local.LocalLab
 import com.ethan.orbitlab.data.local.LocationRepository
 import com.ethan.orbitlab.data.local.emojiWMO
 import kotlin.math.roundToInt
+import com.ethan.orbitlab.ui.planos.CotaComposerOuParede
 import com.ethan.orbitlab.ui.theme.Bricolage
 import com.ethan.orbitlab.ui.theme.OrbitMetrics
 import com.ethan.orbitlab.ui.theme.OrbitTokens
@@ -251,9 +252,7 @@ fun InicioScreen(
             }
         }
 
-        ComposerEntrada(
-            onEnviar = { texto -> onNovaConversaComTexto(texto) },
-            onAbrirVazio = onNovaConversa,
+        CotaComposerOuParede(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
@@ -261,7 +260,14 @@ fun InicioScreen(
                 .imePadding()
                 .padding(horizontal = OrbitMetrics.pagePadding)
                 .padding(bottom = 16.dp),
-        )
+            cardModifier = Modifier,
+        ) {
+            ComposerEntrada(
+                onEnviar = { texto -> onNovaConversaComTexto(texto) },
+                onAbrirVazio = onNovaConversa,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
     }
 }
 
