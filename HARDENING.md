@@ -42,7 +42,7 @@ Signing **antes** de R8 (uma variável por release).
 
 **Problema:** `labRelease` assina com debug keystore.
 
-**Guia humano:** [`SIGNING.md`](SIGNING.md)
+**Guia humano (passo a passo completo):** [`SIGNING.md`](SIGNING.md)
 
 **DoD**
 
