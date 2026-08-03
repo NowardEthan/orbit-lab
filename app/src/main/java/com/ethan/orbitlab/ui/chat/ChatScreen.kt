@@ -543,11 +543,14 @@ fun ChatScreen(
                 }
             }
 
-            // Parede graciosa: quando o servidor recusa por cota (429), o composer some
-            // e entra o cartão "a lua recolheu" com CTA pros planos, acima da barra de envio.
+            // Parede graciosa: cota no teto (medidor zerado) OU 429 do servidor.
+            // Antes só o 429 acendia — e um bypass no servidor deixava a mensagem passar
+            // mesmo com remaining=0. Agora o composer some assim que não há saldo pro chat.
             val cotaBloqueada by com.ethan.orbitlab.data.billing.UsageRepository.bloqueado.collectAsState()
             val usageCota by com.ethan.orbitlab.data.billing.UsageRepository.usage.collectAsState()
-            if (cotaBloqueada) {
+            val semSaldo =
+                !usageCota.loading && !usageCota.ilimitado && !usageCota.temSaldoParaChat
+            if (cotaBloqueada || semSaldo) {
                 com.ethan.orbitlab.ui.planos.LimiteAtingidoCard(
                     usage = usageCota,
                     onVerPlanos = { com.ethan.orbitlab.data.billing.PlanosNav.abrir() },
