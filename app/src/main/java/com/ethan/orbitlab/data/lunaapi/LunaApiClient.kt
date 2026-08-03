@@ -441,4 +441,73 @@ object LunaApiClient {
             cont.invokeOnCancellation { source.cancel() }
         }
     }
+
+    sealed class TranscribeResult {
+        data class Ok(val text: String) : TranscribeResult()
+        data class Erro(val mensagem: String) : TranscribeResult()
+    }
+
+    /**
+     * POST /v1/transcribe — Whisper no servidor (chave nunca no APK).
+     * Mesmo contrato do orbit-mobile (`lunaTranscribe`).
+     */
+    suspend fun transcribe(
+        idToken: String?,
+        audioBase64: String,
+        mimeType: String = "audio/mp4",
+        language: String = "pt",
+    ): TranscribeResult = withContext(Dispatchers.IO) {
+        if (!LunaApiConfig.isConfigured()) {
+            return@withContext TranscribeResult.Erro("Transcrição indisponível neste build.")
+        }
+        val body = JSONObject()
+            .put("audioBase64", audioBase64)
+            .put("mimeType", mimeType)
+            .put("language", language)
+        val request = Request.Builder()
+            .url(LunaApiConfig.transcribeUrl)
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json")
+            .apply {
+                if (!idToken.isNullOrBlank()) header("Authorization", "Bearer $idToken")
+            }
+            .post(body.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+        try {
+            http.newCall(request).execute().use { response ->
+                val raw = response.body?.string().orEmpty()
+                val json = runCatching { JSONObject(raw) }.getOrNull()
+                when {
+                    response.code == 401 -> TranscribeResult.Erro(
+                        "Sessão expirada. Sai e entra de novo.",
+                    )
+                    response.code == 429 -> TranscribeResult.Erro(
+                        json?.optString("error")?.takeIf { it.isNotBlank() }
+                            ?: "Limite de uso atingido. Tenta de novo depois.",
+                    )
+                    json == null -> TranscribeResult.Erro(
+                        if (raw.isNotBlank()) raw.take(200) else "HTTP ${response.code}",
+                    )
+                    json.optBoolean("ok", false) -> {
+                        val text = json.optString("text").trim()
+                        if (text.isBlank()) {
+                            TranscribeResult.Erro("Não detectamos fala neste áudio.")
+                        } else {
+                            TranscribeResult.Ok(text)
+                        }
+                    }
+                    else -> TranscribeResult.Erro(
+                        json.optString("error").ifBlank {
+                            "Não consegui transcrever o áudio."
+                        },
+                    )
+                }
+            }
+        } catch (e: IOException) {
+            TranscribeResult.Erro(
+                e.message?.takeIf { it.isNotBlank() }
+                    ?: "Falha de rede na transcrição.",
+            )
+        }
+    }
 }

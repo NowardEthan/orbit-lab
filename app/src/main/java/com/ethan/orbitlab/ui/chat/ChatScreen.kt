@@ -1,5 +1,11 @@
 package com.ethan.orbitlab.ui.chat
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.util.Base64
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
@@ -64,6 +70,7 @@ import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -75,6 +82,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -112,7 +120,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
+import androidx.core.content.ContextCompat
 import com.ethan.orbitlab.R
+import com.ethan.orbitlab.data.AuthRepository
 import com.ethan.orbitlab.data.ChatRepository
 import com.ethan.orbitlab.data.firebase.DocumentoUi
 import com.ethan.orbitlab.data.firebase.FirestoreDocumentos
@@ -121,12 +131,17 @@ import com.ethan.orbitlab.data.PrefsRepository
 import com.ethan.orbitlab.data.lunaMessageIdForUser
 import com.ethan.orbitlab.data.newUserMessageId
 import com.ethan.orbitlab.data.lunaapi.LunaApiChat
+import com.ethan.orbitlab.data.lunaapi.LunaApiClient
 import com.ethan.orbitlab.data.openrouter.LunaDirectChat
+import com.ethan.orbitlab.data.voice.VoiceRecorder
 import com.google.firebase.auth.FirebaseAuth
 import com.ethan.orbitlab.ui.theme.OrbitIconButton
 import com.ethan.orbitlab.ui.theme.OrbitMetrics
 import com.ethan.orbitlab.ui.theme.OrbitMotion
 import com.ethan.orbitlab.ui.theme.OrbitTokens
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.ethan.orbitlab.ui.theme.orbitPressable
 import com.ethan.orbitlab.ui.theme.rememberOrbitPressScale
 import kotlinx.coroutines.CancellationException
@@ -1380,7 +1395,15 @@ fun ChatInputArea(
     containerColor: Color = OrbitTokens.graphiteSurf,
     exibirSeletorModo: Boolean = true,
 ) {
-    val enabled = streamState.value is LunaStreamEstado.Idle
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val recorder = remember(context) { VoiceRecorder(context.applicationContext) }
+    DisposableEffect(recorder) {
+        onDispose { recorder.cancel() }
+    }
+
+    var transcrevendo by remember { mutableStateOf(false) }
+    val enabled = streamState.value is LunaStreamEstado.Idle && !transcrevendo
     val modoTecnico by PrefsRepository.modoTecnico.collectAsState()
     val modoAgentico by PrefsRepository.modoAgentico.collectAsState()
     val modoAtivo = when {
@@ -1409,6 +1432,23 @@ fun ChatInputArea(
             anexos.count { it.kind == AttachmentKind.FILE || it.kind == AttachmentKind.VIDEO }
         ).coerceAtLeast(0)
 
+    fun temMic(): Boolean =
+        ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
+
+    val pedirMic = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (!granted) {
+            Toast.makeText(
+                context,
+                "Permita o microfone para mandar áudio pra Luna.",
+                Toast.LENGTH_SHORT,
+            ).show()
+        }
+        // O hold já soltou enquanto o diálogo estava aberto — próxima tentativa grava.
+    }
+
     LaunchedEffect(recordState) {
         if (recordState == RecordState.Recording || recordState == RecordState.Locked) {
             while (true) {
@@ -1429,15 +1469,55 @@ fun ChatInputArea(
         0f
     }
 
-    fun resetar() {
+    fun resetar(descartarAudio: Boolean = true) {
+        if (descartarAudio) recorder.cancel()
         recordState = RecordState.Idle
         dragOffset = Offset.Zero
         segundos = 0
     }
 
+    /** Grava de verdade → STT no servidor → chat com o texto (como o orbit-mobile). */
     fun enviarAudio() {
-        onSend("Áudio (${formatTimer(segundos)})", emptyList(), messageReference)
-        resetar()
+        val clip = recorder.finish()
+        resetar(descartarAudio = false)
+        if (clip == null) {
+            Toast.makeText(context, "Áudio curto demais — segura um pouco mais.", Toast.LENGTH_SHORT)
+                .show()
+            return
+        }
+        keyboard?.hide()
+        transcrevendo = true
+        scope.launch {
+            try {
+                val b64 = withContext(Dispatchers.IO) {
+                    val bytes = clip.file.readBytes()
+                    clip.file.delete()
+                    Base64.encodeToString(bytes, Base64.NO_WRAP)
+                }
+                val token = AuthRepository.getIdToken()
+                when (val r = LunaApiClient.transcribe(token, b64, clip.mimeType)) {
+                    is LunaApiClient.TranscribeResult.Ok -> {
+                        onSend(r.text, emptyList(), messageReference)
+                    }
+                    is LunaApiClient.TranscribeResult.Erro -> {
+                        Toast.makeText(
+                            context,
+                            "Não ouvi o áudio: ${r.mensagem}",
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    }
+                }
+            } catch (e: Exception) {
+                clip.file.delete()
+                Toast.makeText(
+                    context,
+                    "Falha ao transcrever: ${e.message ?: "erro desconhecido"}",
+                    Toast.LENGTH_LONG,
+                ).show()
+            } finally {
+                transcrevendo = false
+            }
+        }
     }
 
     fun enviarTexto() {
@@ -1447,6 +1527,18 @@ fun ChatInputArea(
         onSend(texto.trim(), anexos, messageReference)
         texto = ""
         anexos = emptyList()
+    }
+
+    fun tentarIniciarGravacao(): Boolean {
+        if (!temMic()) {
+            pedirMic.launch(Manifest.permission.RECORD_AUDIO)
+            return false
+        }
+        if (!recorder.start()) {
+            Toast.makeText(context, "Não deu pra gravar. Tenta de novo.", Toast.LENGTH_SHORT).show()
+            return false
+        }
+        return true
     }
 
     ComposerAttachSheet(
@@ -1529,13 +1621,31 @@ fun ChatInputArea(
                         vertical = if (multiLinha && !gravando) 8.dp else 10.dp,
                     ),
                 contentAlignment = when {
-                    gravando -> Alignment.CenterStart
+                    gravando || transcrevendo -> Alignment.CenterStart
                     multiLinha -> Alignment.TopStart
                     else -> Alignment.CenterStart
                 },
             ) {
-                when (recordState) {
-                    RecordState.Idle -> {
+                when {
+                    transcrevendo -> {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = OrbitTokens.bluePastel,
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                "Ouvindo o áudio…",
+                                color = OrbitTokens.textMidN,
+                                fontSize = 15.sp,
+                            )
+                        }
+                    }
+                    recordState == RecordState.Idle -> {
                         BasicTextField(
                             value = texto,
                             onValueChange = { texto = it },
@@ -1566,7 +1676,7 @@ fun ChatInputArea(
                             },
                         )
                     }
-                    RecordState.Recording -> {
+                    recordState == RecordState.Recording -> {
                         Row(
                             Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
@@ -1604,7 +1714,8 @@ fun ChatInputArea(
                             }
                         }
                     }
-                    RecordState.Locked -> {
+                    else -> {
+                        // Locked
                         Row(
                             Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
@@ -1781,6 +1892,7 @@ fun ChatInputArea(
                     if (!micHoldAtivo) return@pointerInput
                     awaitEachGesture {
                         awaitFirstDown(requireUnconsumed = false)
+                        if (!tentarIniciarGravacao()) return@awaitEachGesture
                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                         recordState = RecordState.Recording
                         dragOffset = Offset.Zero

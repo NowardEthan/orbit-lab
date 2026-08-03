@@ -8,6 +8,7 @@ object LunaApiConfig {
     val chatUrl: String get() = "$baseUrl/v1/chat"
     val streamUrl: String get() = "$baseUrl/v1/chat/stream"
     val buscarUrl: String get() = "$baseUrl/v1/conversa/buscar"
+    val transcribeUrl: String get() = "$baseUrl/v1/transcribe"
     val healthUrl: String get() = "$baseUrl/health"
 
     fun isConfigured(): Boolean = baseUrl.isNotBlank()
