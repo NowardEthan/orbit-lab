@@ -70,12 +70,29 @@ data class Chamado(
     val updatedAtMs: Long,
 )
 
+/**
+ * Um anexo (print/vídeo/arquivo) de uma mensagem do chamado.
+ *
+ * Sobe pro Storage em `chamados/{ownerUid}/{chamadoId}/{id}/{nome}` — pasta carimbada com o
+ * uid do DONO do chamado (quem abriu), pra a regra do Storage liberar leitura pros DOIS lados
+ * (o dono e o Ethan) sem precisar consultar o Firestore, que a regra de Storage não enxerga.
+ */
+data class AnexoChamado(
+    val id: String,
+    val kind: String,             // image | video | file
+    val url: String,              // download https do Storage
+    val mime: String,
+    val name: String,
+    val sizeLabel: String,
+)
+
 /** Uma fala dentro da conversa do chamado. */
 data class MensagemChamado(
     val id: String,
     val autor: String,            // usuario | ethan
     val texto: String,
     val createdAtMs: Long,
+    val anexos: List<AnexoChamado> = emptyList(),
 )
 
 /** Entrada do formulário de abertura — ainda sem id. */

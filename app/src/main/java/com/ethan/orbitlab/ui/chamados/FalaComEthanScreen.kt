@@ -18,7 +18,9 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -26,13 +28,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -40,9 +46,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AddPhotoAlternate
 import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Inbox
 import androidx.compose.material.icons.rounded.SupportAgent
 import androidx.compose.material3.Icon
@@ -52,8 +60,11 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.style.TextAlign
+import android.net.Uri
 import androidx.activity.compose.BackHandler
+import coil.compose.AsyncImage
 import com.ethan.orbitlab.data.AuthRepository
+import com.ethan.orbitlab.data.chamados.AnexoChamado
 import com.ethan.orbitlab.data.chamados.AutorChamado
 import com.ethan.orbitlab.data.chamados.Chamado
 import com.ethan.orbitlab.data.chamados.ChamadoRascunho
@@ -63,6 +74,11 @@ import com.ethan.orbitlab.data.chamados.MensagemChamado
 import com.ethan.orbitlab.data.chamados.StatusChamado
 import com.ethan.orbitlab.data.chamados.TipoChamado
 import com.ethan.orbitlab.data.chamados.contextoAppAtual
+import com.ethan.orbitlab.data.firebase.ChatMediaUpload
+import com.ethan.orbitlab.ui.chat.AttachmentKind
+import com.ethan.orbitlab.ui.chat.ComposerAttachment
+import com.ethan.orbitlab.ui.chat.MediaViewerDialog
+import com.ethan.orbitlab.ui.chat.rememberAttachMediaLaunchers
 import com.ethan.orbitlab.ui.theme.OrbitMetrics
 import com.ethan.orbitlab.ui.theme.OrbitTokens
 import com.ethan.orbitlab.ui.theme.orbitPressable
@@ -434,12 +450,18 @@ private fun EstadoVazioChamados(ehAdmin: Boolean, modifier: Modifier = Modifier)
 @Composable
 private fun NovoVista(onAberto: (String) -> Unit) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val session by AuthRepository.session.collectAsState()
 
     var tipo by remember { mutableStateOf(TipoChamado.BUG) }
     var titulo by remember { mutableStateOf("") }
     var mensagem by remember { mutableStateOf("") }
     var enviando by remember { mutableStateOf(false) }
+    var picks by remember { mutableStateOf<List<ComposerAttachment>>(emptyList()) }
+    val launchers = rememberAttachMediaLaunchers(
+        context = context,
+        onPicked = { novos -> picks = (picks + novos).take(6) },
+    )
 
     val rascunho = ChamadoRascunho(tipo = tipo, titulo = titulo, mensagem = mensagem)
     val podeEnviar = rascunho.valido() && !enviando && session != null
@@ -494,6 +516,23 @@ private fun NovoVista(onAberto: (String) -> Unit) {
         )
 
         Spacer(Modifier.height(12.dp))
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            BotaoAnexar(onClick = { launchers.pickPhotos() })
+            Text(
+                "Anexar print ou vídeo",
+                color = OrbitTokens.textMidN,
+                fontSize = 13.sp,
+            )
+        }
+        if (picks.isNotEmpty()) {
+            Spacer(Modifier.height(4.dp))
+            TiraAnexosPreview(picks = picks, onRemover = { p -> picks = picks.filterNot { it.id == p.id } })
+        }
+
+        Spacer(Modifier.height(12.dp))
         Text(
             "Vou receber junto: ${contextoAppAtual()}",
             color = OrbitTokens.textLowN,
@@ -510,13 +549,19 @@ private fun NovoVista(onAberto: (String) -> Unit) {
                     val s = session ?: return@orbitPressable
                     enviando = true
                     val nome = s.displayName.ifBlank { s.email.substringBefore("@") }
+                    // Gera o id ANTES de subir: os anexos precisam do caminho do Storage
+                    // (chamados/{uid}/{id}/…) já com o id certo, antes do doc existir.
+                    val novoId = FirestoreChamados.novoChamadoId()
                     scope.launch {
                         try {
+                            val anexos = subirAnexosChamado(context, s.uid, novoId, picks)
                             val id = FirestoreChamados.abrir(
                                 uid = s.uid,
                                 nomeUsuario = nome,
                                 rascunho = rascunho,
                                 contextoApp = contextoAppAtual(),
+                                anexos = anexos,
+                                chamadoId = novoId,
                             )
                             onAberto(id)
                         } finally {
@@ -577,6 +622,7 @@ private fun CampoTexto(
 @Composable
 private fun ChamadoVista(chamado: Chamado, ehAdmin: Boolean) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     var texto by remember { mutableStateOf("") }
 
     // Ao abrir, zera o não-lido do meu lado.
@@ -631,12 +677,17 @@ private fun ChamadoVista(chamado: Chamado, ehAdmin: Boolean) {
         ComposerChamado(
             valor = texto,
             onValor = { texto = it },
-            onEnviar = {
+            onEnviar = { picks ->
                 val t = texto.trim()
-                if (t.isEmpty()) return@ComposerChamado
+                if (t.isEmpty() && picks.isEmpty()) return@ComposerChamado
                 texto = ""
                 val autor = if (ehAdmin) AutorChamado.ETHAN else AutorChamado.USUARIO
-                scope.launch { FirestoreChamados.enviar(chamado.id, autor, t) }
+                scope.launch {
+                    // Anexos sobem sob o uid do DONO do chamado (chamado.uid), mesmo quando
+                    // é o Ethan respondendo — assim os dois lados leem pela mesma pasta.
+                    val anexos = subirAnexosChamado(context, chamado.uid, chamado.id, picks)
+                    FirestoreChamados.enviar(chamado.id, autor, t, anexos)
+                }
             },
         )
     }
@@ -675,6 +726,56 @@ private fun ControlesStatus(atual: String, onStatus: (String) -> Unit) {
     }
 }
 
+// ── Anexos (imagem/vídeo) ────────────────────────────────────────────────────
+
+private fun ComposerAttachment.kindChamado(): String = when (kind) {
+    AttachmentKind.IMAGE -> "image"
+    AttachmentKind.VIDEO -> "video"
+    AttachmentKind.FILE -> "file"
+}
+
+private fun AnexoChamado.toComposerAttachment(): ComposerAttachment = ComposerAttachment(
+    id = id,
+    kind = when (kind) {
+        "image" -> AttachmentKind.IMAGE
+        "video" -> AttachmentKind.VIDEO
+        else -> AttachmentKind.FILE
+    },
+    name = name,
+    sizeLabel = sizeLabel,
+    mime = mime,
+    uri = runCatching { Uri.parse(url) }.getOrNull(),
+)
+
+/**
+ * Sobe os anexos escolhidos pro Storage e devolve os [AnexoChamado] com URL https.
+ *
+ * Caminho `chamados/{ownerUid}/{chamadoId}/{id}/{nome}` — carimbado com o uid do DONO do
+ * chamado (não o autor da mensagem), pra a regra do Storage liberar os dois lados sem olhar
+ * o Firestore. Um anexo que não sobe é pulado (não trava a mensagem inteira).
+ */
+private suspend fun subirAnexosChamado(
+    context: android.content.Context,
+    ownerUid: String,
+    chamadoId: String,
+    picks: List<ComposerAttachment>,
+): List<AnexoChamado> = picks.mapNotNull { att ->
+    val local = att.uri ?: return@mapNotNull null
+    val safe = att.name.replace(Regex("""[^\w.\-()+@]"""), "_").take(120).ifBlank { "anexo" }
+    val path = "chamados/$ownerUid/$chamadoId/${att.id}/$safe"
+    runCatching {
+        val subida = ChatMediaUpload.subirArquivo(context, path, local, att.mime)
+        AnexoChamado(
+            id = att.id,
+            kind = att.kindChamado(),
+            url = subida.url,
+            mime = subida.mime,
+            name = att.name,
+            sizeLabel = att.sizeLabel,
+        )
+    }.getOrNull()
+}
+
 private val horaFmt = SimpleDateFormat("HH:mm", Locale("pt", "BR"))
 
 @Composable
@@ -697,12 +798,18 @@ private fun Balao(mensagem: MensagemChamado, meu: Boolean) {
                 .background(if (meu) OrbitTokens.bubbleUser else OrbitTokens.bubbleLuna)
                 .padding(horizontal = 14.dp, vertical = 10.dp),
         ) {
-            Text(
-                mensagem.texto,
-                color = OrbitTokens.textHiN,
-                fontSize = 15.sp,
-                lineHeight = 21.sp,
-            )
+            if (mensagem.anexos.isNotEmpty()) {
+                AnexosNoBalao(mensagem.anexos)
+                if (mensagem.texto.isNotBlank()) Spacer(Modifier.height(8.dp))
+            }
+            if (mensagem.texto.isNotBlank()) {
+                Text(
+                    mensagem.texto,
+                    color = OrbitTokens.textHiN,
+                    fontSize = 15.sp,
+                    lineHeight = 21.sp,
+                )
+            }
             if (mensagem.createdAtMs > 0L) {
                 Spacer(Modifier.height(4.dp))
                 Text(
@@ -715,56 +822,204 @@ private fun Balao(mensagem: MensagemChamado, meu: Boolean) {
     }
 }
 
+/** Botão redondo de anexar (abre a galeria: imagem E vídeo numa tacada). */
+@Composable
+private fun BotaoAnexar(onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(38.dp)
+            .clip(CircleShape)
+            .background(OrbitTokens.graphiteRaised)
+            .orbitPressable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            Icons.Rounded.AddPhotoAlternate,
+            contentDescription = "Anexar imagem ou vídeo",
+            tint = OrbitTokens.textMidN,
+            modifier = Modifier.size(20.dp),
+        )
+    }
+}
+
+/** Tira de preview dos anexos escolhidos, cada um com um X pra remover antes de enviar. */
+@Composable
+private fun TiraAnexosPreview(picks: List<ComposerAttachment>, onRemover: (ComposerAttachment) -> Unit) {
+    LazyRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        itemsIndexed(picks, key = { _, p -> p.id }) { _, p ->
+            Box(modifier = Modifier.size(64.dp)) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(OrbitTokens.graphiteRaised),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    AsyncImage(
+                        model = p.uri,
+                        contentDescription = p.name,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)),
+                    )
+                    if (p.kind == AttachmentKind.VIDEO) {
+                        Icon(
+                            Icons.Rounded.PlayArrow,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp),
+                        )
+                    }
+                }
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(2.dp)
+                        .size(18.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.6f))
+                        .orbitPressable(onClick = { onRemover(p) }),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Rounded.Close,
+                        contentDescription = "Remover",
+                        tint = Color.White,
+                        modifier = Modifier.size(12.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** As miniaturas dentro do balão — tocar abre o visualizador em tela cheia. */
+@Composable
+private fun AnexosNoBalao(anexos: List<AnexoChamado>) {
+    var viewerIndex by remember { mutableStateOf<Int?>(null) }
+    val comoAttachments = remember(anexos) { anexos.map { it.toComposerAttachment() } }
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        anexos.forEachIndexed { i, a ->
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 220.dp)
+                    .aspectRatio(4f / 3f)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color.Black.copy(alpha = 0.25f))
+                    .orbitPressable(onClick = { viewerIndex = i }),
+                contentAlignment = Alignment.Center,
+            ) {
+                AsyncImage(
+                    model = a.url,
+                    contentDescription = a.name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                if (a.kind == "video") {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.5f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            Icons.Rounded.PlayArrow,
+                            contentDescription = "Reproduzir",
+                            tint = Color.White,
+                            modifier = Modifier.size(28.dp),
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    viewerIndex?.let { idx ->
+        MediaViewerDialog(
+            items = comoAttachments,
+            initialIndex = idx,
+            onDismiss = { viewerIndex = null },
+        )
+    }
+}
+
 @Composable
 private fun ComposerChamado(
     valor: String,
     onValor: (String) -> Unit,
-    onEnviar: () -> Unit,
+    onEnviar: (List<ComposerAttachment>) -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.Bottom,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .clip(RoundedCornerShape(22.dp))
-                .background(OrbitTokens.graphiteRaised)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-        ) {
-            BasicTextField(
-                value = valor,
-                onValueChange = onValor,
-                textStyle = TextStyle(color = OrbitTokens.textHiN, fontSize = 15.sp, lineHeight = 21.sp),
-                cursorBrush = SolidColor(OrbitTokens.bluePastel),
-                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-                modifier = Modifier.fillMaxWidth(),
-                decorationBox = { inner ->
-                    if (valor.isEmpty()) {
-                        Text("Escreve aqui…", color = OrbitTokens.textLowN, fontSize = 15.sp)
-                    }
-                    inner()
-                },
-            )
+    val context = LocalContext.current
+    var picks by remember { mutableStateOf<List<ComposerAttachment>>(emptyList()) }
+    val launchers = rememberAttachMediaLaunchers(
+        context = context,
+        onPicked = { novos -> picks = (picks + novos).take(6) },
+    )
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        if (picks.isNotEmpty()) {
+            TiraAnexosPreview(picks = picks, onRemover = { p -> picks = picks.filterNot { it.id == p.id } })
         }
-        val ativo = valor.isNotBlank()
-        Box(
+        Row(
             modifier = Modifier
-                .size(38.dp)
-                .clip(CircleShape)
-                .background(if (ativo) OrbitTokens.bluePastel else OrbitTokens.graphiteRaised)
-                .orbitPressable(enabled = ativo, onClick = onEnviar),
-            contentAlignment = Alignment.Center,
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Icon(
-                Icons.Rounded.ArrowUpward,
-                contentDescription = "Enviar",
-                tint = if (ativo) OrbitTokens.onBluePastel else OrbitTokens.textLowN,
-                modifier = Modifier.size(20.dp),
-            )
+            BotaoAnexar(onClick = { launchers.pickPhotos() })
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(OrbitTokens.graphiteRaised)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+            ) {
+                BasicTextField(
+                    value = valor,
+                    onValueChange = onValor,
+                    textStyle = TextStyle(color = OrbitTokens.textHiN, fontSize = 15.sp, lineHeight = 21.sp),
+                    cursorBrush = SolidColor(OrbitTokens.bluePastel),
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                    modifier = Modifier.fillMaxWidth(),
+                    decorationBox = { inner ->
+                        if (valor.isEmpty()) {
+                            Text("Escreve aqui…", color = OrbitTokens.textLowN, fontSize = 15.sp)
+                        }
+                        inner()
+                    },
+                )
+            }
+            val ativo = valor.isNotBlank() || picks.isNotEmpty()
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(CircleShape)
+                    .background(if (ativo) OrbitTokens.bluePastel else OrbitTokens.graphiteRaised)
+                    .orbitPressable(enabled = ativo) {
+                        val enviar = picks
+                        picks = emptyList()
+                        onEnviar(enviar)
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Rounded.ArrowUpward,
+                    contentDescription = "Enviar",
+                    tint = if (ativo) OrbitTokens.onBluePastel else OrbitTokens.textLowN,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
         }
     }
 }

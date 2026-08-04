@@ -23,6 +23,24 @@ object FirestoreChamados {
     private fun mensagensCol(chamadoId: String) =
         chamadosCol().document(chamadoId).collection("mensagens")
 
+    /**
+     * Gera o id do chamado ANTES de criar o doc. A UI precisa dele pra montar o caminho do
+     * Storage (`chamados/{ownerUid}/{chamadoId}/...`) e subir os anexos antes de `abrir`.
+     */
+    fun novoChamadoId(): String = chamadosCol().document().id
+
+    /** Preview de capa quando a mensagem é só anexo (sem texto): "📷 Imagem", "🎬 Vídeo"… */
+    private fun previewCapa(texto: String, anexos: List<AnexoChamado>): String {
+        if (texto.isNotBlank()) return texto
+        val a = anexos.firstOrNull() ?: return texto
+        val extra = if (anexos.size > 1) " +${anexos.size - 1}" else ""
+        return when (a.kind) {
+            "image" -> "📷 Imagem$extra"
+            "video" -> "🎬 Vídeo$extra"
+            else -> "📎 Anexo$extra"
+        }
+    }
+
     // ── Lista do usuário / caixa do admin ────────────────────────────────────
 
     /** Escuta os chamados do próprio usuário. Ordena por atividade (updatedAt desc) no cliente. */
@@ -73,9 +91,11 @@ object FirestoreChamados {
         nomeUsuario: String,
         rascunho: ChamadoRascunho,
         contextoApp: String?,
+        anexos: List<AnexoChamado> = emptyList(),
+        chamadoId: String? = null,
     ): String {
         require(rascunho.valido()) { "Chamado inválido" }
-        val ref = chamadosCol().document()
+        val ref = if (chamadoId != null) chamadosCol().document(chamadoId) else chamadosCol().document()
         val agora = System.currentTimeMillis()
         val texto = rascunho.mensagem.trim()
         ref.set(
@@ -87,7 +107,7 @@ object FirestoreChamados {
                 "titulo" to rascunho.titulo.trim(),
                 "status" to StatusChamado.ABERTO,
                 "contextoApp" to contextoApp,
-                "ultimaMensagem" to texto,
+                "ultimaMensagem" to previewCapa(texto, anexos),
                 "ultimoAutor" to AutorChamado.USUARIO,
                 "naoLidoUsuario" to false,
                 "naoLidoAdmin" to true,
@@ -101,6 +121,7 @@ object FirestoreChamados {
                 "id" to msgRef.id,
                 "autor" to AutorChamado.USUARIO,
                 "texto" to texto,
+                "anexos" to anexos.map { anexoToMap(it) },
                 "createdAt" to agora,
             ),
         ).await()
@@ -130,9 +151,14 @@ object FirestoreChamados {
      * Manda uma mensagem e atualiza a capa (preview, autor, não-lido, updatedAt).
      * Resposta do Ethan move o status pra "Respondido" (a menos que já estivesse resolvido).
      */
-    suspend fun enviar(chamadoId: String, autor: String, texto: String) {
+    suspend fun enviar(
+        chamadoId: String,
+        autor: String,
+        texto: String,
+        anexos: List<AnexoChamado> = emptyList(),
+    ) {
         val limpo = texto.trim()
-        if (limpo.isEmpty()) return
+        if (limpo.isEmpty() && anexos.isEmpty()) return
         val agora = System.currentTimeMillis()
         val ehEthan = autor == AutorChamado.ETHAN
 
@@ -142,12 +168,13 @@ object FirestoreChamados {
                 "id" to msgRef.id,
                 "autor" to autor,
                 "texto" to limpo,
+                "anexos" to anexos.map { anexoToMap(it) },
                 "createdAt" to agora,
             ),
         ).await()
 
         val capa = mutableMapOf<String, Any?>(
-            "ultimaMensagem" to limpo,
+            "ultimaMensagem" to previewCapa(limpo, anexos),
             "ultimoAutor" to autor,
             "updatedAt" to agora,
             "naoLidoUsuario" to ehEthan,
@@ -209,7 +236,9 @@ object FirestoreChamados {
     private fun toMensagem(doc: DocumentSnapshot): MensagemChamado? {
         val data = doc.data ?: return null
         val texto = (data["texto"] as? String)?.trim().orEmpty()
-        if (texto.isBlank()) return null
+        val anexos = (data["anexos"] as? List<*>).orEmpty().mapNotNull { mapToAnexo(it) }
+        // Mensagem só-anexo tem texto vazio de propósito — não pode ser descartada.
+        if (texto.isBlank() && anexos.isEmpty()) return null
         return MensagemChamado(
             id = (data["id"] as? String)?.takeIf { it.isNotBlank() } ?: doc.id,
             autor = (data["autor"] as? String)?.takeIf {
@@ -217,6 +246,29 @@ object FirestoreChamados {
             } ?: AutorChamado.USUARIO,
             texto = texto,
             createdAtMs = timestampMs(data["createdAt"]) ?: 0L,
+            anexos = anexos,
+        )
+    }
+
+    private fun anexoToMap(a: AnexoChamado): Map<String, Any?> = mapOf(
+        "id" to a.id,
+        "kind" to a.kind,
+        "url" to a.url,
+        "mime" to a.mime,
+        "name" to a.name,
+        "sizeLabel" to a.sizeLabel,
+    )
+
+    private fun mapToAnexo(raw: Any?): AnexoChamado? {
+        val m = raw as? Map<*, *> ?: return null
+        val url = (m["url"] as? String)?.takeIf { it.isNotBlank() } ?: return null
+        return AnexoChamado(
+            id = (m["id"] as? String)?.takeIf { it.isNotBlank() } ?: url.hashCode().toString(),
+            kind = (m["kind"] as? String)?.takeIf { it.isNotBlank() } ?: "file",
+            url = url,
+            mime = (m["mime"] as? String).orEmpty(),
+            name = (m["name"] as? String)?.takeIf { it.isNotBlank() } ?: "anexo",
+            sizeLabel = (m["sizeLabel"] as? String).orEmpty(),
         )
     }
 
