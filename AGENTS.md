@@ -28,6 +28,25 @@ perfil e auto-update. Backend = **luna-core** (Railway). Canal de update =
 4. **Cota / billing** são verdade no **luna-core**. Parede no app é UX; APK antiga não fura carteira.
 5. Release ainda endurecendo (signing, R8, crash, rate limit) — ver [`HARDENING.md`](HARDENING.md).
 
+## Crashlytics / privacidade nos crashes
+
+SDK em `data/crash/CrashReporting.kt` (Firebase Crashlytics, projeto `luna-8787d`).
+
+**O que pode ir no crash:**
+
+- uid opaco do Auth
+- tela atual (nome da aba: `INICIO`, `CHAT`…)
+- `versionName` / `versionCode` / canal `lab`
+
+**O que NUNCA vai:**
+
+- e-mail, nome, @username
+- texto de chat, prompts, URLs de mídia
+- valores financeiros, descrição de lançamento
+
+Teste: Ajustes → toque 7× na linha da versão → confirmar crash. Painel:
+Firebase Console → Crashlytics.
+
 ## Visual — base cinza, cor como detalhe
 
 A impressão dominante do app é **dark / cinza contido** (`ink`, `surface`, tipografia quieta).
