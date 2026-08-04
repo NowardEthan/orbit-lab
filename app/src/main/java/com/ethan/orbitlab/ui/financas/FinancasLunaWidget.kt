@@ -112,8 +112,9 @@ fun FinancasLunaWidget(
           reenvio: Boolean ->
             streamState.value = LunaStreamEstado.Raciocinando("")
             val onEstado: (LunaStreamEstado) -> Unit = { e ->
-                ChatRepository.publicarStream(conversaId, e)
-                streamState.value = e
+                if (ChatRepository.publicarStream(conversaId, e)) {
+                    streamState.value = e
+                }
             }
             val iniciou = ChatRepository.launchTurno(conversaId, lunaMsgId) {
                 try {
