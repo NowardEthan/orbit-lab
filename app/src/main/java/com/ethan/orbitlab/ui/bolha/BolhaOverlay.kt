@@ -13,8 +13,12 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitTouchSlopOrCancellation
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.drag
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -57,6 +61,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.TextStyle
@@ -70,7 +75,13 @@ import com.ethan.orbitlab.data.voice.VoiceRecorder
 import com.ethan.orbitlab.ui.theme.OrbitMotion
 import com.ethan.orbitlab.ui.theme.OrbitTokens
 import com.ethan.orbitlab.ui.theme.orbitPressable
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.roundToInt
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 
 private val BolhaAura = 40.dp
 private val BolhaIcone = 22.dp
@@ -511,49 +522,57 @@ private fun BolhaFab(
                         },
                         shape = CircleShape,
                     )
+                    // Um único detector: toque vs long-press vs arraste.
+                    // Dois pointerInput (tap + drag) competiam e o longPress engolia o arraste.
                     .pointerInput(Unit) {
-                        detectTapGestures(
-                            onPress = {
-                                pressionado = true
-                                try {
-                                    tryAwaitRelease()
-                                } finally {
-                                    pressionado = false
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            pressionado = true
+                            var tratado = false
+                            val longPressTimeout = viewConfiguration.longPressTimeoutMillis
+
+                            try {
+                                withTimeout(longPressTimeout) {
+                                    val passouSlop = awaitTouchSlopOrCancellation(down.id) { change, _ ->
+                                        change.consume()
+                                    }
+                                    if (passouSlop != null) {
+                                        tratado = true
+                                        onDragStart()
+                                        try {
+                                            drag(down.id) { change ->
+                                                val delta = change.positionChange()
+                                                onArrastar(
+                                                    delta.x.roundToInt(),
+                                                    delta.y.roundToInt(),
+                                                )
+                                                change.consume()
+                                            }
+                                        } finally {
+                                            onSoltar()
+                                        }
+                                    }
+                                    // null = soltou antes do slop → toque (após o withTimeout)
                                 }
-                            },
-                            onTap = {
-                                if (hapticsLigados) {
-                                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                }
-                                onTocar()
-                            },
-                            onLongPress = {
+                            } catch (_: TimeoutCancellationException) {
+                                // Parado até o timeout → long-press
+                                tratado = true
                                 if (hapticsLigados) {
                                     haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                                 }
                                 onAbrirPainel()
-                            },
-                        )
-                    }
-                    .pointerInput(Unit) {
-                        detectDragGestures(
-                            onDragStart = {
-                                pressionado = true
-                                onDragStart()
-                            },
-                            onDragEnd = {
+                                waitForUpOrCancellation()
+                            } finally {
                                 pressionado = false
-                                onSoltar()
-                            },
-                            onDragCancel = {
-                                pressionado = false
-                                onSoltar()
-                            },
-                            onDrag = { change, drag ->
-                                change.consume()
-                                onArrastar(drag.x.roundToInt(), drag.y.roundToInt())
-                            },
-                        )
+                            }
+
+                            if (!tratado) {
+                                if (hapticsLigados) {
+                                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                }
+                                onTocar()
+                            }
+                        }
                     },
                 contentAlignment = Alignment.Center,
             ) {
