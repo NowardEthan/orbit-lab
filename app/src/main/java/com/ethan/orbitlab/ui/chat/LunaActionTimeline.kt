@@ -9,7 +9,8 @@ import androidx.compose.ui.unit.dp
 
 /**
  * Orquestra a UI de ações da Luna:
- * - tools (imagem/vídeo/memória…) → [LunaToolStrip]
+ * - plano (coleira) → [LunaPlanChecklist] sempre à vista
+ * - tools (imagem/vídeo/memória…) → [LunaToolTimeline]
  * - web → [LunaResearchPanel] só se [LunaActionProfile.DEEP_RESEARCH]
  */
 @Composable
@@ -21,11 +22,15 @@ fun LunaActionTimeline(
 ) {
     val tools = run.toolSteps()
     val research = run.toLegacyResearchRun()
+    val aoVivo = run.status == LunaActionRunStatus.RUNNING
 
     Column(
         modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        if (run.plano.isNotEmpty()) {
+            LunaPlanChecklist(plano = run.plano, aoVivo = aoVivo)
+        }
         if (tools.isNotEmpty()) {
             LunaToolTimeline(steps = tools, inicialmenteAberto = inicialmenteAberto)
         }

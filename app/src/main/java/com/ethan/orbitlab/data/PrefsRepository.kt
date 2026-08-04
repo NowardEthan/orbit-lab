@@ -33,6 +33,8 @@ object PrefsRepository {
     /** Posição da bolha: lado (esq=true) + Y em px de tela (Gravity.TOP\|START). */
     private const val KEY_BOLHA_LADO_ESQ = "orbit.lab.bolha.lado.esq"
     private const val KEY_BOLHA_Y = "orbit.lab.bolha.y"
+    private const val KEY_BOLHA_ONBOARDING = "orbit.lab.bolha.onboarding.visto"
+    private const val KEY_BOLHA_LAST_LUNA_MSG = "orbit.lab.bolha.last.luna.msg"
     private const val BOLHA_Y_DEFAULT = 240
     private const val MAX_TECNICO_IDS = 500
 
@@ -70,11 +72,8 @@ object PrefsRepository {
     val modoTecnico: StateFlow<Boolean> = _modoTecnico.asStateFlow()
 
     /**
-     * Modo «Mãos à obra» — opt-in, DESLIGADO por default. Ligado, força o caminho agêntico em
-     * TODO turno (o servidor recebe `modoAgentico`): a Luna pode planejar, criar/editar documento
-     * e mexer nas ferramentas sem depender do detector de palavra-chave. Custa um pouco mais de
-     * latência, por isso fica na mão do usuário. É EXCLUSIVO com o técnico — ligar um desliga o
-     * outro (o seletor é escolha-uma).
+     * Legado A1 — seletor Conversa/Técnico/Ação removido. Prefs mortas (sempre false);
+     * o core usa soft router. Finanças força agentico no body, não aqui.
      */
     private val _modoAgentico = MutableStateFlow(false)
     val modoAgentico: StateFlow<Boolean> = _modoAgentico.asStateFlow()
@@ -99,17 +98,31 @@ object PrefsRepository {
     var bolhaY: Int = BOLHA_Y_DEFAULT
         private set
 
+    /** Onboarding da bolha já foi visto uma vez. */
+    var bolhaOnboardingVisto: Boolean = false
+        private set
+
+    /** Última msg da Luna “vista” pela bolha (pra badge de novidade). */
+    var bolhaLastLunaMsgId: String? = null
+        private set
+
     fun init(context: Context) {
         if (::prefs.isInitialized) return
         prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         _vibracao.value = prefs.getBoolean(KEY_VIBRACAO, true)
         _pesquisaProfunda.value = prefs.getBoolean(KEY_PESQUISA_PROFUNDA, false)
-        _modoTecnico.value = prefs.getBoolean(KEY_MODO_TECNICO, false)
-        _modoAgentico.value = prefs.getBoolean(KEY_MODO_AGENTICO, false)
+        // A1: apaga sticky legado do seletor (não volta a forçar agentico/técnico).
+        if (prefs.contains(KEY_MODO_TECNICO) || prefs.contains(KEY_MODO_AGENTICO)) {
+            prefs.edit().remove(KEY_MODO_TECNICO).remove(KEY_MODO_AGENTICO).apply()
+        }
+        _modoTecnico.value = false
+        _modoAgentico.value = false
         _localizacaoAtiva.value = prefs.getBoolean(KEY_LOCALIZACAO, false)
         _bolhaAtiva.value = prefs.getBoolean(KEY_BOLHA_ATIVA, false)
         bolhaLadoEsquerdo = prefs.getBoolean(KEY_BOLHA_LADO_ESQ, true)
         bolhaY = prefs.getInt(KEY_BOLHA_Y, BOLHA_Y_DEFAULT)
+        bolhaOnboardingVisto = prefs.getBoolean(KEY_BOLHA_ONBOARDING, false)
+        bolhaLastLunaMsgId = prefs.getString(KEY_BOLHA_LAST_LUNA_MSG, null)
         idsTecnico.clear()
         idsTecnico.addAll(prefs.getStringSet(KEY_TECNICO_IDS, emptySet()).orEmpty())
     }
@@ -278,6 +291,19 @@ object PrefsRepository {
         }
     }
 
+    fun setBolhaOnboardingVisto(visto: Boolean) {
+        bolhaOnboardingVisto = visto
+        if (::prefs.isInitialized) prefs.edit().putBoolean(KEY_BOLHA_ONBOARDING, visto).apply()
+    }
+
+    fun setBolhaLastLunaMsgId(id: String?) {
+        bolhaLastLunaMsgId = id
+        if (::prefs.isInitialized) {
+            if (id == null) prefs.edit().remove(KEY_BOLHA_LAST_LUNA_MSG).apply()
+            else prefs.edit().putString(KEY_BOLHA_LAST_LUNA_MSG, id).apply()
+        }
+    }
+
     /** Último local/clima captado (JSON) — pra Luna ter o «onde» sem esperar um fix novo. */
     var localSnapshot: String?
         get() = texto(KEY_LOCAL_SNAPSHOT)
@@ -294,6 +320,8 @@ object PrefsRepository {
         _bolhaAtiva.value = false
         bolhaLadoEsquerdo = true
         bolhaY = BOLHA_Y_DEFAULT
+        bolhaOnboardingVisto = false
+        bolhaLastLunaMsgId = null
         idsTecnico.clear()
     }
 }

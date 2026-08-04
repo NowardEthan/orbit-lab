@@ -447,7 +447,6 @@ private fun FinancasLunaChatConteudo(
                 onSend = { t, a, r -> enviar(t, a, r) },
                 streamState = streamState,
                 containerColor = OrbitTokens.graphiteRaised,
-                exibirSeletorModo = false,
             )
         }
     }
