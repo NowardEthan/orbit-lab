@@ -93,11 +93,17 @@ olhar Firebase Console → Crashlytics (pode levar alguns minutos).
 
 **DoD**
 
-- [ ] Middleware uid + IP
-- [ ] `429` `rate_limited` ≠ `quota_exceeded`
-- [ ] `/health` → `rateLimit: true`
-- [ ] Testes + mensagem humana no app
-- [ ] Limites por env
+- [x] Middleware uid + IP (`mobile-api/src/rateLimit.ts`)
+- [x] `429` `rate_limited` ≠ `quota_exceeded` (+ `Retry-After`)
+- [x] `/health` → `rateLimit: true`
+- [x] Testes + mensagem humana no app (sem parede de cota)
+- [x] Limites por env (`LUNA_RL_*`, `LUNA_RL_DISABLED`)
+
+**Rotas:** chat, chat/stream, STT, vision, extract, buscar, rosary.
+**Fora:** `/health`, billing/webhook, usage.
+
+**Humano:** após deploy no Railway, `GET /health` deve mostrar `features.rateLimit: true`
+e um `commit` novo. No app, rajada → aviso “rápido demais” (não “lua dormiu”).
 
 ---
 

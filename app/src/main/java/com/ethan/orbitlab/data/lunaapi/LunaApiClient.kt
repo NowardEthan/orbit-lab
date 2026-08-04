@@ -55,6 +55,21 @@ object LunaApiClient {
     ) {
         /** Turno recusado por cota (o servidor manda `code: "quota_exceeded"` num 429). */
         val cotaEsgotada: Boolean get() = errorCode == "quota_exceeded"
+        /** Anti-rajada no servidor (`rate_limited`) — NÃO é parede de cota. */
+        val rateLimited: Boolean get() = errorCode == "rate_limited"
+    }
+
+    private fun mensagem429(json: JSONObject?, fallbackGenerico: String): String {
+        val code = json?.optString("code")?.takeIf { it.isNotBlank() }
+        val doServidor = json?.optString("error")?.takeIf { it.isNotBlank() }
+        if (doServidor != null) return doServidor
+        return when (code) {
+            "rate_limited" ->
+                "Calma — tô recebendo rápido demais agora. Espera uns segundos e manda de novo."
+            "quota_exceeded" ->
+                "Você chegou no limite do plano por agora."
+            else -> fallbackGenerico
+        }
     }
 
     private fun JSONObject.optLongOrNull(key: String): Long? =
@@ -232,8 +247,7 @@ object LunaApiClient {
                     response.code == 429 -> ChatResult(
                         text = "",
                         sessionId = "",
-                        error = json?.optString("error")?.takeIf { it.isNotBlank() }
-                            ?: "Limite de uso atingido no servidor.",
+                        error = mensagem429(json, "Limite de uso atingido no servidor."),
                         errorCode = json?.optString("code")?.takeIf { it.isNotBlank() },
                         quotaResetsAtMs = json?.optLongOrNull("resetsAtMs"),
                     )
@@ -395,8 +409,7 @@ object LunaApiClient {
                         val bodyJson = runCatching { JSONObject(bodyPreview) }.getOrNull()
                         val msg = when (httpCode) {
                             401 -> "Sessão expirada. Sai e entra de novo."
-                            429 -> bodyJson?.optString("error")?.takeIf { it.isNotBlank() }
-                                ?: "Limite de uso atingido no servidor."
+                            429 -> mensagem429(bodyJson, "Limite de uso atingido no servidor.")
                             else -> t?.message?.takeIf { it.isNotBlank() }
                                 ?: bodyPreview.takeIf { it.isNotBlank() }
                                 ?: httpCode?.let { "HTTP $it no stream Luna." }
@@ -482,8 +495,7 @@ object LunaApiClient {
                         "Sessão expirada. Sai e entra de novo.",
                     )
                     response.code == 429 -> TranscribeResult.Erro(
-                        json?.optString("error")?.takeIf { it.isNotBlank() }
-                            ?: "Limite de uso atingido. Tenta de novo depois.",
+                        mensagem429(json, "Limite de uso atingido. Tenta de novo depois."),
                     )
                     json == null -> TranscribeResult.Erro(
                         if (raw.isNotBlank()) raw.take(200) else "HTTP ${response.code}",

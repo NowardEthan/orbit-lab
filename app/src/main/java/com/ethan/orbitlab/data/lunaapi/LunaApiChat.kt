@@ -526,6 +526,7 @@ object LunaApiChat {
 
         // Cota esgotada (429 quota_exceeded): acende a parede graciosa ACIMA do composer
         // (via UsageRepository.bloqueado) em vez de pintar um balão de erro vermelho na thread.
+        // `rate_limited` NÃO entra aqui — é anti-rajada; vira aviso humano no balão, sem parede.
         if (result.cotaEsgotada) {
             com.ethan.orbitlab.data.billing.UsageRepository.marcarBloqueado(result.quotaResetsAtMs)
             LatenciaProbe.record(
