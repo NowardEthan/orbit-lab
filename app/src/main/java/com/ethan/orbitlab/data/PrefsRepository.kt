@@ -30,6 +30,10 @@ object PrefsRepository {
     private const val KEY_SHOWCASE_LUNA_V1 = "orbit.lab.inicio.showcase.luna.v1.dismissed"
     /** Bolha flutuante (chat-head) ligada pelo usuário — religa ao abrir o app se a permissão existir. */
     private const val KEY_BOLHA_ATIVA = "orbit.lab.bolha.ativa"
+    /** Posição da bolha: lado (esq=true) + Y em px de tela (Gravity.TOP\|START). */
+    private const val KEY_BOLHA_LADO_ESQ = "orbit.lab.bolha.lado.esq"
+    private const val KEY_BOLHA_Y = "orbit.lab.bolha.y"
+    private const val BOLHA_Y_DEFAULT = 240
     private const val MAX_TECNICO_IDS = 500
 
     private lateinit var prefs: SharedPreferences
@@ -87,6 +91,14 @@ object PrefsRepository {
     /** Preferência: usuário quer a bolha ligada (o serviço pode estar morto até religar). */
     val bolhaAtiva: StateFlow<Boolean> = _bolhaAtiva.asStateFlow()
 
+    /** Último lado em que a bolha grudou (true = esquerda). */
+    var bolhaLadoEsquerdo: Boolean = true
+        private set
+
+    /** Último Y (px) da bolha na tela. */
+    var bolhaY: Int = BOLHA_Y_DEFAULT
+        private set
+
     fun init(context: Context) {
         if (::prefs.isInitialized) return
         prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -96,6 +108,8 @@ object PrefsRepository {
         _modoAgentico.value = prefs.getBoolean(KEY_MODO_AGENTICO, false)
         _localizacaoAtiva.value = prefs.getBoolean(KEY_LOCALIZACAO, false)
         _bolhaAtiva.value = prefs.getBoolean(KEY_BOLHA_ATIVA, false)
+        bolhaLadoEsquerdo = prefs.getBoolean(KEY_BOLHA_LADO_ESQ, true)
+        bolhaY = prefs.getInt(KEY_BOLHA_Y, BOLHA_Y_DEFAULT)
         idsTecnico.clear()
         idsTecnico.addAll(prefs.getStringSet(KEY_TECNICO_IDS, emptySet()).orEmpty())
     }
@@ -252,6 +266,18 @@ object PrefsRepository {
         if (::prefs.isInitialized) prefs.edit().putBoolean(KEY_BOLHA_ATIVA, enabled).apply()
     }
 
+    /** Persiste canto + altura da bolha após snap (ou ao religar). */
+    fun setBolhaPosicao(ladoEsquerdo: Boolean, y: Int) {
+        bolhaLadoEsquerdo = ladoEsquerdo
+        bolhaY = y.coerceAtLeast(0)
+        if (::prefs.isInitialized) {
+            prefs.edit()
+                .putBoolean(KEY_BOLHA_LADO_ESQ, bolhaLadoEsquerdo)
+                .putInt(KEY_BOLHA_Y, bolhaY)
+                .apply()
+        }
+    }
+
     /** Último local/clima captado (JSON) — pra Luna ter o «onde» sem esperar um fix novo. */
     var localSnapshot: String?
         get() = texto(KEY_LOCAL_SNAPSHOT)
@@ -265,6 +291,9 @@ object PrefsRepository {
         _modoTecnico.value = false
         _modoAgentico.value = false
         _localizacaoAtiva.value = false
+        _bolhaAtiva.value = false
+        bolhaLadoEsquerdo = true
+        bolhaY = BOLHA_Y_DEFAULT
         idsTecnico.clear()
     }
 }

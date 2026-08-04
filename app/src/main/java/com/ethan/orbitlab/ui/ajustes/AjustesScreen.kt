@@ -320,7 +320,7 @@ fun AjustesScreen(
             LinhaSwitch(
                 icone = Icons.Rounded.Nightlight,
                 titulo = "Bolha da Luna",
-                subtitulo = "Flutua sobre outros apps quando o OrbitLab está em segundo plano",
+                subtitulo = "Só em segundo plano · arraste pra baixo pra guardar",
                 checado = bolhaAtiva,
                 onCheck = { ligar ->
                     if (ligar) {
