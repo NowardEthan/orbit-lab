@@ -114,6 +114,7 @@ import com.ethan.orbitlab.ui.planos.PlanosScreen
 import com.ethan.orbitlab.ui.planos.UsageMeter
 import com.ethan.orbitlab.data.billing.PlanosNav
 import com.ethan.orbitlab.data.billing.UsageRepository
+import com.ethan.orbitlab.data.crash.CrashReporting
 import com.ethan.orbitlab.ui.theme.Bricolage
 import com.ethan.orbitlab.ui.theme.OrbitIconButton
 import com.ethan.orbitlab.ui.theme.OrbitMetrics
@@ -212,6 +213,10 @@ fun OrbitShell() {
     }
 
     if (session == null) {
+        LaunchedEffect(Unit) {
+            CrashReporting.setUsuario(null)
+            CrashReporting.setTela("LOGIN")
+        }
         LoginScreen(onAutenticado = {})
         return
     }
@@ -223,6 +228,7 @@ fun OrbitShell() {
 
     // Finanças: um listener compartilhado enquanto a sessão existir.
     LaunchedEffect(session?.uid) {
+        CrashReporting.setUsuario(session?.uid)
         FinancasRepository.garantirSessao(session?.uid)
         // A carteira (medidor + parede) segue a mesma sessão: lê /v1/billing/usage e
         // escuta o Firestore pra atualizar sozinha.
@@ -264,6 +270,14 @@ fun OrbitShell() {
     val fecharGaveta = remember { { scope.launch { drawerState.close() }; Unit } }
 
     LaunchedEffect(abaAtual) { PrefsRepository.ultimaAba = abaAtual.name }
+    LaunchedEffect(abaAtual, chatAberto, novidadesAberto) {
+        val tela = when {
+            novidadesAberto -> "NOVIDADES"
+            chatAberto -> "CHAT"
+            else -> abaAtual.name
+        }
+        CrashReporting.setTela(tela)
+    }
     LaunchedEffect(chatAberto, conversaAtivaId) {
         PrefsRepository.ultimaConversa = conversaAtivaId?.takeIf { chatAberto }
     }

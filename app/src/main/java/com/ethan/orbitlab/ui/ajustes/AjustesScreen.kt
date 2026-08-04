@@ -59,6 +59,7 @@ import com.ethan.orbitlab.data.AuthProvider
 import com.ethan.orbitlab.data.AuthRepository
 import com.ethan.orbitlab.data.PrefsRepository
 import com.ethan.orbitlab.data.UserProfileRepository
+import com.ethan.orbitlab.data.crash.CrashReporting
 import com.ethan.orbitlab.data.local.LocationRepository
 import com.ethan.orbitlab.data.updates.ApkInstaller
 import com.ethan.orbitlab.data.updates.UpdatesRepository
@@ -66,6 +67,7 @@ import com.ethan.orbitlab.data.updates.isNewer
 import com.ethan.orbitlab.ui.theme.OrbitMetrics
 import com.ethan.orbitlab.ui.theme.OrbitTokens
 import com.ethan.orbitlab.ui.theme.orbitPressable
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -78,6 +80,8 @@ fun AjustesScreen(
 ) {
     var tela by remember { mutableStateOf(AjustesTela.Lista) }
     var confirmarSair by remember { mutableStateOf(false) }
+    var confirmarCrashTeste by remember { mutableStateOf(false) }
+    var toquesVersao by remember { mutableStateOf(0) }
     val session by AuthRepository.session.collectAsState()
     val profile by UserProfileRepository.profile.collectAsState()
     val scope = rememberCoroutineScope()
@@ -133,6 +137,35 @@ fun AjustesScreen(
             },
             dismissButton = {
                 TextButton(onClick = { confirmarSair = false }) {
+                    Text("Cancelar")
+                }
+            },
+            containerColor = OrbitTokens.graphiteRaised,
+        )
+    }
+
+    if (confirmarCrashTeste) {
+        AlertDialog(
+            onDismissRequest = { confirmarCrashTeste = false },
+            title = { Text("Crash de teste?") },
+            text = {
+                Text(
+                    "O app vai fechar de propósito pra validar o Crashlytics no Firebase. " +
+                        "Use só pra diagnóstico — não manda dado da conversa.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmarCrashTeste = false
+                        CrashReporting.forcarCrashDeTeste()
+                    },
+                ) {
+                    Text("Forçar crash", color = OrbitTokens.danger)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmarCrashTeste = false }) {
                     Text("Cancelar")
                 }
             },
@@ -272,7 +305,20 @@ fun AjustesScreen(
                 icone = Icons.Rounded.Info,
                 titulo = "Versão do OrbitLab",
                 trailing = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
-                clicavel = false,
+                // 7 toques → confirma crash de teste do Crashlytics (Fase 3).
+                clicavel = true,
+                onClick = {
+                    toquesVersao += 1
+                    if (toquesVersao >= 7) {
+                        toquesVersao = 0
+                        confirmarCrashTeste = true
+                    } else {
+                        scope.launch {
+                            delay(2_000)
+                            if (toquesVersao < 7) toquesVersao = 0
+                        }
+                    }
+                },
             )
         }
 
