@@ -7,7 +7,8 @@ import com.ethan.orbitlab.BuildConfig
  *
  * Produto sideload fala com o luna-core (Railway). A chave NÃO entra no `labRelease`
  * (`build.gradle.kts` força `OPENROUTER_API_KEY=""`). Em debug, pode vir de
- * `local.properties` / `luna-core/.env` pra harness (`LunaDirectChat`, `LunaTitler`).
+ * `local.properties` / `luna-core/.env` pra harness (`LunaDirectChat`).
+ * Título de conversa no produto = `POST /v1/conversa/titulo` (luna-core).
  *
  * Override em `OrbitLab/local.properties`:
  * ```

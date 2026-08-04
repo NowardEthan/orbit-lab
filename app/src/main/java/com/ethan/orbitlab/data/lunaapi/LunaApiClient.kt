@@ -202,6 +202,51 @@ object LunaApiClient {
         }
     }
 
+    /**
+     * POST /v1/conversa/titulo — batiza a conversa no servidor (Groq menor).
+     * Devolve null se falhar; o cliente mantém o título atual.
+     */
+    suspend fun gerarTitulo(
+        idToken: String?,
+        mensagens: List<MensagemBusca>,
+    ): String? = withContext(Dispatchers.IO) {
+        if (!LunaApiConfig.isConfigured()) return@withContext null
+        val enxutas = mensagens.takeLast(10).map { m ->
+            if (m.texto.length <= 280) m else m.copy(texto = m.texto.take(280))
+        }
+        if (enxutas.isEmpty()) return@withContext null
+
+        val arr = JSONArray()
+        enxutas.forEach { m ->
+            val papel = when (m.papel.lowercase()) {
+                "luna", "assistant" -> "luna"
+                else -> "user"
+            }
+            arr.put(JSONObject().put("papel", papel).put("texto", m.texto))
+        }
+        val body = JSONObject().put("mensagens", arr)
+        val request = Request.Builder()
+            .url(LunaApiConfig.tituloUrl)
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json")
+            .apply {
+                if (!idToken.isNullOrBlank()) header("Authorization", "Bearer $idToken")
+            }
+            .post(body.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+
+        try {
+            http.newCall(request).execute().use { response ->
+                val raw = response.body?.string().orEmpty()
+                val json = runCatching { JSONObject(raw) }.getOrNull() ?: return@withContext null
+                if (!json.optBoolean("ok", false)) return@withContext null
+                json.optString("title").trim().takeIf { it.isNotBlank() }
+            }
+        } catch (_: IOException) {
+            null
+        }
+    }
+
     sealed class StreamEvent {
         data class Status(val phase: String, val label: String? = null) : StreamEvent()
         data class Reasoning(val delta: String) : StreamEvent()

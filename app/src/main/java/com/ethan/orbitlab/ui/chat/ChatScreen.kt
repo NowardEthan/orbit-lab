@@ -297,8 +297,8 @@ fun ChatScreen(
                         )
                         // Ela perguntou algo? Acende o cartão de opções sob a bolha dela.
                         perguntaAtiva.value = if (resultado.erro) null else resultado.pergunta
-                        // Deu certo → a Luna rebatiza a conversa pelo assunto atual (no 1º par
-                        // e a cada 6 turnos). Barato e à parte; não trava a resposta.
+                        // Deu certo → batiza no 1º par (luna-core /v1/conversa/titulo).
+                        // Barato e à parte; não trava a resposta.
                         if (!resultado.erro) {
                             ChatRepository.talvezRenomearPelaLuna(conversaId)
                         }
