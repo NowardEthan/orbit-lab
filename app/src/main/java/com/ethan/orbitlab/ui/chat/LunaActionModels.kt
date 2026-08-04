@@ -60,6 +60,15 @@ data class PassoPlano(
     val feito: Boolean = false,
 )
 
+/**
+ * Segmento do fio agentico (estilo Cursor): narração e tools na ordem em que chegaram.
+ * Vazio em [LunaActionRun.fluxo] = legado (timeline em cima, texto embaixo).
+ */
+sealed class LunaTurnoSegmento {
+    data class Narracao(val texto: String) : LunaTurnoSegmento()
+    data class Acao(val stepId: String) : LunaTurnoSegmento()
+}
+
 data class LunaActionRun(
     val id: String,
     val title: String,
@@ -68,6 +77,8 @@ data class LunaActionRun(
     val profile: LunaActionProfile,
     /** Checklist viva do turno — vazia se a Luna não chamou `planejar`. */
     val plano: List<PassoPlano> = emptyList(),
+    /** Ordem cronológica narração↔tools (SSE). */
+    val fluxo: List<LunaTurnoSegmento> = emptyList(),
 )
 
 /** Meta-tools da coleira: a checklist *é* a UI delas — não repetir na timeline. */

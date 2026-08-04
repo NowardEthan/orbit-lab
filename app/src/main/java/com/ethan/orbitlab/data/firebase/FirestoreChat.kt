@@ -15,6 +15,7 @@ import com.ethan.orbitlab.ui.chat.LunaActionStepKind
 import com.ethan.orbitlab.ui.chat.LunaActionStepStatus
 import com.ethan.orbitlab.ui.chat.LunaFonteStatus
 import com.ethan.orbitlab.ui.chat.LunaWebFonte
+import com.ethan.orbitlab.ui.chat.LunaTurnoSegmento
 import com.ethan.orbitlab.ui.chat.PassoPlano
 import com.ethan.orbitlab.ui.chat.ThreadReference
 import com.ethan.orbitlab.ui.chat.WireToolStep
@@ -297,6 +298,8 @@ object FirestoreChat {
                     mapOf("texto" to p.texto, "feito" to p.feito)
                 }
             }
+            val fluxoMapped = fluxoToFirestore(run)
+            if (fluxoMapped.isNotEmpty()) msg["fluxo"] = fluxoMapped
         }
         if (imagensGeradas.isNotEmpty()) {
             msg["imagens"] = imagensGeradas.map { img ->
@@ -354,30 +357,82 @@ object FirestoreChat {
     }
 
     private fun actionRunToFirestore(run: LunaActionRun): List<Map<String, Any>> {
-        return run.steps.mapNotNull { step ->
-            val ferramenta = step.ferramenta ?: when (step.kind) {
-                LunaActionStepKind.SEARCH -> "web_search"
-                LunaActionStepKind.READ -> "ler_url"
-                LunaActionStepKind.VISION -> "ver_imagem"
-                LunaActionStepKind.VIDEO -> "ver_video"
-                LunaActionStepKind.MEMORY -> "consultar_atlas"
-                else -> return@mapNotNull null
+        return run.steps.mapNotNull { step -> stepToFirestoreMap(step) }
+    }
+
+    /** Passo que entra em `research` (índice estável pro `fluxo`). */
+    private fun stepToFirestoreMap(step: com.ethan.orbitlab.ui.chat.LunaActionStep): Map<String, Any>? {
+        val ferramenta = step.ferramenta ?: when (step.kind) {
+            LunaActionStepKind.SEARCH -> "web_search"
+            LunaActionStepKind.READ -> "ler_url"
+            LunaActionStepKind.VISION -> "ver_imagem"
+            LunaActionStepKind.VIDEO -> "ver_video"
+            LunaActionStepKind.MEMORY -> "consultar_atlas"
+            else -> return null
+        }
+        return buildMap {
+            put("ferramenta", ferramenta)
+            put("argumento", step.queries.firstOrNull() ?: step.detail ?: step.label)
+            put("sucesso", step.status == LunaActionStepStatus.DONE)
+            if (step.sources.isNotEmpty()) {
+                put(
+                    "fontes",
+                    step.sources.map { fonte ->
+                        buildMap<String, Any> {
+                            put("url", fonte.url)
+                            fonte.title.takeIf { it.isNotBlank() }?.let { put("title", it) }
+                        }
+                    },
+                )
             }
-            buildMap {
-                put("ferramenta", ferramenta)
-                put("argumento", step.queries.firstOrNull() ?: step.detail ?: step.label)
-                put("sucesso", step.status == LunaActionStepStatus.DONE)
-                if (step.sources.isNotEmpty()) {
-                    put(
-                        "fontes",
-                        step.sources.map { fonte ->
-                            buildMap<String, Any> {
-                                put("url", fonte.url)
-                                fonte.title.takeIf { it.isNotBlank() }?.let { put("title", it) }
-                            }
-                        },
-                    )
+        }
+    }
+
+    /**
+     * Serializa o fio Cursor: narração (`t=n`) e ação (`t=a`, `i` = índice em `research`).
+     * Passos que não persistem em research (ex. «Escrevendo») são omitidos do fluxo gravado.
+     */
+    private fun fluxoToFirestore(run: LunaActionRun): List<Map<String, Any>> {
+        if (run.fluxo.isEmpty()) return emptyList()
+        val idParaIndice = LinkedHashMap<String, Int>()
+        var idx = 0
+        for (step in run.steps) {
+            if (stepToFirestoreMap(step) != null) {
+                idParaIndice[step.id] = idx
+                idx++
+            }
+        }
+        return run.fluxo.mapNotNull { seg ->
+            when (seg) {
+                is LunaTurnoSegmento.Narracao -> {
+                    val t = seg.texto.trim()
+                    if (t.isEmpty()) null
+                    else mapOf("t" to "n", "texto" to t)
                 }
+                is LunaTurnoSegmento.Acao -> {
+                    val i = idParaIndice[seg.stepId] ?: return@mapNotNull null
+                    mapOf("t" to "a", "i" to i)
+                }
+            }
+        }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun parseFluxo(raw: Any?, steps: List<com.ethan.orbitlab.ui.chat.LunaActionStep>): List<LunaTurnoSegmento> {
+        val list = raw as? List<*> ?: return emptyList()
+        return list.mapNotNull { item ->
+            val m = item as? Map<*, *> ?: return@mapNotNull null
+            when (m["t"] as? String) {
+                "n" -> {
+                    val texto = (m["texto"] as? String)?.trim().orEmpty()
+                    if (texto.isEmpty()) null else LunaTurnoSegmento.Narracao(texto)
+                }
+                "a" -> {
+                    val i = (m["i"] as? Number)?.toInt() ?: return@mapNotNull null
+                    val step = steps.getOrNull(i) ?: return@mapNotNull null
+                    LunaTurnoSegmento.Acao(step.id)
+                }
+                else -> null
             }
         }
     }
@@ -397,7 +452,7 @@ object FirestoreChat {
         val imagensGeradas = parseImagensGeradas(data["imagens"])
         val reference = parseReference(data["reference"])
         val plano = parsePlano(data["plano"])
-        val actionRun = parseActionRun(data["research"], plano)
+        val actionRun = parseActionRun(data["research"], plano, data["fluxo"])
         // serverTimestamp pendente = null → ASC coloca no início (fio invertido).
         // Usa ordem da query + âncora recente pra ficar no fim até confirmar.
         val created = timestampMs(data["createdAt"])
@@ -509,7 +564,11 @@ object FirestoreChat {
     }
 
     @Suppress("UNCHECKED_CAST")
-    private fun parseActionRun(raw: Any?, plano: List<PassoPlano> = emptyList()): LunaActionRun? {
+    private fun parseActionRun(
+        raw: Any?,
+        plano: List<PassoPlano> = emptyList(),
+        fluxoRaw: Any? = null,
+    ): LunaActionRun? {
         val list = raw as? List<*>
         val wire = list?.mapNotNull { item ->
             val m = item as? Map<*, *> ?: return@mapNotNull null
@@ -540,12 +599,14 @@ object FirestoreChat {
             plano.isNotEmpty() -> "Plano"
             else -> "Ferramentas"
         }
-        return buildActionRunFromWire(
+        val base = buildActionRunFromWire(
             id = "fs-actions",
             title = title,
             wireSteps = wire,
             status = LunaActionRunStatus.DONE,
         ).copy(plano = plano)
+        val fluxo = parseFluxo(fluxoRaw, base.steps)
+        return if (fluxo.isEmpty()) base else base.copy(fluxo = fluxo)
     }
 
     @Suppress("UNCHECKED_CAST")

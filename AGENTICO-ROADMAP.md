@@ -198,15 +198,16 @@ recolhida («N passos») — sensação de “ela fez uma ação” sem prosa.
 | Executor | ponte → `onNarracaoRodada` → continua o loop; texto final junta pontes |
 | Pipeline / SSE | `onNarracao` → `onStreamContentDelta` (`content` mid-loop) |
 | Prompt | `DIRETRIZ_NARRACAO_AGENTICA` + anti-meta com exceção de ponte de 1 frase |
-| Lab | timeline **aberta** enquanto RUNNING; labels live com `…`; toolMeta blocos |
+| Lab | fio **intercalado** (`LunaFluxoAgentico` + `fluxo` no Firestore); toolMeta blocos |
+| Core coleira | texto-só **não** encerra com ☐; nudge + `maxRodadas` dinâmico; `planejar` ≤ 5 |
 
 **Sensação alvo**
 
 ```
 Vou ler o artefato pra me informar.
-  ⊟ Lendo o documento…          ← timeline aberta
+  · Lendo o documento…          ← no meio do fio, não bloco no topo
 Entendi. Agora ajusto só esse trecho.
-  ⊟ Ajustando o documento…
+  · Ajustando o documento…
 Pronto — troquei a frase X.
 ```
 
@@ -215,7 +216,8 @@ Pronto — troquei a frase X.
 - [x] Provider devolve content+tools  
 - [x] Executor narra e continua; fallback humano (sem «Executei N ações…»)  
 - [x] Diretriz de pontes + afrouxar anti-meta só pra ação  
-- [x] Lab: timeline ao vivo aberta + toolMeta `inserir_blocos` / `ler_bloco` / …  
+- [x] Lab: fluxo cronológico (narração↔tools) + persistência `fluxo`  
+- [x] Core: hard-stop se checklist incompleta (nudge; não largar no meio)  
 - [ ] Smoke aparelho: «lê o artefato e corrige Y» → ponte → lendo → ponte → editando  
 
 ### A4.1 — Task list / plano à vista (sensação Cursor)

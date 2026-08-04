@@ -997,18 +997,22 @@ fun MessageBubble(
             } else {
                 null
             }
+            // Fio Cursor (narração↔tools): o fluxo carrega checklist + texto; não empilha timeline.
+            val fluxoCursor = msg.isLuna &&
+                msg.actionRun != null &&
+                dossieRun == null &&
+                msg.actionRun.fluxo.isNotEmpty()
 
-            if (msg.isLuna && msg.actionRun != null && dossieRun == null) {
+            if (!fluxoCursor && msg.isLuna && msg.actionRun != null && dossieRun == null) {
                 LunaActionTimeline(
                     run = msg.actionRun,
                     inicialmenteAberto = false,
                 )
-                Spacer(modifier.height(8.dp))
-            } else if (msg.isLuna) {
+                Spacer(Modifier.height(8.dp))
+            } else if (!fluxoCursor && msg.isLuna) {
                 msg.actionRun?.plano?.takeIf { it.isNotEmpty() }?.let { plano ->
-                    // Pesquisa profunda: o dossiê cobre a web; a checklist do plano fica acima.
                     LunaPlanChecklist(plano = plano, aoVivo = false)
-                    Spacer(modifier.height(8.dp))
+                    Spacer(Modifier.height(8.dp))
                 }
             }
 
@@ -1052,6 +1056,29 @@ fun MessageBubble(
                     resposta = msg.texto,
                     inicialmenteAberto = false,
                 )
+            } else if (fluxoCursor && msg.actionRun != null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.Start)
+                        .combinedClickable(
+                            interactionSource = bubbleInteraction,
+                            indication = null,
+                            onClick = {},
+                            onLongClick = onLongPress,
+                        ),
+                ) {
+                    val conteudo = if (PrefsRepository.mensagemEhTecnica(msg.id)) {
+                        formalizarTecnico(msg.texto)
+                    } else {
+                        msg.texto
+                    }
+                    LunaFluxoAgentico(
+                        run = msg.actionRun,
+                        textoFallback = conteudo,
+                        aoVivo = false,
+                    )
+                }
             } else if (temTexto || temReferencia) {
                 Box(
                     modifier = Modifier

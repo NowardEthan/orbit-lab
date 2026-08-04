@@ -151,15 +151,19 @@ fun LunaToolTimeline(
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalArrangement = Arrangement.spacedBy(9.dp),
                 ) {
-                    steps.forEach { step -> LinhaPasso(step) }
+                    steps.forEach { step -> LunaToolPassoInline(step) }
                 }
             }
         }
     }
 }
 
+/** Uma linha de tool no fio (também usada no fluxo intercalado estilo Cursor). */
 @Composable
-private fun LinhaPasso(step: LunaActionStep) {
+fun LunaToolPassoInline(
+    step: LunaActionStep,
+    modifier: Modifier = Modifier,
+) {
     val rodando = step.status == LunaActionStepStatus.RUNNING
     val erro = step.status == LunaActionStepStatus.ERROR
     val labelLimpo = remember(step.label) {
@@ -169,7 +173,7 @@ private fun LinhaPasso(step: LunaActionStep) {
             .let { if (it.length > 50) it.take(47) + "…" else it }
     }
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         verticalAlignment = Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(9.dp),
     ) {
