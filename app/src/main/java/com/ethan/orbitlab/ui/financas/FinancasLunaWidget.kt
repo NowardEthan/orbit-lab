@@ -481,7 +481,6 @@ fun FinancasLunaWidget(
                 },
                 streamState = streamState,
                 containerColor = OrbitTokens.graphiteRaised,
-                exibirSeletorModo = false,
             )
         }
     }

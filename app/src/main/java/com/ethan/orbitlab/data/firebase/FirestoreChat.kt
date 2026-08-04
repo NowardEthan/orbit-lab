@@ -15,6 +15,7 @@ import com.ethan.orbitlab.ui.chat.LunaActionStepKind
 import com.ethan.orbitlab.ui.chat.LunaActionStepStatus
 import com.ethan.orbitlab.ui.chat.LunaFonteStatus
 import com.ethan.orbitlab.ui.chat.LunaWebFonte
+import com.ethan.orbitlab.ui.chat.PassoPlano
 import com.ethan.orbitlab.ui.chat.ThreadReference
 import com.ethan.orbitlab.ui.chat.WireToolStep
 import com.ethan.orbitlab.ui.chat.buildActionRunFromWire
@@ -291,6 +292,11 @@ object FirestoreChat {
         actionRun?.let { run ->
             val mapped = actionRunToFirestore(run)
             if (mapped.isNotEmpty()) msg["research"] = mapped
+            if (run.plano.isNotEmpty()) {
+                msg["plano"] = run.plano.map { p ->
+                    mapOf("texto" to p.texto, "feito" to p.feito)
+                }
+            }
         }
         if (imagensGeradas.isNotEmpty()) {
             msg["imagens"] = imagensGeradas.map { img ->
@@ -390,7 +396,8 @@ object FirestoreChat {
         val attachments = parseAttachments(data["attachments"])
         val imagensGeradas = parseImagensGeradas(data["imagens"])
         val reference = parseReference(data["reference"])
-        val actionRun = parseActionRun(data["research"])
+        val plano = parsePlano(data["plano"])
+        val actionRun = parseActionRun(data["research"], plano)
         // serverTimestamp pendente = null → ASC coloca no início (fio invertido).
         // Usa ordem da query + âncora recente pra ficar no fim até confirmar.
         val created = timestampMs(data["createdAt"])
@@ -491,10 +498,20 @@ object FirestoreChat {
     }
 
     @Suppress("UNCHECKED_CAST")
-    private fun parseActionRun(raw: Any?): LunaActionRun? {
-        val list = raw as? List<*> ?: return null
-        if (list.isEmpty()) return null
-        val wire = list.mapNotNull { item ->
+    private fun parsePlano(raw: Any?): List<PassoPlano> {
+        val list = raw as? List<*> ?: return emptyList()
+        return list.mapNotNull { item ->
+            val m = item as? Map<*, *> ?: return@mapNotNull null
+            val texto = (m["texto"] as? String)?.trim().orEmpty()
+            if (texto.isEmpty()) return@mapNotNull null
+            PassoPlano(texto = texto, feito = m["feito"] as? Boolean ?: false)
+        }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun parseActionRun(raw: Any?, plano: List<PassoPlano> = emptyList()): LunaActionRun? {
+        val list = raw as? List<*>
+        val wire = list?.mapNotNull { item ->
             val m = item as? Map<*, *> ?: return@mapNotNull null
             val ferramenta = m["ferramenta"] as? String ?: return@mapNotNull null
             val argumento = m["argumento"] as? String ?: ""
@@ -516,19 +533,19 @@ object FirestoreChat {
                 sucesso = m["sucesso"] as? Boolean ?: true,
                 fontes = sources,
             )
-        }
-        if (wire.isEmpty()) return null
-        val title = if (wire.any { ehFerramentaDeWeb(it.ferramenta) }) {
-            "Pesquisa"
-        } else {
-            "Ferramentas"
+        }.orEmpty()
+        if (wire.isEmpty() && plano.isEmpty()) return null
+        val title = when {
+            wire.any { ehFerramentaDeWeb(it.ferramenta) } -> "Pesquisa"
+            plano.isNotEmpty() -> "Plano"
+            else -> "Ferramentas"
         }
         return buildActionRunFromWire(
             id = "fs-actions",
             title = title,
             wireSteps = wire,
             status = LunaActionRunStatus.DONE,
-        )
+        ).copy(plano = plano)
     }
 
     @Suppress("UNCHECKED_CAST")

@@ -296,6 +296,13 @@ fun LunaStreamDraft(
             val dossie = estado.actionRun?.takeIf { it.isDeepResearch() }?.toLegacyResearchRun()
             if (dossie != null) {
                 Column(modifier.fillMaxWidth(0.96f)) {
+                    estado.actionRun?.plano?.takeIf { it.isNotEmpty() }?.let { plano ->
+                        LunaPlanChecklist(
+                            plano = plano,
+                            aoVivo = estado.actionRun.status == LunaActionRunStatus.RUNNING,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                    }
                     LunaDossieCard(
                         run = dossie,
                         resposta = "",
@@ -367,6 +374,13 @@ private fun StreamRespostaDraft(
     if (dossie != null && respostaParcial.isNotBlank()) {
         BoxWithConstraints(modifier.fillMaxWidth()) {
             Column(Modifier.widthIn(max = maxWidth * 0.96f)) {
+                actionRun.plano.takeIf { it.isNotEmpty() }?.let { plano ->
+                    LunaPlanChecklist(
+                        plano = plano,
+                        aoVivo = actionRun.status == LunaActionRunStatus.RUNNING,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                }
                 LunaDossieCard(
                     run = dossie,
                     resposta = respostaParcial,

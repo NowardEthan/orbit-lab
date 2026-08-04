@@ -1,5 +1,7 @@
 package com.ethan.orbitlab.ui.chat
 
+// LEGADO A1 — seletor Conversa/Técnico/Ação removido do produto. Não ligar na UI.
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -82,6 +84,7 @@ private val MODOS = listOf(
     ),
 )
 
+@Deprecated("A1: sem seletor de modo — soft router no core")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LunaModeSheet(

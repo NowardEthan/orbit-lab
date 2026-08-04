@@ -22,9 +22,10 @@ import com.ethan.orbitlab.ui.chat.LunaFonteStatus
 import com.ethan.orbitlab.ui.chat.LunaStreamEstado
 import com.ethan.orbitlab.ui.chat.LunaStreamResultado
 import com.ethan.orbitlab.ui.chat.LunaWebFonte
+import com.ethan.orbitlab.ui.chat.PassoPlano
 import com.ethan.orbitlab.ui.chat.ThreadReference
+import com.ethan.orbitlab.ui.chat.ehFerramentaDePlano
 import com.ethan.orbitlab.ui.chat.ehFerramentaDeWeb
-import com.ethan.orbitlab.ui.chat.formalizarTecnico
 import com.ethan.orbitlab.ui.chat.formatMessageWithReference
 import com.ethan.orbitlab.ui.chat.toolMeta
 import android.os.Handler
@@ -179,15 +180,11 @@ object LunaApiChat {
             )
         }
 
-        // Modo técnico capturado no ENVIO (não no render): é o modo em que ESTA resposta nasce.
-        // Marca o id agora pra correção de registro rodar depois na exibição, mesmo em reload.
-        val modoTecnico = PrefsRepository.modoTecnico.value
-        if (modoTecnico) PrefsRepository.marcarMensagemTecnica(lunaMessageId)
-        // «Mãos à obra»: força o caminho agêntico no servidor (planejar/documentos/ferramentas
-        // em todo turno). Exclusivo com o técnico — a PrefsRepository garante que só um fica ligado.
+        // A1 — sem seletor sticky: o core decide (soft router). Só o módulo Finanças força
+        // agentico no body — não via toggle global Conversa/Técnico/Ação (removido).
         val conversaFinancas = ChatRepository.ehConversaFinancas(conversaId) ||
             conversaId == PrefsRepository.conversaFinancas
-        val modoAgentico = PrefsRepository.modoAgentico.value || conversaFinancas
+        val forcarAgenticoModulo = conversaFinancas
 
         val displayMessage = textoUsuario.trim()
         val textoModelo = (textoParaModelo?.trim()?.takeIf { it.isNotEmpty() } ?: displayMessage)
@@ -260,14 +257,12 @@ object LunaApiChat {
             put("providerId", "auto")
             put("modelKey", "auto")
             put("timeZone", TimeZone.getDefault().id)
-            // Modo técnico liga duas coisas juntas: a Luna responde com mais profundidade e
-            // rigor (diretiva no core) E o raciocínio sobe pra «high». Desligado, tudo segue
-            // no default caloroso/conciso de sempre.
             put("reasoningEnabled", PrefsRepository.reasoningEnabled.value)
-            put("reasoningEffort", if (modoTecnico) "high" else "medium")
+            // Profundidade por turno (A3) ainda não existe — default medium; core sobe se precisar.
+            put("reasoningEffort", "medium")
             put("pesquisaProfunda", PrefsRepository.pesquisaProfunda.value)
-            put("modoTecnico", modoTecnico)
-            put("modoAgentico", modoAgentico)
+            put("modoTecnico", false)
+            put("modoAgentico", forcarAgenticoModulo)
             // Conversa dedicada do módulo Finanças: o core injeta briefing + pré-carga
             // pra ela saber que está ali falando de grana (não só quando cita «gastei»).
             put("moduloFinancas", conversaFinancas)
@@ -321,6 +316,9 @@ object LunaApiChat {
         // acende o painel de pesquisa que já existe — antes a gente só ignorava esses eventos.
         val acaoSteps = mutableListOf<LunaActionStep>()
 
+        // Checklist do plano do turno (coleira `planejar`) — snapshot do SSE `tipo: "plano"`.
+        var planoAtual = emptyList<PassoPlano>()
+
         // Imagens que a Luna desenhou neste turno. A URL nasce no servidor (depois do upload) e
         // chega no `fim_ferramenta` de `gerar_imagem` — não está nos argumentos, viaja no evento.
         val imagensGeradas = mutableListOf<ImagemGerada>()
@@ -330,7 +328,7 @@ object LunaApiChat {
         var perguntaPendente: PerguntaLuna? = null
 
         fun montarRun(status: LunaActionRunStatus): LunaActionRun? {
-            if (acaoSteps.isEmpty()) return null
+            if (acaoSteps.isEmpty() && planoAtual.isEmpty()) return null
             val usouWeb = acaoSteps.any { it.ferramenta?.let(::ehFerramentaDeWeb) == true }
             // Ao fechar o turno, nenhum passo pode ficar preso em "…" (o fim_ferramenta pode
             // não ter chegado, e o passo Escrevendo nasce RUNNING). Vira DONE de fato.
@@ -347,17 +345,37 @@ object LunaApiChat {
             }
             return LunaActionRun(
                 id = "live-$lunaMessageId",
-                title = if (usouWeb) "Pesquisa" else "Ferramentas",
+                title = when {
+                    usouWeb -> "Pesquisa"
+                    planoAtual.isNotEmpty() -> "Plano"
+                    else -> "Ferramentas"
+                },
                 status = status,
                 steps = steps,
                 profile = if (usouWeb) LunaActionProfile.DEEP_RESEARCH else LunaActionProfile.TASK,
+                plano = planoAtual,
             )
         }
 
-        /** Aplica um evento `acao` (inicio/fim) na timeline viva. */
+        /** Aplica um evento `acao` (inicio/fim/plano) na timeline viva. */
         fun aplicarAcao(json: JSONObject) {
             val tipo = json.optString("tipo")
+            // Snapshot da coleira — a checklist à vista; não vira passo genérico na timeline.
+            if (tipo == "plano") {
+                val arr = json.optJSONArray("plano") ?: return
+                planoAtual = buildList {
+                    for (i in 0 until arr.length()) {
+                        val item = arr.optJSONObject(i) ?: continue
+                        val texto = item.optString("texto").trim()
+                        if (texto.isEmpty()) continue
+                        add(PassoPlano(texto = texto, feito = item.optBoolean("feito", false)))
+                    }
+                }
+                return
+            }
             val ferramenta = json.optString("ferramenta").ifBlank { return }
+            // Meta-tools do plano: o evento `plano` já alimenta a checklist; não poluir a timeline.
+            if (ehFerramentaDePlano(ferramenta)) return
             val arg = extrairArgAcao(ferramenta, json.optJSONObject("argumentos"))
             val meta = toolMeta(ferramenta)
             if (tipo == "inicio_ferramenta") {
@@ -436,7 +454,7 @@ object LunaApiChat {
         }
 
         fun emitirUi() {
-            val texto = respostaBuf.toString().let { if (modoTecnico) formalizarTecnico(it) else it }
+            val texto = respostaBuf.toString()
             val reasoning = reasoningBuf.toString()
             val durMs = System.currentTimeMillis() - t0
             val durLabel = "${(durMs / 1000.0).roundToInt().coerceAtLeast(1)}s"
@@ -472,6 +490,7 @@ object LunaApiChat {
             faseAtual = ""
             rotuloAtual = ""
             acaoSteps.clear()
+            planoAtual = emptyList()
             imagensGeradas.clear()
             perguntaPendente = null
             result = LunaApiClient.chatStream(idToken, body) { event ->
@@ -573,8 +592,7 @@ object LunaApiChat {
             )
         }
 
-        val textoBruto = result.text.ifBlank { respostaBuf.toString() }.ifBlank { "…" }
-        val texto = if (modoTecnico) formalizarTecnico(textoBruto) else textoBruto
+        val texto = result.text.ifBlank { respostaBuf.toString() }.ifBlank { "…" }
         val reasoning = result.reasoning.ifBlank { reasoningBuf.toString() }
         LatenciaProbe.record(
             caminho = "paia_stream",

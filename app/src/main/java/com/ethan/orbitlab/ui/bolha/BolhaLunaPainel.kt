@@ -26,10 +26,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.border
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Nightlight
 import androidx.compose.material.icons.rounded.OpenInFull
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -51,11 +53,13 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ethan.orbitlab.data.ChatRepository
 import com.ethan.orbitlab.data.Mensagem
+import com.ethan.orbitlab.data.PrefsRepository
 import com.ethan.orbitlab.data.billing.PlanosNav
 import com.ethan.orbitlab.data.billing.UsageRepository
 import com.ethan.orbitlab.data.lunaMessageIdForUser
@@ -64,10 +68,14 @@ import com.ethan.orbitlab.data.newUserMessageId
 import com.ethan.orbitlab.ui.chat.ChatInputArea
 import com.ethan.orbitlab.ui.chat.ComposerAttachment
 import com.ethan.orbitlab.ui.chat.LunaActionTimeline
+import com.ethan.orbitlab.ui.chat.LunaImagemGeradaLista
 import com.ethan.orbitlab.ui.chat.LunaMarkdown
 import com.ethan.orbitlab.ui.chat.LunaMarkdownVariante
+import com.ethan.orbitlab.ui.chat.LunaReasoning
+import com.ethan.orbitlab.ui.chat.LunaStreamDraft
 import com.ethan.orbitlab.ui.chat.LunaStreamEstado
 import com.ethan.orbitlab.ui.chat.MessageAttachments
+import com.ethan.orbitlab.ui.chat.MessageReferenceQuote
 import com.ethan.orbitlab.ui.chat.ThreadReference
 import com.ethan.orbitlab.ui.planos.LimiteAtingidoCard
 import com.ethan.orbitlab.ui.theme.Bricolage
@@ -93,6 +101,7 @@ fun BolhaLunaPainel(
     onAbrirNoApp: () -> Unit,
     fabOrigemX: Float = -1f,
     fabOrigemY: Float = -1f,
+    rascunhoInicial: String = "",
 ) {
     val appContext = LocalContext.current.applicationContext as Application
     val conversaId = remember { ChatRepository.conversaPrincipal() }
@@ -162,6 +171,7 @@ fun BolhaLunaPainel(
                     reasoning = r.reasoning.takeIf { it.isNotBlank() && !r.erro },
                     reasoningDuracao = r.reasoningDuracao.takeIf { it.isNotBlank() && !r.erro },
                     actionRun = if (r.erro) null else r.actionRun,
+                    imagensGeradas = if (r.erro) emptyList() else r.imagensGeradas,
                     messageId = lunaMsgId,
                     persistirNuvem = !r.erro,
                     erro = r.erro,
@@ -186,24 +196,95 @@ fun BolhaLunaPainel(
 
     val scope = rememberCoroutineScope()
     val densidade = LocalDensity.current
+    val teclado = LocalSoftwareKeyboardController.current
     val progresso = remember { Animatable(0f) }
     var sheetSize by remember { mutableStateOf(Offset.Zero) }
     var sheetPos by remember { mutableStateOf(Offset.Zero) }
     var fechando by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        // Um pouco mais longo que o enter padrão — o morph do FAB precisa respirar.
         progresso.animateTo(1f, tween(OrbitMotion.msMed + 90))
     }
 
     fun fecharAnimado(depois: () -> Unit = onFechar) {
         if (fechando) return
         fechando = true
+        teclado?.hide()
         scope.launch {
             progresso.animateTo(0f, tween(OrbitMotion.msFast + 30))
             depois()
         }
     }
+
+    fun tentarDeNovo() {
+        if (!ocioso || ChatRepository.turnoEmAndamento(conversaId)) return
+        val msgs = ChatRepository.getConversa(conversaId)?.mensagens.orEmpty()
+        val ultima = msgs.lastOrNull() ?: return
+        when {
+            !ultima.isLuna -> {
+                // Órfã: só dispara resposta sem reenviar a fala do usuário.
+                val historicoAntes = msgs.dropLast(1)
+                val lunaMsgId = lunaMessageIdForUser(ultima.id)
+                streamLunaMsgId = lunaMsgId
+                streamState.value = LunaStreamEstado.Raciocinando("")
+                ChatRepository.launchTurno(conversaId, lunaMsgId) {
+                    try {
+                        val r = LunaApiChat.responder(
+                            context = appContext,
+                            conversaId = conversaId,
+                            historico = historicoAntes,
+                            textoUsuario = ultima.texto,
+                            anexos = ultima.attachments,
+                            reference = ultima.reference,
+                            userMessageId = ultima.id,
+                            lunaMessageId = lunaMsgId,
+                            reenvio = true,
+                            onEstado = {
+                                ChatRepository.publicarStream(conversaId, it)
+                                streamState.value = it
+                            },
+                        )
+                        if (r.cotaEsgotada) return@launchTurno
+                        ChatRepository.enviarMensagem(
+                            conversaId = conversaId,
+                            texto = r.resposta,
+                            isLuna = true,
+                            reasoning = r.reasoning.takeIf { it.isNotBlank() && !r.erro },
+                            reasoningDuracao = r.reasoningDuracao.takeIf { it.isNotBlank() && !r.erro },
+                            actionRun = if (r.erro) null else r.actionRun,
+                            imagensGeradas = if (r.erro) emptyList() else r.imagensGeradas,
+                            messageId = lunaMsgId,
+                            persistirNuvem = !r.erro,
+                            erro = r.erro,
+                        )
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        ChatRepository.enviarMensagem(
+                            conversaId = conversaId,
+                            texto = "Erro ao falar com o servidor Luna: ${e.message ?: e.javaClass.simpleName}",
+                            isLuna = true,
+                            messageId = lunaMsgId,
+                            persistirNuvem = false,
+                            erro = true,
+                        )
+                    } finally {
+                        streamState.value = LunaStreamEstado.Idle
+                        streamLunaMsgId = null
+                    }
+                }
+            }
+            ultima.erro || ultima.texto.startsWith("Erro ao") -> {
+                val userAntes = msgs.dropLast(1).lastOrNull { !it.isLuna } ?: return
+                enviar(userAntes.texto, userAntes.attachments, userAntes.reference)
+            }
+        }
+    }
+
+    val ultima = mensagens.lastOrNull()
+    val mostrarRetry = ocioso && ultima != null && (
+        !ultima.isLuna || ultima.erro || ultima.texto.startsWith("Erro ao")
+        )
 
     val p = progresso.value
     val temOrigem = fabOrigemX >= 0f && fabOrigemY >= 0f
@@ -224,6 +305,8 @@ fun BolhaLunaPainel(
         0.12f
     }
     val scale = startScale + (1f - startScale) * p
+    // B2: canto mais “redondo” no começo do morph, sheet clássico no fim.
+    val cantoTopo = (40f - 18f * p).dp
 
     Box(Modifier.fillMaxSize()) {
         Box(
@@ -254,7 +337,7 @@ fun BolhaLunaPainel(
                     scaleY = scale
                     alpha = (0.35f + 0.65f * p).coerceIn(0f, 1f)
                 }
-                .clip(RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp))
+                .clip(RoundedCornerShape(topStart = cantoTopo, topEnd = cantoTopo))
                 .background(OrbitTokens.graphiteSurf),
         ) {
             AlcaPainel()
@@ -281,7 +364,10 @@ fun BolhaLunaPainel(
                             key = { it.id },
                         ) { msg -> BalaoPainel(msg) }
                         if (!ocioso) {
-                            item(key = "stream") { StatusStreamPainel(streamState.value) }
+                            item(key = "stream") { LunaStreamDraft(estado = streamState.value) }
+                        }
+                        if (mostrarRetry) {
+                            item(key = "retry") { RetryChipPainel(onClick = { tentarDeNovo() }) }
                         }
                     }
                 }
@@ -307,7 +393,7 @@ fun BolhaLunaPainel(
                         onSend = { t, a, r -> enviar(t, a, r) },
                         streamState = streamState,
                         containerColor = OrbitTokens.graphiteRaised,
-                        exibirSeletorModo = true,
+                        textoInicial = rascunhoInicial,
                     )
                 }
             }
@@ -423,6 +509,7 @@ private fun VazioPainel() {
 @Composable
 private fun BalaoPainel(msg: Mensagem) {
     val luna = msg.isLuna
+    val mostrarRaciocinio by PrefsRepository.reasoningEnabled.collectAsState()
     Column(
         Modifier.fillMaxWidth(),
         horizontalAlignment = if (luna) Alignment.Start else Alignment.End,
@@ -435,17 +522,33 @@ private fun BalaoPainel(msg: Mensagem) {
                     .widthIn(max = 320.dp),
             )
         }
+        if (luna && mostrarRaciocinio && !msg.reasoning.isNullOrBlank()) {
+            LunaReasoning(
+                texto = msg.reasoning.orEmpty(),
+                duracaoLabel = msg.reasoningDuracao,
+                inicialmenteAberto = false,
+            )
+            Spacer(Modifier.height(6.dp))
+        }
+        if (luna && msg.imagensGeradas.isNotEmpty()) {
+            LunaImagemGeradaLista(
+                imagens = msg.imagensGeradas,
+                modifier = Modifier.align(Alignment.Start),
+            )
+            Spacer(Modifier.height(6.dp))
+        }
         val temAnexos = !luna && msg.attachments.isNotEmpty()
         val temTexto = msg.texto.isNotBlank()
+        val temRef = !luna && msg.reference != null
         if (temAnexos) {
             MessageAttachments(
                 attachments = msg.attachments,
-                solo = temAnexos && !temTexto,
+                solo = temAnexos && !temTexto && !temRef,
                 modifier = Modifier.align(Alignment.End),
             )
-            if (temTexto) Spacer(Modifier.height(6.dp))
+            if (temTexto || temRef) Spacer(Modifier.height(6.dp))
         }
-        if (temTexto || msg.erro) {
+        if (temTexto || msg.erro || temRef) {
             Box(
                 Modifier
                     .widthIn(max = 320.dp)
@@ -460,15 +563,21 @@ private fun BalaoPainel(msg: Mensagem) {
                     .background(if (luna) OrbitTokens.bubbleLuna else OrbitTokens.bubbleUser)
                     .padding(horizontal = 12.dp, vertical = 10.dp),
             ) {
-                if (luna && !msg.erro) {
-                    LunaMarkdown(content = msg.texto, variante = LunaMarkdownVariante.Chat)
-                } else {
-                    Text(
-                        msg.texto,
-                        color = if (msg.erro) OrbitTokens.danger else OrbitTokens.textHiN,
-                        fontSize = 14.sp,
-                        lineHeight = 20.sp,
-                    )
+                Column {
+                    if (temRef) {
+                        MessageReferenceQuote(reference = msg.reference!!)
+                        if (temTexto) Spacer(Modifier.height(6.dp))
+                    }
+                    if (luna && !msg.erro) {
+                        LunaMarkdown(content = msg.texto, variante = LunaMarkdownVariante.Chat)
+                    } else if (temTexto || msg.erro) {
+                        Text(
+                            msg.texto,
+                            color = if (msg.erro) OrbitTokens.danger else OrbitTokens.textHiN,
+                            fontSize = 14.sp,
+                            lineHeight = 20.sp,
+                        )
+                    }
                 }
             }
         }
@@ -476,46 +585,30 @@ private fun BalaoPainel(msg: Mensagem) {
 }
 
 @Composable
-private fun StatusStreamPainel(estado: LunaStreamEstado) {
-    val label = when (estado) {
-        is LunaStreamEstado.Idle -> return
-        is LunaStreamEstado.Pesquisando -> estado.liveLabel
-        is LunaStreamEstado.Raciocinando -> estado.fase.ifBlank { "Pensando…" }
-        is LunaStreamEstado.Respondendo -> "Escrevendo…"
-    }
-    val parcial = (estado as? LunaStreamEstado.Respondendo)?.respostaParcial.orEmpty()
-    val run = when (estado) {
-        is LunaStreamEstado.Pesquisando -> estado.run
-        is LunaStreamEstado.Raciocinando -> estado.actionRun
-        is LunaStreamEstado.Respondendo -> estado.actionRun
-        else -> null
-    }
-    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.Start) {
-        run?.let {
-            LunaActionTimeline(
-                run = it,
-                modifier = Modifier
-                    .padding(bottom = 6.dp)
-                    .widthIn(max = 320.dp),
+private fun RetryChipPainel(onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp),
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        Row(
+            Modifier
+                .clip(RoundedCornerShape(20.dp))
+                .background(OrbitTokens.graphiteRaised)
+                .border(1.dp, OrbitTokens.graphiteHair, RoundedCornerShape(20.dp))
+                .orbitPressable(onClick = onClick)
+                .padding(horizontal = 16.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
+        ) {
+            Icon(
+                Icons.Rounded.Refresh,
+                contentDescription = null,
+                tint = OrbitTokens.bluePastel,
+                modifier = Modifier.size(16.dp),
             )
-        }
-        Text(
-            label,
-            color = OrbitTokens.bluePastel,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Medium,
-            modifier = Modifier.padding(bottom = 4.dp),
-        )
-        if (parcial.isNotBlank()) {
-            Box(
-                Modifier
-                    .widthIn(max = 320.dp)
-                    .clip(RoundedCornerShape(16.dp, 16.dp, 16.dp, 4.dp))
-                    .background(OrbitTokens.bubbleLuna)
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-            ) {
-                LunaMarkdown(content = parcial, variante = LunaMarkdownVariante.Chat)
-            }
+            Text("Tentar de novo", color = OrbitTokens.bluePastel, fontSize = 13.sp)
         }
     }
 }

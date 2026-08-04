@@ -54,13 +54,28 @@ data class LunaActionStep(
     val ferramenta: String? = null,
 )
 
+/** Um passo do plano do turno (SSE `tipo: "plano"` / coleira `planejar`). */
+data class PassoPlano(
+    val texto: String,
+    val feito: Boolean = false,
+)
+
 data class LunaActionRun(
     val id: String,
     val title: String,
     val status: LunaActionRunStatus,
     val steps: List<LunaActionStep>,
     val profile: LunaActionProfile,
+    /** Checklist viva do turno — vazia se a Luna não chamou `planejar`. */
+    val plano: List<PassoPlano> = emptyList(),
 )
+
+/** Meta-tools da coleira: a checklist *é* a UI delas — não repetir na timeline. */
+fun ehFerramentaDePlano(ferramenta: String): Boolean =
+    ferramenta == "planejar" ||
+        ferramenta == "concluir_passo" ||
+        ferramenta == "adicionar_passo" ||
+        ferramenta == "plano"
 
 fun LunaActionRun.isDeepResearch(): Boolean =
     profile == LunaActionProfile.DEEP_RESEARCH
@@ -81,7 +96,7 @@ fun LunaActionRun.imagemEmGeracao(): String? {
 fun LunaActionRun.toolSteps(): List<LunaActionStep> =
     steps.filter { step ->
         val f = step.ferramenta
-        f == null || !ehFerramentaDeWeb(f)
+        f == null || (!ehFerramentaDeWeb(f) && !ehFerramentaDePlano(f))
     }
 
 fun LunaActionRun.webSteps(): List<LunaActionStep> =

@@ -19,6 +19,7 @@ perfil e auto-update. Backend = **luna-core** (Railway). Canal de update =
 | Abrir | Android Studio → pasta `OrbitLab` |
 | Release | [`RELEASING.md`](RELEASING.md) · assinatura [`SIGNING.md`](SIGNING.md) · endurecimento [`HARDENING.md`](HARDENING.md) |
 | Bolha (chat-head) | [`BOLHA-ROADMAP.md`](BOLHA-ROADMAP.md) · fase [`bolha/B1-gesto-premium.md`](bolha/B1-gesto-premium.md) · código `ui/bolha/` |
+| Luna agentica | [`AGENTICO-ROADMAP.md`](AGENTICO-ROADMAP.md) — **A0–A1 em curso**: soft router + sem seletor; A4.1 checklist |
 | Build/CI | [`.github/workflows/build-lab.yml`](.github/workflows/build-lab.yml) · [`TESTE-UPDATE.md`](TESTE-UPDATE.md) |
 
 ## Armadilhas
@@ -29,6 +30,12 @@ perfil e auto-update. Backend = **luna-core** (Railway). Canal de update =
 4. **Cota / billing** são verdade no **luna-core**. Parede no app é UX; APK antiga não fura carteira.
 5. Release endurecido (signing, R8, Crashlytics, rate limit, DirectChat fora) — ver [`HARDENING.md`](HARDENING.md).
 6. **Sem chave OpenRouter no APK de produção.** Chat = luna-core. `LunaDirectChat` é harness de debug.
+7. **Bolha / OEM:** Xiaomi, Samsung e afins matam FGS ou bloqueiam overlay. Em Ajustes há tip de
+   bateria sem restrição + autostart. Não tratar “bolha sumiu” só como bug do app — pedir
+   isenção de bateria antes de investigar código. Overlay = `SYSTEM_ALERT_WINDOW`; sem ela
+   a prefs pode ficar “ativa” e o FAB não aparece.
+8. **Sem seletor de modo (A1).** Não reintroduzir Conversa/Técnico/Ação no composer. Agentico =
+   soft router no luna-core; só Finanças força `modoAgentico` de módulo. Nunca force-all em “oi”.
 
 ## Crashlytics / privacidade nos crashes
 

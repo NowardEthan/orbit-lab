@@ -165,10 +165,10 @@ Ver checklist ticável em [`bolha/B0-fundacao.md`](bolha/B0-fundacao.md).
 
 ### DoD
 
-- [ ] Em slow-mo mental: não há “FAB some → tela vazia → sheet sobe”  
-- [ ] Fechar termina no ponto onde a bolha está  
-- [ ] Voltar do app → FAB entra com fade/scale curto  
-- [ ] Sem regressão de composer (Activity continua hospedando pickers)  
+- [x] FAB some no instante do `expandirPainel` (antes do startActivity)  
+- [x] Cantos interpolam no morph; enter no background via `enterNonce`  
+- [ ] Smoke visual aparelho: sem “tela vazia”; fechar no ponto do FAB  
+- [x] Sem regressão de composer (Activity continua hospedando pickers)  
 
 ### Riscos
 
@@ -198,10 +198,11 @@ Ver checklist ticável em [`bolha/B0-fundacao.md`](bolha/B0-fundacao.md).
 
 ### DoD
 
-- [ ] Peek não impede toque no app de baixo na área livre  
-- [ ] Resposta em background → badge visível; abrir painel limpa  
-- [ ] Stream ativo → sinal no ícone sem tremor de texto  
-- [ ] Cota esgotada → sinal distinto + parede no painel  
+- [x] Peek (~45%, delay idle) — smoke touch-through no aparelho  
+- [x] Badge em background; limpa no painel / quick / chat nativo  
+- [x] Stream → anel no ícone (não scale do card)  
+- [x] Cota → ponto vermelho + parede no painel  
+- [ ] Smoke aparelho B3 completo  
 
 ### Privacidade
 
@@ -231,9 +232,10 @@ Ver checklist ticável em [`bolha/B0-fundacao.md`](bolha/B0-fundacao.md).
 
 ### DoD
 
-- [ ] Turno com reasoning + imagem gerada renderiza no painel como no app (smoke)  
-- [ ] Retry recupera turno órfão sem duplicar user msg  
-- [ ] Composer e cota intactos  
+- [x] Reasoning + imagem + timeline no painel (código)  
+- [x] Retry órfã/erro sem duplicar user  
+- [x] Composer e cota intactos  
+- [ ] Smoke reasoning/imagem/retry no aparelho  
 
 ### Nota
 
@@ -261,9 +263,10 @@ Reusar composables do `ui/chat/`; evitar fork de bolha. Se algo exigir Activity 
 
 ### DoD
 
-- [ ] Mandar áudio rápido sem abrir sheet 90%  
-- [ ] Expandir pro painel preserva texto rascunho se houver  
-- [ ] Quick composer também só com app em background  
+- [x] Mic hold no quick (se já tem permissão; senão abre painel)  
+- [x] Expandir leva `textoInicial` pro `ChatInputArea`  
+- [x] Quick só com app em background (mesmo gate do FAB)  
+- [ ] Smoke texto + áudio + rascunho no aparelho  
 
 ### Riscos
 
@@ -293,10 +296,12 @@ Reusar composables do `ui/chat/`; evitar fork de bolha. Se algo exigir Activity 
 
 ### DoD
 
-- [ ] Primeira ativação mostra onboarding uma vez  
-- [ ] Ajustes reflete estado real (permissão / foreground / rodando)  
-- [ ] Notificação FGS com copy útil e não alarmista  
-- [ ] Doc curto no `AGENTS.md` ou este arquivo: armadilhas OEM  
+- [x] Onboarding 1× ao ligar  
+- [x] Ajustes: subtítulo por permissão / painel / foreground  
+- [x] FGS copy útil (“Some com o app aberto…”)  
+- [x] Tip OEM + armadilha em `AGENTS.md`  
+- [x] Breadcrumbs: open_panel, dismiss, snap, quick_*, permission_denied, badge_show  
+- [ ] Smoke primeira ativação + OEM no aparelho  
 
 ---
 
@@ -308,6 +313,21 @@ Reusar composables do `ui/chat/`; evitar fork de bolha. Se algo exigir Activity 
 - Tradução flutuante / OCR de tela  
 - Idle “vivo” com scale da bolha inteira  
 - Substituir o chat nativo  
+
+---
+
+## Sprint seguinte — depois do ship B*
+
+Ordem combinada (2026-08-04):
+
+1. **Fechar B2–B6** (este sprint FAB) + publish lab.  
+2. **A4.1** — task list / plano à vista ([`AGENTICO-ROADMAP.md`](AGENTICO-ROADMAP.md) § A4.1).  
+   O Lab **não mostrava nem** “Traçou o plano” (evento `tipo: "plano"` engolido).  
+3. **A0 → A1** — Luna agentica por base (tirar seletor).  
+
+> Luna **em essência** agentica **e** profunda — sem seletor Conversa/Técnico/Ação.
+> Roadmap completo: [`AGENTICO-ROADMAP.md`](AGENTICO-ROADMAP.md) (A0–A5).
+> **Nunca** `forcarAgentico` em todo “oi”.
 
 ---
 
@@ -330,11 +350,11 @@ Em **toda** fase que mexe em UI/motion:
 |------|--------|------|-------|
 | B0 | 🟡 repo | 2026-08-04 | Spec + contratos no repo; baseline `main`. Smoke aparelho pendente. Canal lab 0.33.2. |
 | B1 | 🟡 repo | 2026-08-04 | Snap animado, posição salva, dismiss por arraste, haptics. Smoke aparelho pendente. |
-| B2 | ⬜ | | |
-| B3 | ⬜ | | |
-| B4 | ⬜ | | |
-| B5 | ⬜ | | |
-| B6 | ⬜ | | |
+| B2 | 🟡 | 2026-08-04 | WIP: morph/cantos/enter; falta ghost + hide no mesmo frame |
+| B3 | 🟡 | 2026-08-04 | WIP: peek/badge/pensando/cota; limpar badge no chat nativo |
+| B4 | 🟡 | 2026-08-04 | WIP: reasoning/imagem/retry no painel; ref. long-press opcional |
+| B5 | 🟡 | 2026-08-04 | WIP: quick texto; falta mic + rascunho→painel |
+| B6 | 🟡 | 2026-08-04 | WIP: onboarding/FGS/OEM/estado; fechar telemetria + doc |
 
 **Legenda:** ⬜ não começou · 🟡 em curso / parcial · ✅ feita e validada no aparelho
 
@@ -342,10 +362,9 @@ Em **toda** fase que mexe em UI/motion:
 
 ## Como puxar a próxima fatia
 
-1. Escolher a fase (`B1` recomendada agora).  
-2. Pedir: **“vamos especificar a B1”** → gera checklist de arquivos + DoD da sessão.  
-3. Implementar → smoke → (se pedir) PR + publish lab com `versionCode` > canal.  
-4. Atualizar a tabela de progresso neste arquivo.
+1. **Agora:** fechar sprint **B2–B6** nesta branch (`cursor/bolha-b2-b6-completo-g9h0`).  
+2. Smoke aparelho → PR → publish lab (se Ethan pedir).  
+3. Em seguida: **A4.1** (task list) no [`AGENTICO-ROADMAP.md`](AGENTICO-ROADMAP.md).
 
 ---
 

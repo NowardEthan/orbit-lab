@@ -3,6 +3,7 @@ package com.ethan.orbitlab.ui.bolha
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
+import android.app.Application
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -41,17 +42,28 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.ethan.orbitlab.MainActivity
 import com.ethan.orbitlab.R
+import com.ethan.orbitlab.data.ChatRepository
 import com.ethan.orbitlab.data.PrefsRepository
+import com.ethan.orbitlab.data.billing.UsageRepository
+import com.ethan.orbitlab.data.crash.CrashReporting
+import com.ethan.orbitlab.data.voice.VoiceClip
+import com.ethan.orbitlab.ui.chat.LunaStreamEstado
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
 /**
- * A bolha da Luna (chat-head) — flutua sobre qualquer app.
- *
- * Overlay = só o FAB (WRAP). No arraste vira tela cheia pra zona “Guardar”.
- * Painel = [BolhaPainelActivity]. FAB some com o OrbitLab em foreground.
+ * Bolha da Luna — FAB no overlay; painel em [BolhaPainelActivity].
+ * B1 gesto · B2 handoff · B3 sinais/peek · B5 quick reply.
  */
 class BolhaLunaService :
     Service(),
@@ -65,12 +77,16 @@ class BolhaLunaService :
     override val lifecycle: Lifecycle get() = lifecycleRegistry
     override val savedStateRegistry: SavedStateRegistry get() = savedStateController.savedStateRegistry
 
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private lateinit var windowManager: WindowManager
     private var view: ComposeView? = null
     private var snapAnimator: ValueAnimator? = null
+    private var peekJob: Job? = null
 
     private var appEmPrimeiroPlano = false
     private var jaAvisouZonaDismiss = false
+    private var peekAtivo = false
+    private var xAntesDoPeek = 0
 
     private val ui = MutableStateFlow(
         BolhaUiState(
@@ -78,6 +94,8 @@ class BolhaLunaService :
             offsetY = PrefsRepository.bolhaY,
             telaCheia = false,
             sobreDismiss = false,
+            quickAberto = false,
+            enterNonce = 0,
         ),
     )
 
@@ -85,11 +103,15 @@ class BolhaLunaService :
         when (event) {
             Lifecycle.Event.ON_START -> {
                 appEmPrimeiroPlano = true
+                cancelarPeek()
+                fecharQuick()
                 atualizarVisibilidadeFab()
             }
             Lifecycle.Event.ON_STOP -> {
                 appEmPrimeiroPlano = false
+                ui.update { it.copy(enterNonce = it.enterNonce + 1) }
                 atualizarVisibilidadeFab()
+                agendarPeek()
             }
             else -> Unit
         }
@@ -119,13 +141,46 @@ class BolhaLunaService :
             .isAtLeast(Lifecycle.State.STARTED)
         ProcessLifecycleOwner.get().lifecycle.addObserver(appLifecycleObserver)
         montarBolha()
+        observarSinais()
         _rodando.value = true
         atualizarVisibilidadeFab()
+        if (!appEmPrimeiroPlano) agendarPeek()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         irParaPrimeiroPlano()
         return START_STICKY
+    }
+
+    private fun observarSinais() {
+        val conversaId = ChatRepository.conversaPrincipal()
+        scope.launch {
+            combine(
+                ChatRepository.observarConversa(conversaId),
+                ChatRepository.streamDaConversa(conversaId),
+                UsageRepository.bloqueado,
+                UsageRepository.usage,
+            ) { conv, stream, cotaBloq, usage ->
+                Triple(conv, stream, cotaBloq to usage)
+            }.collect { (conv, stream, cotaPair) ->
+                val (cotaBloq, usage) = cotaPair
+                val pensando = stream !is LunaStreamEstado.Idle ||
+                    ChatRepository.turnoEmAndamento(conversaId)
+                BolhaSinal.setPensando(pensando)
+
+                val semSaldo = !usage.loading && !usage.ilimitado && !usage.temSaldoParaChat
+                BolhaSinal.setAlertaCota(cotaBloq || semSaldo)
+
+                val lastLuna = conv?.mensagens?.lastOrNull { it.isLuna }
+                if (lastLuna != null &&
+                    lastLuna.id != PrefsRepository.bolhaLastLunaMsgId &&
+                    !_painelAberto.value &&
+                    !appEmPrimeiroPlano
+                ) {
+                    BolhaSinal.setBadge(true)
+                }
+            }
+        }
     }
 
     private fun restaurarPosicaoInicial() {
@@ -139,7 +194,14 @@ class BolhaLunaService :
         params.height = WindowManager.LayoutParams.WRAP_CONTENT
         params.x = x
         params.y = y
-        ui.value = BolhaUiState(offsetX = x, offsetY = y, telaCheia = false, sobreDismiss = false)
+        ui.value = BolhaUiState(
+            offsetX = x,
+            offsetY = y,
+            telaCheia = false,
+            sobreDismiss = false,
+            quickAberto = false,
+            enterNonce = 0,
+        )
     }
 
     private fun montarBolha() {
@@ -150,27 +212,71 @@ class BolhaLunaService :
             setContent {
                 val state by ui.collectAsState()
                 val vibracao by PrefsRepository.vibracao.collectAsState()
+                val badge by BolhaSinal.badge.collectAsState()
+                val pensando by BolhaSinal.pensando.collectAsState()
+                val alertaCota by BolhaSinal.alertaCota.collectAsState()
                 BolhaOverlay(
                     telaCheia = state.telaCheia,
                     offsetX = state.offsetX,
                     offsetY = state.offsetY,
                     sobreDismiss = state.sobreDismiss,
+                    quickAberto = state.quickAberto,
+                    badge = badge,
+                    pensando = pensando,
+                    alertaCota = alertaCota,
+                    enterNonce = state.enterNonce,
                     hapticsLigados = vibracao,
                     onDragStart = { iniciarArraste() },
                     onArrastar = { dx, dy -> moverArraste(dx, dy) },
                     onSoltar = { soltarArraste() },
-                    onTocar = { expandir() },
+                    onTocar = { abrirQuickOuPainel() },
+                    onAbrirPainel = { rascunho -> expandirPainel(rascunho) },
+                    onFecharQuick = { fecharQuick() },
+                    onEnviarQuick = { texto ->
+                        BolhaEnvio.enviarTexto(applicationContext as Application, texto)
+                        fecharQuick()
+                        CrashReporting.breadcrumb("bolha_quick_send")
+                    },
+                    onEnviarAudioQuick = { clip ->
+                        BolhaEnvio.enviarAudio(applicationContext as Application, clip)
+                        fecharQuick()
+                        CrashReporting.breadcrumb("bolha_quick_send")
+                    },
                 )
             }
         }
         view = compose
         runCatching { windowManager.addView(compose, params) }
-        // Após layout, corrige X da direita com a largura real.
         compose.post { alinharLadoAposLayout() }
     }
 
+    private fun abrirQuickOuPainel() {
+        cancelarPeek()
+        BolhaSinal.limparBadge()
+        marcarMsgsVistas()
+        if (ui.value.quickAberto) {
+            expandirPainel()
+        } else {
+            // Quick precisa de foco pro teclado.
+            params.flags = FLAGS_QUICK
+            params.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+            ui.update { it.copy(quickAberto = true) }
+            atualizar()
+            CrashReporting.breadcrumb("bolha_quick_open")
+        }
+    }
+
+    private fun fecharQuick() {
+        if (!ui.value.quickAberto) return
+        ui.update { it.copy(quickAberto = false) }
+        params.flags = FLAGS_BOLHA
+        params.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_STATE_UNSPECIFIED
+        atualizar()
+        agendarPeek()
+    }
+
     private fun alinharLadoAposLayout() {
-        if (ui.value.telaCheia) return
+        if (ui.value.telaCheia || peekAtivo) return
         val w = view?.width?.takeIf { it > 0 } ?: return
         val alvo = if (PrefsRepository.bolhaLadoEsquerdo) 0 else recursos().widthPixels - w
         if (params.x != alvo) {
@@ -181,6 +287,8 @@ class BolhaLunaService :
     }
 
     private fun iniciarArraste() {
+        cancelarPeek()
+        fecharQuick()
         snapAnimator?.cancel()
         snapAnimator = null
         jaAvisouZonaDismiss = false
@@ -188,13 +296,15 @@ class BolhaLunaService :
         val y = params.y
         params.width = WindowManager.LayoutParams.MATCH_PARENT
         params.height = WindowManager.LayoutParams.MATCH_PARENT
+        params.flags = FLAGS_BOLHA
         params.x = 0
         params.y = 0
-        ui.value = BolhaUiState(
+        ui.value = ui.value.copy(
             offsetX = x,
             offsetY = y,
             telaCheia = true,
             sobreDismiss = false,
+            quickAberto = false,
         )
         atualizar()
     }
@@ -222,10 +332,10 @@ class BolhaLunaService :
         }
         if (st.sobreDismiss) {
             tickHaptic(forte = true)
+            CrashReporting.breadcrumb("bolha_dismiss")
             pararSozinho()
             return
         }
-        // Volta pro WRAP na posição atual e anima o snap horizontal.
         val fab = tamanhoFabPx()
         val x = st.offsetX.coerceIn(0, (recursos().widthPixels - fab).coerceAtLeast(0))
         val y = clampY(st.offsetY, fab)
@@ -233,9 +343,17 @@ class BolhaLunaService :
         params.height = WindowManager.LayoutParams.WRAP_CONTENT
         params.x = x
         params.y = y
-        ui.value = BolhaUiState(offsetX = x, offsetY = y, telaCheia = false, sobreDismiss = false)
+        ui.value = st.copy(
+            offsetX = x,
+            offsetY = y,
+            telaCheia = false,
+            sobreDismiss = false,
+        )
         atualizar()
-        view?.post { grudarNaBordaAnimado(params.x, params.y) }
+        view?.post {
+            grudarNaBordaAnimado(params.x, params.y)
+            agendarPeek()
+        }
     }
 
     private fun grudarNaBordaAnimado(fromX: Int, fromY: Int) {
@@ -246,11 +364,17 @@ class BolhaLunaService :
         val targetY = clampY(fromY, w)
         params.y = targetY
 
-        if (fromX == targetX) {
+        fun fim() {
             params.x = targetX
             persistirPosicao(targetX, targetY)
             atualizar()
             tickHaptic()
+            CrashReporting.breadcrumb("bolha_snap")
+            snapAnimator = null
+        }
+
+        if (fromX == targetX) {
+            fim()
             return
         }
 
@@ -263,14 +387,7 @@ class BolhaLunaService :
                 atualizar()
             }
             addListener(object : AnimatorListenerAdapter() {
-                override fun onAnimationEnd(animation: Animator) {
-                    params.x = targetX
-                    persistirPosicao(targetX, targetY)
-                    atualizar()
-                    tickHaptic()
-                    snapAnimator = null
-                }
-
+                override fun onAnimationEnd(animation: Animator) = fim()
                 override fun onAnimationCancel(animation: Animator) {
                     snapAnimator = null
                 }
@@ -279,26 +396,41 @@ class BolhaLunaService :
         }
     }
 
-    private fun tickHaptic(forte: Boolean = false) {
-        if (!PrefsRepository.vibracao.value) return
-        val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val mgr = getSystemService(VibratorManager::class.java)
-            mgr?.defaultVibrator
-        } else {
-            @Suppress("DEPRECATION")
-            getSystemService(Vibrator::class.java)
-        } ?: return
-        if (!vibrator.hasVibrator()) return
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val efeito = if (forte) {
-                VibrationEffect.EFFECT_CLICK
-            } else {
-                VibrationEffect.EFFECT_TICK
+    private fun agendarPeek() {
+        peekJob?.cancel()
+        if (appEmPrimeiroPlano || _painelAberto.value || ui.value.telaCheia || ui.value.quickAberto) {
+            return
+        }
+        peekJob = scope.launch {
+            delay(2_800)
+            if (appEmPrimeiroPlano || _painelAberto.value || ui.value.telaCheia || ui.value.quickAberto) {
+                return@launch
             }
-            vibrator.vibrate(VibrationEffect.createPredefined(efeito))
-        } else {
-            @Suppress("DEPRECATION")
-            vibrator.vibrate(if (forte) 24 else 12)
+            aplicarPeek(true)
+        }
+    }
+
+    private fun cancelarPeek() {
+        peekJob?.cancel()
+        peekJob = null
+        if (peekAtivo) aplicarPeek(false)
+    }
+
+    private fun aplicarPeek(ligar: Boolean) {
+        val w = view?.width?.takeIf { it > 0 } ?: tamanhoFabPx()
+        val metade = (w * 0.45f).toInt()
+        if (ligar && !peekAtivo) {
+            xAntesDoPeek = params.x
+            val esq = PrefsRepository.bolhaLadoEsquerdo
+            params.x = if (esq) -metade else xAntesDoPeek + metade
+            peekAtivo = true
+            ui.update { it.copy(offsetX = params.x) }
+            atualizar()
+        } else if (!ligar && peekAtivo) {
+            params.x = xAntesDoPeek
+            peekAtivo = false
+            ui.update { it.copy(offsetX = params.x) }
+            atualizar()
         }
     }
 
@@ -327,13 +459,14 @@ class BolhaLunaService :
         return if (w > 0 && !ui.value.telaCheia) w else estimativaFabPx()
     }
 
-    private fun estimativaFabPx(): Int {
-        // 56dp + folga 12dp × 2.
-        return (80f * recursos().density).toInt()
-    }
+    private fun estimativaFabPx(): Int = (80f * recursos().density).toInt()
 
-    /** Toque na bolha → Activity translúcida com o chat completo. */
-    private fun expandir() {
+    /** Long-press / expandir do quick → painel completo. */
+    private fun expandirPainel(rascunho: String = "") {
+        cancelarPeek()
+        fecharQuick()
+        BolhaSinal.limparBadge()
+        marcarMsgsVistas()
         snapAnimator?.cancel()
         val v = view
         val st = ui.value
@@ -346,9 +479,30 @@ class BolhaLunaService :
             fabCx = params.x + (v?.width?.takeIf { it > 0 } ?: estimativaFabPx()) / 2f
             fabCy = params.y + (v?.height?.takeIf { it > 0 } ?: estimativaFabPx()) / 2f
         }
+        // B2: FAB some no mesmo instante em que o painel sobe (evita frame vazio).
         _painelAberto.value = true
+        view?.visibility = View.GONE
+        CrashReporting.breadcrumb("bolha_open_panel")
+        val ok = runCatching {
+            startActivity(BolhaPainelActivity.intent(this, fabCx, fabCy, rascunho))
+        }.isSuccess
+        if (!ok) {
+            _painelAberto.value = false
+            atualizarVisibilidadeFab()
+        }
+    }
+
+    private fun marcarMsgsVistas() {
+        val last = ChatRepository.getConversa(ChatRepository.conversaPrincipal())
+            ?.mensagens?.lastOrNull { it.isLuna }
+        PrefsRepository.setBolhaLastLunaMsgId(last?.id)
+        BolhaSinal.limparBadge()
+    }
+
+    private fun aoFecharPainel() {
+        ui.update { it.copy(enterNonce = it.enterNonce + 1) }
         atualizarVisibilidadeFab()
-        runCatching { startActivity(BolhaPainelActivity.intent(this, fabCx, fabCy)) }
+        agendarPeek()
     }
 
     private fun atualizarVisibilidadeFab() {
@@ -363,14 +517,38 @@ class BolhaLunaService :
 
     private fun pararSozinho() {
         snapAnimator?.cancel()
+        peekJob?.cancel()
         PrefsRepository.setBolhaAtiva(false)
         stopSelf()
+    }
+
+    private fun tickHaptic(forte: Boolean = false) {
+        if (!PrefsRepository.vibracao.value) return
+        val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            getSystemService(VibratorManager::class.java)?.defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            getSystemService(Vibrator::class.java)
+        } ?: return
+        if (!vibrator.hasVibrator()) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            vibrator.vibrate(
+                VibrationEffect.createPredefined(
+                    if (forte) VibrationEffect.EFFECT_CLICK else VibrationEffect.EFFECT_TICK,
+                ),
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            vibrator.vibrate(if (forte) 24 else 12)
+        }
     }
 
     private fun recursos() = resources.displayMetrics
 
     override fun onDestroy() {
         snapAnimator?.cancel()
+        peekJob?.cancel()
+        scope.cancel()
         ProcessLifecycleOwner.get().lifecycle.removeObserver(appLifecycleObserver)
         if (instancia === this) instancia = null
         view?.let { runCatching { windowManager.removeView(it) } }
@@ -390,7 +568,7 @@ class BolhaLunaService :
                 CANAL,
                 "Bolha da Luna",
                 NotificationManager.IMPORTANCE_MIN,
-            ).apply { description = "A Luna flutuando sobre outros apps." }
+            ).apply { description = "Bolha ativa em segundo plano." }
             manager.createNotificationChannel(canal)
         }
         val abrir = PendingIntent.getActivity(
@@ -401,8 +579,8 @@ class BolhaLunaService :
         )
         val notif: Notification = NotificationCompat.Builder(this, CANAL)
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("Luna por perto 🌙")
-            .setContentText("Toque na bolha pra falar · arraste pra baixo pra guardar.")
+            .setContentTitle("Bolha da Luna ativa")
+            .setContentText("Some com o app aberto · toque pra abrir o Orbit")
             .setContentIntent(abrir)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_MIN)
@@ -424,28 +602,36 @@ class BolhaLunaService :
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
 
+        /** Quick reply: focável pro IME, sem ser modal no app de baixo. */
+        private const val FLAGS_QUICK =
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+
         private val _rodando = MutableStateFlow(false)
         val rodando: StateFlow<Boolean> = _rodando.asStateFlow()
 
         private val _painelAberto = MutableStateFlow(false)
+        val painelAberto: StateFlow<Boolean> = _painelAberto.asStateFlow()
 
         @Volatile
         private var instancia: BolhaLunaService? = null
 
         fun avisarPainelAberto() {
             _painelAberto.value = true
+            instancia?.cancelarPeek()
+            instancia?.fecharQuick()
+            BolhaSinal.limparBadge()
+            instancia?.marcarMsgsVistas()
             instancia?.atualizarVisibilidadeFab()
         }
 
         fun avisarPainelFechado() {
             _painelAberto.value = false
-            instancia?.atualizarVisibilidadeFab()
+            instancia?.aoFecharPainel()
         }
 
         fun ligar(context: Context) {
             PrefsRepository.setBolhaAtiva(true)
-            val intent = Intent(context, BolhaLunaService::class.java)
-            context.startForegroundService(intent)
+            context.startForegroundService(Intent(context, BolhaLunaService::class.java))
         }
 
         fun desligar(context: Context) {
@@ -476,4 +662,6 @@ private data class BolhaUiState(
     val offsetY: Int,
     val telaCheia: Boolean,
     val sobreDismiss: Boolean,
+    val quickAberto: Boolean,
+    val enterNonce: Int,
 )

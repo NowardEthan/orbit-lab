@@ -116,12 +116,36 @@ fun AjustesScreen(
     }
 
     val bolhaAtiva by PrefsRepository.bolhaAtiva.collectAsState()
+    val bolhaRodando by BolhaLunaService.rodando.collectAsState()
+    val bolhaPainel by BolhaLunaService.painelAberto.collectAsState()
+    var onboardingBolha by remember { mutableStateOf(false) }
     // Em Android 13+ a notificação fixa do serviço precisa de permissão; a bolha liga de qualquer jeito.
     val permNotificacao = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { }
     // Voltou da tela "desenhar sobre outros apps"? Se concedeu, sobe a bolha sozinha.
     var aguardandoOverlay by remember { mutableStateOf(false) }
+
+    fun ligarBolhaAgora() {
+        if (OverlayPermissao.concedida(context)) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                permNotificacao.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+            BolhaLunaService.ligar(context)
+        } else {
+            PrefsRepository.setBolhaAtiva(true)
+            aguardandoOverlay = true
+            OverlayPermissao.abrirAjustes(context)
+        }
+    }
+
+    val subtituloBolha = when {
+        !bolhaAtiva -> "Só em segundo plano · toque = resposta rápida · arraste pra baixo pra guardar"
+        !OverlayPermissao.concedida(context) -> "Ativa nas prefs · falta permissão de overlay"
+        bolhaPainel -> "Ativa · painel aberto"
+        bolhaRodando -> "Ativa · oculta enquanto o app está aberto"
+        else -> "Ativa · religando…"
+    }
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val obs = LifecycleEventObserver { _, event ->
@@ -133,6 +157,11 @@ fun AjustesScreen(
                         permNotificacao.launch(Manifest.permission.POST_NOTIFICATIONS)
                     }
                     BolhaLunaService.ligar(context)
+                }
+                aguardandoOverlay && !OverlayPermissao.concedida(context) -> {
+                    // Voltou dos ajustes sem conceder — um breadcrumb por tentativa.
+                    aguardandoOverlay = false
+                    CrashReporting.breadcrumb("bolha_permission_denied")
                 }
                 PrefsRepository.bolhaAtiva.value -> {
                     BolhaLunaService.tentarReligarSePreferida(context)
@@ -320,24 +349,61 @@ fun AjustesScreen(
             LinhaSwitch(
                 icone = Icons.Rounded.Nightlight,
                 titulo = "Bolha da Luna",
-                subtitulo = "Só em segundo plano · arraste pra baixo pra guardar",
+                subtitulo = subtituloBolha,
                 checado = bolhaAtiva,
                 onCheck = { ligar ->
                     if (ligar) {
-                        if (OverlayPermissao.concedida(context)) {
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                permNotificacao.launch(Manifest.permission.POST_NOTIFICATIONS)
-                            }
-                            BolhaLunaService.ligar(context)
+                        if (!PrefsRepository.bolhaOnboardingVisto) {
+                            onboardingBolha = true
                         } else {
-                            // Sem diálogo: Android manda pra Ajustes; ao voltar com permissão, liga sozinha.
-                            PrefsRepository.setBolhaAtiva(true)
-                            aguardandoOverlay = true
-                            OverlayPermissao.abrirAjustes(context)
+                            ligarBolhaAgora()
                         }
                     } else {
                         aguardandoOverlay = false
                         BolhaLunaService.desligar(context)
+                    }
+                },
+            )
+            if (bolhaAtiva) {
+                Text(
+                    "Se a bolha sumir em alguns Androids: Ajustes do sistema → apps → OrbitLab → " +
+                        "bateria sem restrição (e autostart, se existir).",
+                    color = OrbitTokens.textLowN,
+                    fontSize = 11.sp,
+                    lineHeight = 15.sp,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+            }
+        }
+
+        if (onboardingBolha) {
+            AlertDialog(
+                onDismissRequest = { onboardingBolha = false },
+                title = { Text("Bolha da Luna", fontWeight = FontWeight.SemiBold) },
+                text = {
+                    Text(
+                        "A Luna flutua sobre outros apps só quando o OrbitLab está em segundo plano.\n\n" +
+                            "• Toque → resposta rápida\n" +
+                            "• Toque longo → painel completo\n" +
+                            "• Arraste pra baixo → guardar\n\n" +
+                            "O pontinho azul avisa resposta nova — sem mostrar o texto.",
+                        color = OrbitTokens.textMidN,
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp,
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            PrefsRepository.setBolhaOnboardingVisto(true)
+                            onboardingBolha = false
+                            ligarBolhaAgora()
+                        },
+                    ) { Text("Entendi") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { onboardingBolha = false }) {
+                        Text("Agora não")
                     }
                 },
             )

@@ -62,14 +62,11 @@ import androidx.compose.material.icons.rounded.ChatBubbleOutline
 import androidx.compose.material.icons.rounded.IosShare
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.DeleteOutline
-import androidx.compose.material.icons.rounded.ExpandMore
-import androidx.compose.material.icons.rounded.Handyman
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -180,6 +177,13 @@ fun ChatScreen(
     val conversa by ChatRepository.observarConversa(conversaId).collectAsState(initial = null)
     val context = LocalContext.current
     val appContext = remember(context) { context.applicationContext }
+    // B3: abrir o chat nativo da conversa principal limpa o badge da bolha.
+    LaunchedEffect(conversaId, conversa?.mensagens?.lastOrNull { it.isLuna }?.id) {
+        if (conversaId != ChatRepository.conversaPrincipal()) return@LaunchedEffect
+        com.ethan.orbitlab.ui.bolha.BolhaSinal.limparBadge()
+        val lastId = conversa?.mensagens?.lastOrNull { it.isLuna }?.id
+        if (lastId != null) PrefsRepository.setBolhaLastLunaMsgId(lastId)
+    }
     // MutableState passado por referência — header não lê tokens do stream.
     // Fonte da verdade do turno em voo: ChatRepository (sobrevive leave/return).
     val streamState = remember { mutableStateOf<LunaStreamEstado>(LunaStreamEstado.Idle) }
@@ -1261,7 +1265,13 @@ private fun MessageBubble(
                     run = msg.actionRun,
                     inicialmenteAberto = false,
                 )
-                Spacer(Modifier.height(8.dp))
+                Spacer(modifier.height(8.dp))
+            } else if (msg.isLuna) {
+                msg.actionRun?.plano?.takeIf { it.isNotEmpty() }?.let { plano ->
+                    // Pesquisa profunda: o dossiê cobre a web; a checklist do plano fica acima.
+                    LunaPlanChecklist(plano = plano, aoVivo = false)
+                    Spacer(modifier.height(8.dp))
+                }
             }
 
             if (mostrarRaciocinio && msg.isLuna && !msg.reasoning.isNullOrBlank() && dossieRun == null) {
@@ -1383,7 +1393,8 @@ fun ChatInputArea(
     onClearReference: () -> Unit = {},
     modifier: Modifier = Modifier,
     containerColor: Color = OrbitTokens.graphiteSurf,
-    exibirSeletorModo: Boolean = true,
+    /** Seed do campo (ex.: rascunho do quick reply da bolha). */
+    textoInicial: String = "",
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -1394,17 +1405,9 @@ fun ChatInputArea(
 
     var transcrevendo by remember { mutableStateOf(false) }
     val enabled = streamState.value is LunaStreamEstado.Idle && !transcrevendo
-    val modoTecnico by PrefsRepository.modoTecnico.collectAsState()
-    val modoAgentico by PrefsRepository.modoAgentico.collectAsState()
-    val modoAtivo = when {
-        modoAgentico -> ModoLunaOpcao.MaosAObra
-        modoTecnico -> ModoLunaOpcao.Tecnico
-        else -> ModoLunaOpcao.Conversa
-    }
-    var texto by remember { mutableStateOf("") }
+    var texto by remember { mutableStateOf(textoInicial) }
     var anexos by remember { mutableStateOf<List<ComposerAttachment>>(emptyList()) }
     var attachAberto by remember { mutableStateOf(false) }
-    var modoSheetAberto by remember { mutableStateOf(false) }
     var recordState by remember { mutableStateOf(RecordState.Idle) }
     var dragOffset by remember { mutableStateOf(Offset.Zero) }
     var segundos by remember { mutableIntStateOf(0) }
@@ -1552,22 +1555,6 @@ fun ChatInputArea(
             anexos = imagens + arquivos
             attachAberto = false
         },
-    )
-
-    LunaModeSheet(
-        visible = modoSheetAberto,
-        modoAtivo = modoAtivo,
-        onSelect = { opcao ->
-            when (opcao) {
-                ModoLunaOpcao.Conversa -> {
-                    PrefsRepository.setModoTecnico(false)
-                    PrefsRepository.setModoAgentico(false)
-                }
-                ModoLunaOpcao.Tecnico -> PrefsRepository.setModoTecnico(true)
-                ModoLunaOpcao.MaosAObra -> PrefsRepository.setModoAgentico(true)
-            }
-        },
-        onDismiss = { modoSheetAberto = false },
     )
 
     Column(modifier = modifier.fillMaxWidth()) {
@@ -1791,56 +1778,7 @@ fun ChatInputArea(
             )
         }
 
-        // Botão de modo: some na gravação (a linha vira controles de áudio). Mostra o modo
-        // ATIVO (ícone + nome) e abre o seletor. Discreto tipo Claude: pílula-fantasma neutra
-        // sempre — SEM preenchimento colorido; o modo aceso (Técnico/Ação) só tinge o texto e o
-        // ícone de azul pastel, Conversa fica cinza. O chevron avisa que abre um menu, não alterna.
-        if (!gravando && exibirSeletorModo) {
-            Spacer(Modifier.width(8.dp))
-            val modoAceso = modoAtivo != ModoLunaOpcao.Conversa
-            val tecShape = RoundedCornerShape(50)
-            val tecTint = if (modoAceso) OrbitTokens.bluePastel else OrbitTokens.textMidN
-            val modoIcone = when (modoAtivo) {
-                ModoLunaOpcao.Tecnico -> Icons.Rounded.Tune
-                ModoLunaOpcao.MaosAObra -> Icons.Rounded.Handyman
-                ModoLunaOpcao.Conversa -> Icons.Rounded.ChatBubbleOutline
-            }
-            val modoRotulo = when (modoAtivo) {
-                ModoLunaOpcao.Tecnico -> "Técnico"
-                ModoLunaOpcao.MaosAObra -> "Ação"
-                ModoLunaOpcao.Conversa -> "Conversa"
-            }
-            Row(
-                Modifier
-                    .clip(tecShape)
-                    .clickable(enabled = enabled) {
-                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        modoSheetAberto = true
-                    }
-                    .padding(start = 8.dp, end = 6.dp, top = 7.dp, bottom = 7.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    modoIcone,
-                    contentDescription = null,
-                    tint = tecTint,
-                    modifier = Modifier.size(16.dp),
-                )
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    modoRotulo,
-                    color = tecTint,
-                    fontSize = 13.sp,
-                    fontWeight = if (modoAceso) FontWeight.SemiBold else FontWeight.Medium,
-                )
-                Icon(
-                    Icons.Rounded.ExpandMore,
-                    contentDescription = "Trocar modo",
-                    tint = tecTint.copy(alpha = 0.7f),
-                    modifier = Modifier.size(15.dp),
-                )
-            }
-        }
+        // A1: seletor Conversa/Técnico/Ação removido — soft router no core.
 
         Spacer(Modifier.weight(1f))
 

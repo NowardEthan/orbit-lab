@@ -27,6 +27,7 @@ class BolhaPainelActivity : ComponentActivity() {
         enableEdgeToEdge()
         val fabCx = intent.getFloatExtra(EXTRA_FAB_CX, -1f)
         val fabCy = intent.getFloatExtra(EXTRA_FAB_CY, -1f)
+        val rascunho = intent.getStringExtra(EXTRA_RASCUNHO).orEmpty()
         setContent {
             OrbitLabTheme {
                 BackHandler { fechar() }
@@ -35,6 +36,7 @@ class BolhaPainelActivity : ComponentActivity() {
                     onAbrirNoApp = { abrirNoApp() },
                     fabOrigemX = fabCx,
                     fabOrigemY = fabCy,
+                    rascunhoInicial = rascunho,
                 )
             }
         }
@@ -70,12 +72,19 @@ class BolhaPainelActivity : ComponentActivity() {
     companion object {
         const val EXTRA_FAB_CX = "fab_cx"
         const val EXTRA_FAB_CY = "fab_cy"
+        const val EXTRA_RASCUNHO = "rascunho"
 
-        fun intent(context: Context, fabCx: Float, fabCy: Float): Intent =
+        fun intent(
+            context: Context,
+            fabCx: Float,
+            fabCy: Float,
+            rascunho: String = "",
+        ): Intent =
             Intent(context, BolhaPainelActivity::class.java).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 putExtra(EXTRA_FAB_CX, fabCx)
                 putExtra(EXTRA_FAB_CY, fabCy)
+                if (rascunho.isNotBlank()) putExtra(EXTRA_RASCUNHO, rascunho)
             }
     }
 }
