@@ -21,7 +21,7 @@ Princípio: **cota e billing são verdade no servidor.** Parede no app é UX.
 | **2** | Minify / R8 no `labRelease`             | **feita** (0.30.5)                                          |
 | **3** | Crash reporting (Crashlytics preferido) | **feita** (0.30.6)                                          |
 | **4** | Rate limit no luna-core                 | **feita** (luna-core #26 + orbit-lab #29)                   |
-| **5** | Higiene: OpenRouter no APK + DirectChat | **parcial** — chave já vazia no CI; falta isolar DirectChat |
+| **5** | Higiene: OpenRouter no APK + DirectChat | **feita** (0.30.7)                                          |
 
 
 Ordem: `0 → 1 → 2 → 3`, com `4` em paralelo a partir de `1`/`3`.
@@ -110,16 +110,21 @@ e um `commit` novo. No app, rajada → aviso “rápido demais” (não “lua d
 ## Fase 5 — Higiene de superfície
 
 - [x] `OPENROUTER_API_KEY` vazia no CI (path `.env` fora do repo)
-- [ ] Isolar `LunaDirectChat` pra debug local só
+- [x] Isolar `LunaDirectChat` pra debug local só (fora do `ChatScreen`; release força chave `""`)
 - [x] Docs SHA debug + release (`SIGNING.md` / `AGENTS.md`)
+
+**O que ficou:** chat de produto → só `LunaApiChat` / luna-core. Pacote `data.openrouter.*`
+continua no repo como harness de **debug** (chave só no `buildType debug`).
+
+**Humano:** publicar 0.30.7 (code 94) pelo Actions quando quiser no canal lab.
 
 ---
 
 ## Critério de plano concluído
 
-1. Release key + updates em cadeia.
-2. R8 + smoke de números de finanças.
-3. Crashlytics.
-4. Rate limit no core.
-5. DirectChat fora do produto.
+1. Release key + updates em cadeia. ✅
+2. R8 + smoke de números de finanças. ✅
+3. Crashlytics. ✅
+4. Rate limit no core. ✅
+5. DirectChat fora do produto. ✅
 

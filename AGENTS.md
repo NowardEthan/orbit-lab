@@ -26,7 +26,8 @@ perfil e auto-update. Backend = **luna-core** (Railway). Canal de update =
 2. **Não commitar** `local.properties`, APKs, keystores, nem segredos.
 3. Copy de UI em **pt-BR** (Brasil). Se soar a Portugal, reescreva.
 4. **Cota / billing** são verdade no **luna-core**. Parede no app é UX; APK antiga não fura carteira.
-5. Release ainda endurecendo (signing, R8, crash, rate limit) — ver [`HARDENING.md`](HARDENING.md).
+5. Release endurecido (signing, R8, Crashlytics, rate limit, DirectChat fora) — ver [`HARDENING.md`](HARDENING.md).
+6. **Sem chave OpenRouter no APK de produção.** Chat = luna-core. `LunaDirectChat` é harness de debug.
 
 ## Crashlytics / privacidade nos crashes
 

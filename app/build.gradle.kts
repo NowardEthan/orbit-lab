@@ -123,8 +123,9 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // Chave só via local.properties / luna-core .env — nunca commitada.
-        buildConfigField("String", "OPENROUTER_API_KEY", "\"${openRouterKey.replace("\"", "\\\"")}\"")
+        // OpenRouter: chave vazia por padrão. Só o buildType debug pode embutir
+        // (local.properties / luna-core .env). Release força "" — ver HARDENING Fase 5.
+        buildConfigField("String", "OPENROUTER_API_KEY", "\"\"")
         buildConfigField("String", "OPENROUTER_MODEL_CHAT", "\"$openRouterChatModel\"")
         buildConfigField("String", "OPENROUTER_MODEL_VISION", "\"$openRouterVisionModel\"")
         buildConfigField("String", "OPENROUTER_MODEL_VIDEO", "\"$openRouterVideoModel\"")
@@ -155,14 +156,20 @@ android {
         create("lab") {
             dimension = "canal"
             applicationId = "com.ethan.orbitlab"
-            versionCode = (findProperty("labVersionCode") as String?)?.toIntOrNull() ?: 93
-            versionName = (findProperty("labVersionName") as String?) ?: "0.30.6"
+            versionCode = (findProperty("labVersionCode") as String?)?.toIntOrNull() ?: 94
+            versionName = (findProperty("labVersionName") as String?) ?: "0.30.7"
         }
     }
 
     buildTypes {
         debug {
             signingConfig = signingConfigs.getByName("debugKey")
+            // Fase 5: chave OpenRouter só em debug local — nunca no APK sideload.
+            buildConfigField(
+                "String",
+                "OPENROUTER_API_KEY",
+                "\"${openRouterKey.replace("\"", "\\\"")}\"",
+            )
         }
         release {
             // Fase 2: R8 ligado. Modelos em data.** têm keep (+ @Keep em finanças/perfil).
@@ -180,6 +187,8 @@ android {
                 )
                 signingConfigs.getByName("debugKey")
             }
+            // Fase 5: força vazio mesmo se o Gradle leu chave do .env local.
+            buildConfigField("String", "OPENROUTER_API_KEY", "\"\"")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

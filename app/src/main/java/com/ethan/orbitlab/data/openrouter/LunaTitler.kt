@@ -3,11 +3,11 @@ package com.ethan.orbitlab.data.openrouter
 import com.ethan.orbitlab.data.Mensagem
 
 /**
- * A Luna batiza a conversa pelo assunto ATUAL — um título curto gerado por LLM
- * (mesma família flash do chat direto), à parte do stream da resposta.
+ * Batiza a conversa pelo assunto atual via OpenRouter (flash).
  *
- * Barato de propósito: roda no 1º par e a cada poucos turnos (quem chama decide),
- * nunca a cada mensagem. Se algo falhar, devolve null e o título fica como está.
+ * Só roda em **debug** com chave local (`OpenRouterConfig.isConfigured`). No
+ * release sideload a chave está vazia — devolve null e o título fica como está.
+ * Produto de chat = luna-core; isto é higiene Fase 5, não caminho de produção.
  */
 object LunaTitler {
 
