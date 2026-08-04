@@ -3,7 +3,6 @@ package com.ethan.orbitlab.ui.bolha
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
-import android.app.Application
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -63,7 +62,7 @@ import kotlinx.coroutines.launch
 
 /**
  * Bolha da Luna — FAB no overlay; painel em [BolhaPainelActivity].
- * B1 gesto · B2 handoff · B3 sinais/peek · B5 quick reply.
+ * B1 gesto · B2 handoff · B3 sinais/peek · toque abre o painel.
  */
 class BolhaLunaService :
     Service(),
@@ -96,7 +95,6 @@ class BolhaLunaService :
             offsetY = PrefsRepository.bolhaY,
             telaCheia = false,
             sobreDismiss = false,
-            quickAberto = false,
             enterNonce = 0,
         ),
     )
@@ -106,7 +104,6 @@ class BolhaLunaService :
             Lifecycle.Event.ON_START -> {
                 appEmPrimeiroPlano = true
                 cancelarPeek()
-                fecharQuick()
                 atualizarVisibilidadeFab()
             }
             Lifecycle.Event.ON_STOP -> {
@@ -201,7 +198,6 @@ class BolhaLunaService :
             offsetY = y,
             telaCheia = false,
             sobreDismiss = false,
-            quickAberto = false,
             enterNonce = 0,
         )
     }
@@ -222,7 +218,6 @@ class BolhaLunaService :
                     offsetX = state.offsetX,
                     offsetY = state.offsetY,
                     sobreDismiss = state.sobreDismiss,
-                    quickAberto = state.quickAberto,
                     badge = badge,
                     pensando = pensando,
                     alertaCota = alertaCota,
@@ -231,50 +226,13 @@ class BolhaLunaService :
                     onDragStart = { iniciarArraste() },
                     onArrastar = { dx, dy -> moverArraste(dx, dy) },
                     onSoltar = { soltarArraste() },
-                    onTocar = { abrirQuickOuPainel() },
-                    onAbrirPainel = { rascunho -> expandirPainel(rascunho) },
-                    onFecharQuick = { fecharQuick() },
-                    onEnviarQuick = { texto ->
-                        BolhaEnvio.enviarTexto(applicationContext as Application, texto)
-                        fecharQuick()
-                        CrashReporting.breadcrumb("bolha_quick_send")
-                    },
-                    onEnviarAudioQuick = { clip ->
-                        BolhaEnvio.enviarAudio(applicationContext as Application, clip)
-                        fecharQuick()
-                        CrashReporting.breadcrumb("bolha_quick_send")
-                    },
+                    onAbrirPainel = { expandirPainel() },
                 )
             }
         }
         view = compose
         runCatching { windowManager.addView(compose, params) }
         compose.post { alinharLadoAposLayout() }
-    }
-
-    private fun abrirQuickOuPainel() {
-        cancelarPeek()
-        BolhaSinal.limparBadge()
-        marcarMsgsVistas()
-        if (ui.value.quickAberto) {
-            expandirPainel()
-        } else {
-            // Quick precisa de foco pro teclado.
-            params.flags = FLAGS_QUICK
-            params.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
-            ui.update { it.copy(quickAberto = true) }
-            atualizar()
-            CrashReporting.breadcrumb("bolha_quick_open")
-        }
-    }
-
-    private fun fecharQuick() {
-        if (!ui.value.quickAberto) return
-        ui.update { it.copy(quickAberto = false) }
-        params.flags = FLAGS_BOLHA
-        params.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_STATE_UNSPECIFIED
-        atualizar()
-        agendarPeek()
     }
 
     private fun alinharLadoAposLayout() {
@@ -290,7 +248,6 @@ class BolhaLunaService :
 
     private fun iniciarArraste() {
         cancelarPeek()
-        fecharQuick()
         snapAnimator?.cancel()
         snapAnimator = null
         jaAvisouZonaDismiss = false
@@ -306,7 +263,6 @@ class BolhaLunaService :
                 offsetY = params.y,
                 telaCheia = false,
                 sobreDismiss = false,
-                quickAberto = false,
             )
         }
     }
@@ -387,12 +343,12 @@ class BolhaLunaService :
 
     private fun agendarPeek() {
         peekJob?.cancel()
-        if (appEmPrimeiroPlano || _painelAberto.value || ui.value.telaCheia || ui.value.quickAberto) {
+        if (appEmPrimeiroPlano || _painelAberto.value || ui.value.telaCheia) {
             return
         }
         peekJob = scope.launch {
             delay(2_800)
-            if (appEmPrimeiroPlano || _painelAberto.value || ui.value.telaCheia || ui.value.quickAberto) {
+            if (appEmPrimeiroPlano || _painelAberto.value || ui.value.telaCheia) {
                 return@launch
             }
             aplicarPeek(true)
@@ -450,10 +406,9 @@ class BolhaLunaService :
 
     private fun estimativaFabPx(): Int = (80f * recursos().density).toInt()
 
-    /** Long-press / expandir do quick → painel completo. */
-    private fun expandirPainel(rascunho: String = "") {
+    /** Toque no FAB → painel completo. */
+    private fun expandirPainel() {
         cancelarPeek()
-        fecharQuick()
         BolhaSinal.limparBadge()
         marcarMsgsVistas()
         snapAnimator?.cancel()
@@ -473,7 +428,7 @@ class BolhaLunaService :
         view?.visibility = View.GONE
         CrashReporting.breadcrumb("bolha_open_panel")
         val ok = runCatching {
-            startActivity(BolhaPainelActivity.intent(this, fabCx, fabCy, rascunho))
+            startActivity(BolhaPainelActivity.intent(this, fabCx, fabCy))
         }.isSuccess
         if (!ok) {
             _painelAberto.value = false
@@ -591,10 +546,6 @@ class BolhaLunaService :
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
 
-        /** Quick reply: focável pro IME, sem ser modal no app de baixo. */
-        private const val FLAGS_QUICK =
-            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
-
         private val _rodando = MutableStateFlow(false)
         val rodando: StateFlow<Boolean> = _rodando.asStateFlow()
 
@@ -607,7 +558,6 @@ class BolhaLunaService :
         fun avisarPainelAberto() {
             _painelAberto.value = true
             instancia?.cancelarPeek()
-            instancia?.fecharQuick()
             BolhaSinal.limparBadge()
             instancia?.marcarMsgsVistas()
             instancia?.atualizarVisibilidadeFab()
@@ -651,6 +601,5 @@ private data class BolhaUiState(
     val offsetY: Int,
     val telaCheia: Boolean,
     val sobreDismiss: Boolean,
-    val quickAberto: Boolean,
     val enterNonce: Int,
 )

@@ -62,7 +62,7 @@ Arquivos-chave: `ui/bolha/*`, toggle em `AjustesScreen`, manifesto `SYSTEM_ALERT
 | **B2** | Continuidade visual | Handoff FAB↔modal redondo→sheet; enter ao voltar pro background | B1 |
 | **B3** | Bolha com sinal | Edge peek, badge/unread, “pensando…”, pulso de erro/cota | B1 |
 | **B4** | Paridade do painel | Reasoning, imagens geradas, retry, referência — perto do chat | B0 |
-| **B5** | Fluxo rápido | Quick reply (texto curto + mic) sem sheet 90%; atalhos claros | B3 |
+| **B5** | Fluxo rápido | ~~Quick reply~~ **retirado** (incomodava) — toque abre o painel | B3 |
 | **B6** | Operação & confiança | Onboarding, copy FGS, guia OEM/bateria, telemetria mínima sem PII | B1 |
 
 **Ordem recomendada:** `B0 → B1 → B2` em série; `B3` e `B4` em paralelo depois de B1; `B5` depois de B3; `B6` pode começar cedo (copy/onboarding) e fechar depois de B1.
@@ -354,7 +354,7 @@ Em **toda** fase que mexe em UI/motion:
 | B2 | 🟡 | 2026-08-04 | WIP: morph/cantos/enter; falta ghost + hide no mesmo frame |
 | B3 | 🟡 | 2026-08-04 | WIP: peek/badge/pensando/cota; limpar badge no chat nativo |
 | B4 | 🟡 | 2026-08-04 | WIP: reasoning/imagem/retry no painel; ref. long-press opcional |
-| B5 | 🟡 | 2026-08-04 | WIP: quick texto; falta mic + rascunho→painel |
+| B5 | ⛔ retirado | 2026-08-04 | Quick reply removido por UX; toque no FAB → painel |
 | B6 | 🟡 | 2026-08-04 | WIP: onboarding/FGS/OEM/estado; fechar telemetria + doc |
 
 **Legenda:** ⬜ não começou · 🟡 em curso / parcial · ✅ feita e validada no aparelho

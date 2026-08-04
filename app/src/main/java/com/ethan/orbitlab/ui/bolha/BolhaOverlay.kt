@@ -1,8 +1,5 @@
 package com.ethan.orbitlab.ui.bolha
 
-import android.Manifest
-import android.content.pm.PackageManager
-import android.widget.Toast
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -16,35 +13,22 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitTouchSlopOrCancellation
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Nightlight
-import androidx.compose.material.icons.rounded.OpenInFull
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -57,30 +41,18 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
-import com.ethan.orbitlab.data.voice.VoiceClip
-import com.ethan.orbitlab.data.voice.VoiceRecorder
 import com.ethan.orbitlab.ui.theme.OrbitMotion
 import com.ethan.orbitlab.ui.theme.OrbitTokens
-import com.ethan.orbitlab.ui.theme.orbitPressable
-import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.roundToInt
 import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 
 private val BolhaAura = 40.dp
@@ -89,10 +61,10 @@ private val BolhaTamanhoDp = 56.dp
 private val BolhaFolgaSombraDp = 12.dp
 
 /**
- * Overlay da bolha (B1–B5).
+ * Overlay da bolha.
  *
- * Idle WRAP · arraste tela cheia + Guardar · toque = quick reply ·
- * expandir = painel completo · badge/pensando/cota no FAB.
+ * Idle WRAP · arraste + Guardar · toque/long-press = painel completo ·
+ * badge/pensando/cota no FAB. (Quick reply removido — atrapalhava mais do que ajudava.)
  */
 @Composable
 fun BolhaOverlay(
@@ -100,7 +72,6 @@ fun BolhaOverlay(
     offsetX: Int,
     offsetY: Int,
     sobreDismiss: Boolean,
-    quickAberto: Boolean,
     badge: Boolean,
     pensando: Boolean,
     alertaCota: Boolean,
@@ -109,18 +80,13 @@ fun BolhaOverlay(
     onDragStart: () -> Unit,
     onArrastar: (dx: Int, dy: Int) -> Unit,
     onSoltar: () -> Unit,
-    onTocar: () -> Unit,
-    onAbrirPainel: (rascunho: String) -> Unit,
-    onFecharQuick: () -> Unit,
-    onEnviarQuick: (String) -> Unit,
-    onEnviarAudioQuick: (VoiceClip) -> Unit,
+    onAbrirPainel: () -> Unit,
 ) {
     if (telaCheia) {
         Box(Modifier.fillMaxSize()) {
             ZonaDismiss(ativa = sobreDismiss)
-            ConteudoBolha(
+            BolhaFab(
                 modifier = Modifier.offset { IntOffset(offsetX, offsetY) },
-                quickAberto = quickAberto,
                 badge = badge,
                 pensando = pensando,
                 alertaCota = alertaCota,
@@ -129,62 +95,10 @@ fun BolhaOverlay(
                 onDragStart = onDragStart,
                 onArrastar = onArrastar,
                 onSoltar = onSoltar,
-                onTocar = onTocar,
                 onAbrirPainel = onAbrirPainel,
-                onFecharQuick = onFecharQuick,
-                onEnviarQuick = onEnviarQuick,
-                onEnviarAudioQuick = onEnviarAudioQuick,
             )
         }
     } else {
-        ConteudoBolha(
-            modifier = Modifier,
-            quickAberto = quickAberto,
-            badge = badge,
-            pensando = pensando,
-            alertaCota = alertaCota,
-            enterNonce = enterNonce,
-            hapticsLigados = hapticsLigados,
-            onDragStart = onDragStart,
-            onArrastar = onArrastar,
-            onSoltar = onSoltar,
-            onTocar = onTocar,
-            onAbrirPainel = onAbrirPainel,
-            onFecharQuick = onFecharQuick,
-            onEnviarQuick = onEnviarQuick,
-            onEnviarAudioQuick = onEnviarAudioQuick,
-        )
-    }
-}
-
-@Composable
-private fun ConteudoBolha(
-    modifier: Modifier,
-    quickAberto: Boolean,
-    badge: Boolean,
-    pensando: Boolean,
-    alertaCota: Boolean,
-    enterNonce: Int,
-    hapticsLigados: Boolean,
-    onDragStart: () -> Unit,
-    onArrastar: (dx: Int, dy: Int) -> Unit,
-    onSoltar: () -> Unit,
-    onTocar: () -> Unit,
-    onAbrirPainel: (rascunho: String) -> Unit,
-    onFecharQuick: () -> Unit,
-    onEnviarQuick: (String) -> Unit,
-    onEnviarAudioQuick: (VoiceClip) -> Unit,
-) {
-    Column(modifier = modifier, horizontalAlignment = Alignment.End) {
-        if (quickAberto) {
-            QuickComposer(
-                onEnviar = onEnviarQuick,
-                onEnviarAudio = onEnviarAudioQuick,
-                onExpandir = onAbrirPainel,
-                onFechar = onFecharQuick,
-            )
-            Spacer(Modifier.height(8.dp))
-        }
         BolhaFab(
             badge = badge,
             pensando = pensando,
@@ -194,177 +108,7 @@ private fun ConteudoBolha(
             onDragStart = onDragStart,
             onArrastar = onArrastar,
             onSoltar = onSoltar,
-            onTocar = onTocar,
-            onAbrirPainel = { onAbrirPainel("") },
-        )
-    }
-}
-
-@Composable
-private fun QuickComposer(
-    onEnviar: (String) -> Unit,
-    onEnviarAudio: (VoiceClip) -> Unit,
-    onExpandir: (rascunho: String) -> Unit,
-    onFechar: () -> Unit,
-) {
-    val context = LocalContext.current
-    val haptics = LocalHapticFeedback.current
-    val recorder = remember(context) { VoiceRecorder(context.applicationContext) }
-    DisposableEffect(recorder) {
-        onDispose { recorder.cancel() }
-    }
-    var texto by remember { mutableStateOf("") }
-    var gravando by remember { mutableStateOf(false) }
-
-    fun temMic(): Boolean =
-        ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
-            PackageManager.PERMISSION_GRANTED
-
-    Row(
-        Modifier
-            .padding(end = BolhaFolgaSombraDp)
-            .widthIn(max = 280.dp)
-            .shadow(10.dp, RoundedCornerShape(22.dp), clip = false)
-            .clip(RoundedCornerShape(22.dp))
-            .background(OrbitTokens.graphiteSurf)
-            .border(1.dp, OrbitTokens.graphiteHair, RoundedCornerShape(22.dp))
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        BasicTextField(
-            value = texto,
-            onValueChange = { texto = it },
-            enabled = !gravando,
-            modifier = Modifier
-                .weight(1f)
-                .padding(horizontal = 4.dp),
-            textStyle = TextStyle(color = OrbitTokens.textHiN, fontSize = 14.sp),
-            cursorBrush = SolidColor(OrbitTokens.bluePastel),
-            maxLines = 3,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-            keyboardActions = KeyboardActions(
-                onSend = {
-                    if (texto.isNotBlank()) {
-                        onEnviar(texto)
-                        texto = ""
-                    }
-                },
-            ),
-            decorationBox = { inner ->
-                Box {
-                    when {
-                        gravando -> Text(
-                            "Gravando…",
-                            color = OrbitTokens.bluePastel,
-                            fontSize = 14.sp,
-                        )
-                        texto.isEmpty() -> Text(
-                            "Fala rápido…",
-                            color = OrbitTokens.textLowN,
-                            fontSize = 14.sp,
-                        )
-                    }
-                    if (!gravando) inner()
-                }
-            },
-        )
-        Icon(
-            Icons.Rounded.OpenInFull,
-            contentDescription = "Abrir painel",
-            tint = OrbitTokens.textMidN,
-            modifier = Modifier
-                .size(32.dp)
-                .clip(CircleShape)
-                .orbitPressable(onClick = { onExpandir(texto) })
-                .padding(6.dp),
-        )
-        if (texto.isNotBlank()) {
-            Box(
-                Modifier
-                    .size(34.dp)
-                    .clip(CircleShape)
-                    .background(OrbitTokens.bluePastel)
-                    .orbitPressable(onClick = {
-                        onEnviar(texto)
-                        texto = ""
-                    }),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    Icons.AutoMirrored.Rounded.Send,
-                    contentDescription = "Enviar",
-                    tint = OrbitTokens.onBluePastel,
-                    modifier = Modifier.size(16.dp),
-                )
-            }
-        } else {
-            Box(
-                Modifier
-                    .size(34.dp)
-                    .clip(CircleShape)
-                    .background(
-                        if (gravando) OrbitTokens.bluePastel else OrbitTokens.graphiteRaised,
-                    )
-                    .pointerInput(Unit) {
-                        detectTapGestures(
-                            onPress = {
-                                if (!temMic()) {
-                                    Toast.makeText(
-                                        context,
-                                        "Abre o painel pra liberar o microfone.",
-                                        Toast.LENGTH_SHORT,
-                                    ).show()
-                                    onExpandir("")
-                                    return@detectTapGestures
-                                }
-                                if (!recorder.start()) {
-                                    Toast.makeText(
-                                        context,
-                                        "Não deu pra gravar. Tenta de novo.",
-                                        Toast.LENGTH_SHORT,
-                                    ).show()
-                                    return@detectTapGestures
-                                }
-                                gravando = true
-                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                val soltou = tryAwaitRelease()
-                                gravando = false
-                                if (!soltou) {
-                                    recorder.cancel()
-                                    return@detectTapGestures
-                                }
-                                val clip = recorder.finish()
-                                if (clip == null) {
-                                    Toast.makeText(
-                                        context,
-                                        "Áudio curto demais — segura um pouco mais.",
-                                        Toast.LENGTH_SHORT,
-                                    ).show()
-                                } else {
-                                    onEnviarAudio(clip)
-                                }
-                            },
-                        )
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    Icons.Rounded.Mic,
-                    contentDescription = "Segurar para gravar",
-                    tint = if (gravando) OrbitTokens.onBluePastel else OrbitTokens.textMidN,
-                    modifier = Modifier.size(16.dp),
-                )
-            }
-        }
-        Icon(
-            Icons.Rounded.Close,
-            contentDescription = "Fechar",
-            tint = OrbitTokens.textLowN,
-            modifier = Modifier
-                .size(28.dp)
-                .clip(CircleShape)
-                .orbitPressable(onClick = onFechar)
-                .padding(5.dp),
+            onAbrirPainel = onAbrirPainel,
         )
     }
 }
@@ -445,8 +189,8 @@ private fun BolhaFab(
     onDragStart: () -> Unit,
     onArrastar: (dx: Int, dy: Int) -> Unit,
     onSoltar: () -> Unit,
-    onTocar: () -> Unit,
     onAbrirPainel: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val haptics = LocalHapticFeedback.current
     val bordaGradiente = Brush.horizontalGradient(
@@ -489,7 +233,7 @@ private fun BolhaFab(
         val enterScale = 0.88f + 0.12f * enter.value
         val escala = enterScale * pressScale.value
 
-        Box(modifier = Modifier.padding(BolhaFolgaSombraDp)) {
+        Box(modifier = modifier.padding(BolhaFolgaSombraDp)) {
             Box(
                 modifier = Modifier
                     .size(BolhaTamanhoDp)
@@ -522,13 +266,12 @@ private fun BolhaFab(
                         },
                         shape = CircleShape,
                     )
-                    // Um único detector: toque vs long-press vs arraste.
-                    // Dois pointerInput (tap + drag) competiam e o longPress engolia o arraste.
+                    // Toque/long-press → painel; arraste se passar o touch slop.
                     .pointerInput(Unit) {
                         awaitEachGesture {
                             val down = awaitFirstDown(requireUnconsumed = false)
                             pressionado = true
-                            var tratado = false
+                            var arrastou = false
                             val longPressTimeout = viewConfiguration.longPressTimeoutMillis
 
                             try {
@@ -537,7 +280,7 @@ private fun BolhaFab(
                                         change.consume()
                                     }
                                     if (passouSlop != null) {
-                                        tratado = true
+                                        arrastou = true
                                         onDragStart()
                                         try {
                                             drag(down.id) { change ->
@@ -552,11 +295,10 @@ private fun BolhaFab(
                                             onSoltar()
                                         }
                                     }
-                                    // null = soltou antes do slop → toque (após o withTimeout)
                                 }
                             } catch (_: TimeoutCancellationException) {
-                                // Parado até o timeout → long-press
-                                tratado = true
+                                // Long-press: mesmo destino do toque (painel).
+                                arrastou = true
                                 if (hapticsLigados) {
                                     haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                                 }
@@ -566,11 +308,11 @@ private fun BolhaFab(
                                 pressionado = false
                             }
 
-                            if (!tratado) {
+                            if (!arrastou) {
                                 if (hapticsLigados) {
                                     haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 }
-                                onTocar()
+                                onAbrirPainel()
                             }
                         }
                     },
