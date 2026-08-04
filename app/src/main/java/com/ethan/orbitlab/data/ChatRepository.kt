@@ -181,8 +181,17 @@ object ChatRepository {
             MutableStateFlow(LunaStreamEstado.Idle)
         }
 
-    fun publicarStream(conversaId: String, estado: LunaStreamEstado) {
+    /**
+     * Publica estado de stream. Ignora eventos atrasados do SSE depois do turno acabar —
+     * senão o composer fica preso em Respondendo (mensagem duplicada + sem enviar/retry).
+     * @return false se o evento foi descartado
+     */
+    fun publicarStream(conversaId: String, estado: LunaStreamEstado): Boolean {
+        if (estado !is LunaStreamEstado.Idle && turnosAtivos[conversaId]?.isActive != true) {
+            return false
+        }
         streamFlowInterno(conversaId).value = estado
+        return true
     }
 
     /**
@@ -199,18 +208,27 @@ object ChatRepository {
         if (!lunaMessageId.isNullOrBlank()) {
             lunaMsgIdsEmVoo[conversaId] = lunaMessageId
         }
-        publicarStream(conversaId, LunaStreamEstado.Raciocinando(""))
+        // Registra o job ANTES do 1º stream: publicarStream rejeita não-Idle sem turno ativo.
         val job = scope.launch {
             try {
                 block()
             } finally {
                 turnosAtivos.remove(conversaId)
                 lunaMsgIdsEmVoo.remove(conversaId)
-                publicarStream(conversaId, LunaStreamEstado.Idle)
+                // Idle sempre passa (mesmo sem job) — destrava o composer.
+                streamFlowInterno(conversaId).value = LunaStreamEstado.Idle
             }
         }
         turnosAtivos[conversaId] = job
+        streamFlowInterno(conversaId).value = LunaStreamEstado.Raciocinando("")
         return true
+    }
+
+    /** Destrava composer/stream se um evento atrasado deixou o estado preso (hotfix UX). */
+    fun forcarIdleStream(conversaId: String) {
+        turnosAtivos.remove(conversaId)?.cancel()
+        lunaMsgIdsEmVoo.remove(conversaId)
+        streamFlowInterno(conversaId).value = LunaStreamEstado.Idle
     }
 
     /** Contexto da Application — necessário pro upload de content://. */

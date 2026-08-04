@@ -43,8 +43,10 @@ class ChatTurno(
         streamState.value = LunaStreamEstado.Raciocinando("")
         perguntaAtiva.value = null
         val onEstado: (LunaStreamEstado) -> Unit = { e ->
-            ChatRepository.publicarStream(conversaId, e)
-            streamState.value = e
+            // Descarta SSE atrasado (mainHandler.post) depois do finally do turno.
+            if (ChatRepository.publicarStream(conversaId, e)) {
+                streamState.value = e
+            }
         }
         val iniciou = ChatRepository.launchTurno(conversaId, lunaMsgId) {
             try {
@@ -269,6 +271,17 @@ fun rememberChatTurno(
 
     val ocioso = streamState.value is LunaStreamEstado.Idle &&
         !ChatRepository.turnoEmAndamento(conversaId)
+
+    // Cinto de segurança: stream não-Idle sem job ativo = SSE atrasado travou o composer.
+    LaunchedEffect(streamState.value, ocioso, conversaId) {
+        if (streamState.value is LunaStreamEstado.Idle) return@LaunchedEffect
+        if (ChatRepository.turnoEmAndamento(conversaId)) return@LaunchedEffect
+        delay(400)
+        if (ChatRepository.turnoEmAndamento(conversaId)) return@LaunchedEffect
+        if (streamState.value is LunaStreamEstado.Idle) return@LaunchedEffect
+        ChatRepository.forcarIdleStream(conversaId)
+        streamState.value = LunaStreamEstado.Idle
+    }
 
     val conversa by ChatRepository.observarConversa(conversaId).collectAsState(initial = null)
     val ultimaMsg = conversa?.mensagens?.lastOrNull()
