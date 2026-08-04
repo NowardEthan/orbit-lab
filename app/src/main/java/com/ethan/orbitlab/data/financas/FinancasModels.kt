@@ -1,5 +1,6 @@
 package com.ethan.orbitlab.data.financas
 
+import androidx.annotation.Keep
 import java.text.NumberFormat
 import java.util.Locale
 
@@ -36,6 +37,8 @@ object CorCarteira {
  *
  * Saldo derivado = [saldoInicialCentavos] + entradas − saídas ± transferências.
  */
+/** Persistido via Map no Firestore — @Keep = cinto se o mapeamento mudar pra POJO. */
+@Keep
 data class Carteira(
     val id: String,
     val tipo: String,
@@ -102,6 +105,7 @@ object CategoriasFinanca {
  * Recorrente mensal — `users/{uid}/recorrentes/{id}`.
  * No dia [diaDoMes] o app gera um [Lancamento] (idempotente por mês).
  */
+@Keep
 data class Recorrente(
     val id: String,
     val tipo: String,
@@ -171,6 +175,7 @@ fun chaveMes(ms: Long): String {
  * Lançamento — `users/{uid}/lancamentos/{id}`.
  * Transferências NÃO passam por aqui (coleção própria em F6).
  */
+@Keep
 data class Lancamento(
     val id: String,
     val tipo: String,
@@ -458,6 +463,7 @@ object TipoMeta {
     }
 }
 
+@Keep
 data class MetaFinanceira(
     val id: String,
     val apelido: String,
@@ -488,6 +494,7 @@ object MotivoTransferencia {
     }
 }
 
+@Keep
 data class Transferencia(
     val id: String,
     val deCarteiraId: String,

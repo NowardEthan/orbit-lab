@@ -2,6 +2,7 @@ package com.ethan.orbitlab.data
 
 import android.content.Context
 import android.net.Uri
+import androidx.annotation.Keep
 import com.ethan.orbitlab.data.firebase.ChatMediaUpload
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
@@ -24,6 +25,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+@Keep
 data class UserProfile(
     val uid: String = "",
     val displayName: String = "",
@@ -37,6 +39,7 @@ data class UserProfile(
     val milestones: ProfileMilestones = ProfileMilestones(),
 )
 
+@Keep
 data class ProfileMilestones(
     val voiceMessage: Boolean = false,
     val fileAttachment: Boolean = false,

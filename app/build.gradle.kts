@@ -153,8 +153,8 @@ android {
         create("lab") {
             dimension = "canal"
             applicationId = "com.ethan.orbitlab"
-            versionCode = (findProperty("labVersionCode") as String?)?.toIntOrNull() ?: 90
-            versionName = (findProperty("labVersionName") as String?) ?: "0.30.3"
+            versionCode = (findProperty("labVersionCode") as String?)?.toIntOrNull() ?: 92
+            versionName = (findProperty("labVersionName") as String?) ?: "0.30.5"
         }
     }
 
@@ -163,7 +163,10 @@ android {
             signingConfig = signingConfigs.getByName("debugKey")
         }
         release {
-            isMinifyEnabled = false
+            // Fase 2: R8 ligado. Modelos em data.** têm keep (+ @Keep em finanças/perfil).
+            // Firestore do Lab usa Map manual — ver HARDENING.md § Fase 2.
+            isMinifyEnabled = true
+            isShrinkResources = true
             // Produção sideload: release key quando existir.
             // Sem keystore local → fallback debug (só dev); no CI a Fase 1 exige a release key.
             signingConfig = if (hasReleaseKeystore) {

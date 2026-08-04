@@ -1,5 +1,6 @@
 package com.ethan.orbitlab.data.financas
 
+import androidx.annotation.Keep
 import java.util.Calendar
 import java.util.Locale
 import java.util.TimeZone
@@ -8,6 +9,7 @@ import java.util.TimeZone
  * Fatura de crédito = saídas no cartão no ciclo (fechamento→fechamento),
  * abatida por transferências com motivo [MotivoTransferencia.PAGAR_FATURA] pra esse cartão.
  */
+@Keep
 data class FaturaCredito(
     val gastoCicloCentavos: Long,
     val pagoCicloCentavos: Long,
