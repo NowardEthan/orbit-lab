@@ -12,6 +12,7 @@ import com.ethan.orbitlab.data.ChatRepository
 import com.ethan.orbitlab.data.PrefsRepository
 import com.ethan.orbitlab.data.UserProfileRepository
 import com.ethan.orbitlab.data.captura.CapturaRepository
+import com.ethan.orbitlab.data.crash.CrashReporting
 import com.ethan.orbitlab.data.financas.FinancasLuzEngine
 import com.ethan.orbitlab.data.local.LocationRepository
 import com.ethan.orbitlab.data.updates.UpdatesRepository
@@ -20,19 +21,12 @@ import com.ethan.orbitlab.data.firebase.FirebaseBootstrap
 class OrbitApp : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
-        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
-        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-            android.util.Log.e("OrbitAppCrash", "Crash em ${thread.name}", throwable)
-            runCatching {
-                val prefs = getSharedPreferences("orbit_crash_logs", MODE_PRIVATE)
-                prefs.edit().putString("last_crash", throwable.stackTraceToString()).apply()
-            }
-            defaultHandler?.uncaughtException(thread, throwable)
-        }
         PrefsRepository.init(this)
         FinancasLuzEngine.init(this)
         CapturaRepository.init(this)
+        // Firebase (google-services.json e/ou bootstrap manual) antes do Crashlytics.
         FirebaseBootstrap.init(this)
+        CrashReporting.init(this)
         AuthRepository.init(this)
         ChatRepository.bindApp(this)
         ChatRepository.init()

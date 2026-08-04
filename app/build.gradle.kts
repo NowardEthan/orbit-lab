@@ -3,6 +3,8 @@ import java.util.Properties
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.google.services)
+    alias(libs.plugins.firebase.crashlytics)
 }
 
 fun loadSecret(name: String, envKey: String? = null): String {
@@ -153,8 +155,8 @@ android {
         create("lab") {
             dimension = "canal"
             applicationId = "com.ethan.orbitlab"
-            versionCode = (findProperty("labVersionCode") as String?)?.toIntOrNull() ?: 92
-            versionName = (findProperty("labVersionName") as String?) ?: "0.30.5"
+            versionCode = (findProperty("labVersionCode") as String?)?.toIntOrNull() ?: 93
+            versionName = (findProperty("labVersionName") as String?) ?: "0.30.6"
         }
     }
 
@@ -220,6 +222,7 @@ dependencies {
     implementation(libs.firebase.auth)
     implementation(libs.firebase.firestore)
     implementation(libs.firebase.storage)
+    implementation(libs.firebase.crashlytics)
     implementation(libs.androidx.credentials)
     implementation(libs.androidx.credentials.play.services.auth)
     implementation(libs.googleid)

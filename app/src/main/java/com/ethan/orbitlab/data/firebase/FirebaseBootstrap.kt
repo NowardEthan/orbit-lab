@@ -8,7 +8,9 @@ import com.google.firebase.FirebaseOptions
 
 /**
  * Bootstrap do projeto Firebase `luna-8787d` (mesmo do orbit-mobile).
- * Inicialização manual — não depende do package name bater com google-services.json.
+ *
+ * Com `google-services.json` + plugin, o [FirebaseInitProvider] já cria o app —
+ * este método vira no-op. Mantemos o fallback manual se o provider não rodou.
  */
 object FirebaseBootstrap {
     const val PROJECT_ID = "luna-8787d"
@@ -17,9 +19,7 @@ object FirebaseBootstrap {
 
     fun init(context: Context) {
         if (FirebaseApp.getApps(context).isNotEmpty()) return
-        // Cronometrado porque este app inicializa o Firebase à mão (sem google-services.json,
-        // o provider automático dele não roda): se o arranque daqui custar segundos, o atraso
-        // da conta guardada começa antes mesmo do Auth entrar na história.
+        // Fallback: init manual (mesmos IDs do google-services.json).
         val relogio = SystemClock.elapsedRealtime()
         val options = FirebaseOptions.Builder()
             .setProjectId(PROJECT_ID)

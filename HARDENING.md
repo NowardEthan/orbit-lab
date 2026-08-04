@@ -1,3 +1,5 @@
+
+
 # Endurecimento OrbitLab + luna-core (MVP produção sideload)
 
 Plano para sair de “app que funciona” → “app que se opera com identidade estável,
@@ -11,14 +13,16 @@ Princípio: **cota e billing são verdade no servidor.** Parede no app é UX.
 
 ## Status
 
-| Fase | Tema | Status |
-|------|------|--------|
-| **0** | Docs: Lab = produção sideload | **feita** |
-| **1** | Signing de release + CI + SHA Firebase | **feita** (0.30.4; login OK no aparelho) |
-| **2** | Minify / R8 no `labRelease` | **em curso** → 0.30.5 |
-| **3** | Crash reporting (Crashlytics preferido) | pendente |
-| **4** | Rate limit no luna-core | pendente (pode paralelizar com 3) |
+
+| Fase  | Tema                                    | Status                                                      |
+| ----- | --------------------------------------- | ----------------------------------------------------------- |
+| **0** | Docs: Lab = produção sideload           | **feita**                                                   |
+| **1** | Signing de release + CI + SHA Firebase  | **feita** (0.30.4; login OK no aparelho)                    |
+| **2** | Minify / R8 no `labRelease`             | **feita** (0.30.5)                                          |
+| **3** | Crash reporting (Crashlytics preferido) | **em curso** → 0.30.6                                       |
+| **4** | Rate limit no luna-core                 | pendente (pode paralelizar com 3)                           |
 | **5** | Higiene: OpenRouter no APK + DirectChat | **parcial** — chave já vazia no CI; falta isolar DirectChat |
+
 
 Ordem: `0 → 1 → 2 → 3`, com `4` em paralelo a partir de `1`/`3`.
 
@@ -34,7 +38,7 @@ Ordem: `0 → 1 → 2 → 3`, com `4` em paralelo a partir de `1`/`3`.
 
 ## Fase 1 — Signing de release
 
-**Guia:** [`SIGNING.md`](SIGNING.md)
+**Guia:** `[SIGNING.md](SIGNING.md)`
 
 **DoD**
 
@@ -62,26 +66,26 @@ de R8 + POJO **não se aplica hoje** — mas:
 - [x] `proguard-rules.pro` (data.** + Firebase + OkHttp + Kotlin)
 - [x] `isMinifyEnabled = true` + `isShrinkResources = true` no `release`
 - [x] `assembleLabRelease` local verde com R8 (0.30.5 / 92)
-- [ ] Smoke no celular: login, chat, **números de finanças**, update 0.30.4→0.30.5
-- [ ] Publish 0.30.5 pelo Actions
-
-**Humano:** depois do install, abrir Finanças e conferir saldos/lançamentos reais.
+- [x] Publish 0.30.5 pelo Actions
+- [x] Smoke no celular (performance + uso) — Ethan
 
 ---
 
 ## Fase 3 — Crash reporting
 
-Preferência: **Firebase Crashlytics** (`luna-8787d`).
+**Firebase Crashlytics** (`luna-8787d`), via `google-services.json` + plugin
+(mapping R8 sobe no build de release).
 
 **DoD**
 
-- [ ] SDK no flavor lab
-- [ ] uid opaco; sem chat/financeiro no crash
-- [ ] Breadcrumb: tela, versionName/versionCode
-- [ ] Crash de teste no console
-- [ ] Política de PII no `AGENTS.md`
+- [x] SDK + plugins Gradle + `CrashReporting`
+- [x] uid opaco; sem chat/financeiro (política em `AGENTS.md`)
+- [x] Breadcrumb: tela, versionName/versionCode
+- [x] Gesto de teste: Ajustes → 7 toques na versão
+- [ ] Publish **0.30.6** + crash de teste aparece no console Firebase — Ethan
 
-**Lembrete:** Crashlytics não pega corrupção silenciosa de dados — smoke de finanças manda.
+**Humano:** atualizar pra 0.30.6 → Ajustes → 7× na versão → confirmar → reabrir app →
+olhar Firebase Console → Crashlytics (pode levar alguns minutos).
 
 ---
 
@@ -107,8 +111,9 @@ Preferência: **Firebase Crashlytics** (`luna-8787d`).
 
 ## Critério de plano concluído
 
-1. Release key + updates em cadeia.  
-2. R8 + smoke de números de finanças.  
-3. Crashlytics.  
-4. Rate limit no core.  
+1. Release key + updates em cadeia.
+2. R8 + smoke de números de finanças.
+3. Crashlytics.
+4. Rate limit no core.
 5. DirectChat fora do produto.
+

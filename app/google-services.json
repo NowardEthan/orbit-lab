@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1068126871324",
+    "project_id": "luna-8787d",
+    "storage_bucket": "luna-8787d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1068126871324:android:51217dcd0047b3cf3564d9",
+        "android_client_info": {
+          "package_name": "com.ethan.orbitlab"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBIAkgQeiuFx_UwxFPVtT5UOTa-z14hBGs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
