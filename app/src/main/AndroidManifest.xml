@@ -53,6 +53,17 @@
             </intent-filter>
         </activity>
 
+        <!-- Painel da bolha: composer completo (Activity Result / sheets / câmera).
+             Tarefa própria pra, ao fechar, voltar ao app que estava por baixo. -->
+        <activity
+            android:name=".ui.bolha.BolhaPainelActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:taskAffinity="com.ethan.orbitlab.bolha"
+            android:theme="@style/Theme.OrbitLab.BolhaPainel"
+            android:windowSoftInputMode="adjustResize" />
+
         <service
             android:name=".data.captura.CapturaNotificacaoService"
             android:exported="true"

@@ -12,9 +12,8 @@ import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
 import android.view.Gravity
+import android.view.View
 import android.view.WindowManager
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.ComposeView
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
@@ -38,10 +37,8 @@ import kotlinx.coroutines.flow.StateFlow
 /**
  * A bolha da Luna (chat-head) — flutua sobre qualquer app.
  *
- * É um Service em primeiro plano (pra sobreviver com o OrbitLab fechado) que pendura uma
- * [ComposeView] num overlay do [WindowManager]. Compose fora de uma Activity precisa de três
- * "donos" que a Activity normalmente fornece — lifecycle, savedState e viewModelStore — então
- * o serviço faz esse papel. A bolha em si (arrastar, grudar na borda) vive na [BolhaOverlay].
+ * Overlay = só o FAB. O painel de conversa abre em [BolhaPainelActivity] (Activity
+ * translúcida) pra o composer completo (anexos/mic/câmera) funcionar de verdade.
  */
 class BolhaLunaService :
     Service(),
@@ -58,9 +55,6 @@ class BolhaLunaService :
     private lateinit var windowManager: WindowManager
     private var view: ComposeView? = null
 
-    /** Bolha recolhida (só o círculo) vs painel de conversa aberto. */
-    private val expandido = MutableStateFlow(false)
-    // Onde a bolha ficou quando recolhida — pra voltar pro mesmo canto ao fechar o painel.
     private var bolhaX = 0
     private var bolhaY = 240
 
@@ -84,8 +78,11 @@ class BolhaLunaService :
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
 
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        instancia = this
         montarBolha()
         _rodando.value = true
+        // Se o painel já estava aberto (recreate), mantém FAB escondida.
+        atualizarVisibilidadeFab()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -99,33 +96,24 @@ class BolhaLunaService :
             setViewTreeViewModelStoreOwner(this@BolhaLunaService)
             setViewTreeSavedStateRegistryOwner(this@BolhaLunaService)
             setContent {
-                val aberto by expandido.collectAsState()
-                if (aberto) {
-                    BolhaLunaPainel(
-                        onFechar = { recolher() },
-                        onAbrirNoApp = { abrirApp(); recolher() },
-                    )
-                } else {
-                    BolhaOverlay(
-                        onArrastar = { dx, dy ->
-                            params.x += dx
-                            params.y += dy
-                            bolhaX = params.x
-                            bolhaY = params.y
-                            atualizar()
-                        },
-                        onSoltar = { grudarNaBorda() },
-                        onTocar = { expandir() },
-                        onFechar = { pararSozinho() },
-                    )
-                }
+                BolhaOverlay(
+                    onArrastar = { dx, dy ->
+                        params.x += dx
+                        params.y += dy
+                        bolhaX = params.x
+                        bolhaY = params.y
+                        atualizar()
+                    },
+                    onSoltar = { grudarNaBorda() },
+                    onTocar = { expandir() },
+                    onFechar = { pararSozinho() },
+                )
             }
         }
         view = compose
         runCatching { windowManager.addView(compose, params) }
     }
 
-    /** Solta a bolha na borda mais perto (esquerda/direita), como as chat-heads clássicas. */
     private fun grudarNaBorda() {
         val largura = recursos().widthPixels
         params.x = if (params.x + (view?.width ?: 0) / 2 < largura / 2) 0 else largura - (view?.width ?: 0)
@@ -134,41 +122,20 @@ class BolhaLunaService :
         atualizar()
     }
 
-    /** Toque na bolha → abre o painel de conversa (janela focável, tela toda, com scrim). */
+    /** Toque na bolha → Activity translúcida com o chat completo. */
     private fun expandir() {
-        params.width = WindowManager.LayoutParams.MATCH_PARENT
-        params.height = WindowManager.LayoutParams.MATCH_PARENT
-        params.flags = FLAGS_PAINEL
-        params.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
-        params.x = 0
-        params.y = 0
-        expandido.value = true
-        atualizar()
+        _painelAberto.value = true
+        atualizarVisibilidadeFab()
+        runCatching { startActivity(BolhaPainelActivity.intent(this)) }
     }
 
-    /** Fecha o painel e volta a ser só a bolha, no canto onde estava. */
-    private fun recolher() {
-        expandido.value = false
-        params.width = WindowManager.LayoutParams.WRAP_CONTENT
-        params.height = WindowManager.LayoutParams.WRAP_CONTENT
-        params.flags = FLAGS_BOLHA
-        params.x = bolhaX
-        params.y = bolhaY
-        atualizar()
+    private fun atualizarVisibilidadeFab() {
+        view?.visibility = if (_painelAberto.value) View.GONE else View.VISIBLE
     }
 
     private fun atualizar() {
         val v = view ?: return
         runCatching { windowManager.updateViewLayout(v, params) }
-    }
-
-    private fun abrirApp() {
-        BolhaNav.pedirAbrirChat()
-        val intent = Intent(this, MainActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            putExtra(EXTRA_ABRIR_LUNA, true)
-        }
-        runCatching { startActivity(intent) }
     }
 
     private fun pararSozinho() {
@@ -179,6 +146,7 @@ class BolhaLunaService :
     private fun recursos() = resources.displayMetrics
 
     override fun onDestroy() {
+        if (instancia === this) instancia = null
         view?.let { runCatching { windowManager.removeView(it) } }
         view = null
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
@@ -188,8 +156,6 @@ class BolhaLunaService :
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
-
-    // ── Primeiro plano (notificação fixa e discreta) ──────────────────────────
 
     private fun irParaPrimeiroPlano() {
         val manager = getSystemService(NotificationManager::class.java)
@@ -228,16 +194,27 @@ class BolhaLunaService :
         private const val ID_NOTIF = 4201
         const val EXTRA_ABRIR_LUNA = "abrir_luna"
 
-        // Bolha: não rouba foco nem bloqueia toques no app de baixo (só o círculo é tocável).
         private const val FLAGS_BOLHA =
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
-        // Painel: focável (teclado funciona) e modal (o scrim segura o toque de fora pra fechar).
-        private const val FLAGS_PAINEL =
-            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
 
         private val _rodando = MutableStateFlow(false)
         val rodando: StateFlow<Boolean> = _rodando
+
+        private val _painelAberto = MutableStateFlow(false)
+
+        @Volatile
+        private var instancia: BolhaLunaService? = null
+
+        fun avisarPainelAberto() {
+            _painelAberto.value = true
+            instancia?.atualizarVisibilidadeFab()
+        }
+
+        fun avisarPainelFechado() {
+            _painelAberto.value = false
+            instancia?.atualizarVisibilidadeFab()
+        }
 
         fun ligar(context: Context) {
             PrefsRepository.setBolhaAtiva(true)
@@ -250,10 +227,6 @@ class BolhaLunaService :
             context.stopService(Intent(context, BolhaLunaService::class.java))
         }
 
-        /**
-         * Se o usuário deixou a bolha ligada e ainda tem permissão de overlay,
-         * sobe o serviço de novo (ex.: após abrir o app, ou voltar dos Ajustes).
-         */
         fun tentarReligarSePreferida(context: Context): Boolean {
             if (!PrefsRepository.bolhaAtiva.value) return false
             if (!OverlayPermissao.concedida(context)) return false
