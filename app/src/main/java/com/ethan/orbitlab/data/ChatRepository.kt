@@ -375,6 +375,26 @@ object ChatRepository {
     fun ehConversaFinancas(conversaId: String): Boolean =
         FirestoreChat.isSessaoFinancas(conversaId)
 
+    /**
+     * A conversa "principal" da Luna — a que a bolha flutuante continua.
+     * Ordem: a última que ficou aberta → a mais recente que não é a de Finanças → uma nova.
+     * Nunca aponta pra sessão fixa das Finanças (aquela é do módulo, não a conversa geral).
+     */
+    fun conversaPrincipal(): String {
+        val lista = _conversas.value
+        val ultima = PrefsRepository.ultimaConversa
+        if (ultima != null && !ehConversaFinancas(ultima) && lista.any { it.id == ultima }) {
+            ensureMessagesListener(ultima)
+            return ultima
+        }
+        val recente = lista.firstOrNull { !ehConversaFinancas(it.id) }
+        if (recente != null) {
+            ensureMessagesListener(recente.id)
+            return recente.id
+        }
+        return criarConversa()
+    }
+
     fun getConversa(id: String): Conversa? {
         return _conversas.value.find { it.id == id }
     }

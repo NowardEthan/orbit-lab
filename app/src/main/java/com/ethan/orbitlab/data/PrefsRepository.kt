@@ -28,6 +28,8 @@ object PrefsRepository {
     private const val KEY_CPF_CNPJ = "orbit.lab.billing.cpfcnpj"
     /** Showcase V1 da Início (Finanças / desenha / artefatos) — versionado pra reaparecer em capítulos novos. */
     private const val KEY_SHOWCASE_LUNA_V1 = "orbit.lab.inicio.showcase.luna.v1.dismissed"
+    /** Bolha flutuante (chat-head) ligada pelo usuário — religa ao abrir o app se a permissão existir. */
+    private const val KEY_BOLHA_ATIVA = "orbit.lab.bolha.ativa"
     private const val MAX_TECNICO_IDS = 500
 
     private lateinit var prefs: SharedPreferences
@@ -81,6 +83,10 @@ object PrefsRepository {
     private val _localizacaoAtiva = MutableStateFlow(false)
     val localizacaoAtiva: StateFlow<Boolean> = _localizacaoAtiva.asStateFlow()
 
+    private val _bolhaAtiva = MutableStateFlow(false)
+    /** Preferência: usuário quer a bolha ligada (o serviço pode estar morto até religar). */
+    val bolhaAtiva: StateFlow<Boolean> = _bolhaAtiva.asStateFlow()
+
     fun init(context: Context) {
         if (::prefs.isInitialized) return
         prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -89,6 +95,7 @@ object PrefsRepository {
         _modoTecnico.value = prefs.getBoolean(KEY_MODO_TECNICO, false)
         _modoAgentico.value = prefs.getBoolean(KEY_MODO_AGENTICO, false)
         _localizacaoAtiva.value = prefs.getBoolean(KEY_LOCALIZACAO, false)
+        _bolhaAtiva.value = prefs.getBoolean(KEY_BOLHA_ATIVA, false)
         idsTecnico.clear()
         idsTecnico.addAll(prefs.getStringSet(KEY_TECNICO_IDS, emptySet()).orEmpty())
     }
@@ -238,6 +245,11 @@ object PrefsRepository {
     fun setLocalizacaoAtiva(enabled: Boolean) {
         _localizacaoAtiva.value = enabled
         if (::prefs.isInitialized) prefs.edit().putBoolean(KEY_LOCALIZACAO, enabled).apply()
+    }
+
+    fun setBolhaAtiva(enabled: Boolean) {
+        _bolhaAtiva.value = enabled
+        if (::prefs.isInitialized) prefs.edit().putBoolean(KEY_BOLHA_ATIVA, enabled).apply()
     }
 
     /** Último local/clima captado (JSON) — pra Luna ter o «onde» sem esperar um fix novo. */
