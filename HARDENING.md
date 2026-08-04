@@ -19,8 +19,8 @@ Princípio: **cota e billing são verdade no servidor.** Parede no app é UX.
 | **0** | Docs: Lab = produção sideload           | **feita**                                                   |
 | **1** | Signing de release + CI + SHA Firebase  | **feita** (0.30.4; login OK no aparelho)                    |
 | **2** | Minify / R8 no `labRelease`             | **feita** (0.30.5)                                          |
-| **3** | Crash reporting (Crashlytics preferido) | **em curso** → 0.30.6                                       |
-| **4** | Rate limit no luna-core                 | pendente (pode paralelizar com 3)                           |
+| **3** | Crash reporting (Crashlytics preferido) | **feita** (0.30.6)                                          |
+| **4** | Rate limit no luna-core                 | **feita** (luna-core #26 + orbit-lab #29)                   |
 | **5** | Higiene: OpenRouter no APK + DirectChat | **parcial** — chave já vazia no CI; falta isolar DirectChat |
 
 
