@@ -317,7 +317,10 @@ fun LunaStreamDraft(
                 val labelImagem = estado.actionRun?.imagemEmGeracao()
                 Column(modifier.fillMaxWidth(0.92f)) {
                     estado.actionRun?.let { run ->
-                        LunaActionTimeline(run = run, inicialmenteAberto = false)
+                        LunaActionTimeline(
+                            run = run,
+                            inicialmenteAberto = run.status == LunaActionRunStatus.RUNNING,
+                        )
                         Spacer(Modifier.height(8.dp))
                     }
                     when {
@@ -398,7 +401,10 @@ private fun StreamRespostaDraft(
             horizontalAlignment = Alignment.Start,
         ) {
             actionRun?.let { run ->
-                LunaActionTimeline(run = run, inicialmenteAberto = false)
+                LunaActionTimeline(
+                    run = run,
+                    inicialmenteAberto = run.status == LunaActionRunStatus.RUNNING,
+                )
                 Spacer(Modifier.height(8.dp))
             }
             if (mostrarRaciocinio && reasoning.isNotBlank()) {

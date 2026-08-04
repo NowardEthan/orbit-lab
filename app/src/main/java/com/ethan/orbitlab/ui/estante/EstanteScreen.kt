@@ -24,7 +24,9 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Description
@@ -88,6 +90,8 @@ private enum class FiltroOrigem(val rotulo: String) { TUDO("Tudo"), SUAS("Suas")
 @Composable
 fun EstanteScreen(onBack: (() -> Unit)? = null) {
     val uid = FirebaseAuth.getInstance().currentUser?.uid
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     var aba by remember { mutableStateOf(GaleriaAba.IMAGENS) }
 
@@ -96,6 +100,7 @@ fun EstanteScreen(onBack: (() -> Unit)? = null) {
     var carregandoArt by remember { mutableStateOf(true) }
     var busca by remember { mutableStateOf("") }
     var selecionado by remember { mutableStateOf<DocumentoUi?>(null) }
+    var criando by remember { mutableStateOf(false) }
 
     DisposableEffect(uid) {
         val registro = uid?.let {
@@ -163,6 +168,42 @@ fun EstanteScreen(onBack: (() -> Unit)? = null) {
                     onBusca = { busca = it },
                     onSelecionar = { selecionado = it },
                     modifier = Modifier.weight(1f),
+                )
+            }
+        }
+
+        // FAB criar página (só na aba Artefatos)
+        if (aba == GaleriaAba.ARTEFATOS && uid != null) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = OrbitMetrics.pagePadding, bottom = 28.dp)
+                    .size(56.dp)
+                    .clip(CircleShape)
+                    .background(OrbitTokens.bluePastel)
+                    .orbitPressable(enabled = !criando) {
+                        criando = true
+                        scope.launch {
+                            val id = runCatching {
+                                FirestoreDocumentos.criar(uid, titulo = "Sem título", conteudo = "")
+                            }.getOrNull()
+                            criando = false
+                            if (id == null) {
+                                Toast.makeText(context, "Não consegui criar", Toast.LENGTH_SHORT).show()
+                            } else {
+                                val criado = artefatos.firstOrNull { it.id == id }
+                                if (criado != null) selecionado = criado
+                                else Toast.makeText(context, "Página criada — toque pra abrir", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Rounded.Add,
+                    contentDescription = "Nova página",
+                    tint = OrbitTokens.graphiteBg,
+                    modifier = Modifier.size(28.dp),
                 )
             }
         }
@@ -414,8 +455,8 @@ private fun ArtefatosLista(
             carregando && artefatos.isEmpty() -> Unit
             artefatos.isEmpty() -> GaleriaVazia(
                 icone = Icons.Rounded.Description,
-                titulo = "Nenhum artefato ainda",
-                linha = "Peça à Luna pra escrever algo — um plano, uma carta, uma nota. Ele nasce aqui.",
+                titulo = "Nenhuma página ainda",
+                linha = "Toque no + pra começar uma página vazia, ou peça à Luna pra escrever um plano, uma carta, uma nota.",
             )
             filtrados.isEmpty() -> GaleriaVazia(
                 icone = Icons.Rounded.Description,

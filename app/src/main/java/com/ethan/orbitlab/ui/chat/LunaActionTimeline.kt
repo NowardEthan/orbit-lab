@@ -32,7 +32,11 @@ fun LunaActionTimeline(
             LunaPlanChecklist(plano = run.plano, aoVivo = aoVivo)
         }
         if (tools.isNotEmpty()) {
-            LunaToolTimeline(steps = tools, inicialmenteAberto = inicialmenteAberto)
+            // Ao vivo: abre a trilha (Cursor). No histórico: respeita inicialmenteAberto.
+            LunaToolTimeline(
+                steps = tools,
+                inicialmenteAberto = inicialmenteAberto || aoVivo,
+            )
         }
         if (run.isDeepResearch() && research != null) {
             LunaResearchPanel(

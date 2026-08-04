@@ -95,9 +95,14 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.widget.Toast
+import androidx.compose.material.icons.rounded.List
+import com.ethan.orbitlab.data.artefato.blocosToMd
+import com.ethan.orbitlab.data.artefato.mdToBlocos
 import com.ethan.orbitlab.data.firebase.DocumentoUi
 import com.ethan.orbitlab.data.firebase.FirestoreDocumentos
 import com.ethan.orbitlab.data.firebase.VersaoUi
+import com.ethan.orbitlab.ui.artefato.ArtefatoEditor
+import com.ethan.orbitlab.ui.artefato.ArtefatoOutlineSheet
 import com.ethan.orbitlab.ui.theme.OrbitMetrics
 import com.ethan.orbitlab.ui.theme.OrbitTokens
 import com.ethan.orbitlab.ui.theme.orbitEnter
@@ -377,8 +382,14 @@ fun DocumentoReaderSheet(
     var editando by remember(doc.id) { mutableStateOf(false) }
     var tituloLocal by remember(doc.id) { mutableStateOf(doc.titulo) }
     var conteudoLocal by remember(doc.id) { mutableStateOf(doc.conteudo) }
-    // O corpo em edição carrega o cursor (o verniz precisa saber a linha ativa pra revelar o
-    // Markdown só ali). Re-semeado ao ENTRAR na edição, com o cursor no fim.
+    var blocosLocal by remember(doc.id) {
+        mutableStateOf(
+            doc.blocos.ifEmpty { mdToBlocos(doc.conteudo) },
+        )
+    }
+    var focusBlocoId by remember(doc.id) { mutableStateOf<String?>(null) }
+    var outlineAberto by remember(doc.id) { mutableStateOf(false) }
+    // Compat: seleção de trecho ainda usa a projeção MD.
     var editorValor by remember(doc.id) { mutableStateOf(TextFieldValue(doc.conteudo)) }
     LaunchedEffect(editando) {
         if (editando) {
@@ -418,29 +429,39 @@ fun DocumentoReaderSheet(
     // Quando o artefato muda POR FORA (a Luna reescreveu, ou uma restauração acabou de gravar) e a
     // gente NÃO está editando, a tela acompanha. Sem isto o leitor ficava preso ao texto semeado na
     // abertura — invisível até então, mas gritante com o histórico (restaurar não "pegava" na tela).
-    LaunchedEffect(doc.conteudo, doc.titulo) {
+    LaunchedEffect(doc.conteudo, doc.titulo, doc.blocos) {
         if (!editando) {
             conteudoLocal = doc.conteudo
             tituloLocal = doc.titulo
+            blocosLocal = doc.blocos.ifEmpty { mdToBlocos(doc.conteudo) }
         }
     }
 
-    // Edição ao vivo, na própria tela: sair da edição PERSISTE o que ele digitou (título+corpo)
-    // quando há mudança real e nada ficou vazio. Se esvaziou tudo, volta ao que estava — não
-    // deixa a estante com um artefato em branco. Sem tela de formulário, sem botão de descartar.
+    // Edição ao vivo: persiste blocos (schema v2) + projeção MD. Se esvaziou tudo, volta ao que estava.
     fun salvarESair() {
         val t = tituloLocal.trim()
-        val c = conteudoLocal
-        if (uid != null && t.isNotBlank() && c.isNotBlank()) {
-            if (t != doc.titulo || c != doc.conteudo) {
+        val md = blocosToMd(blocosLocal).ifBlank { conteudoLocal }
+        // Página vazia (só um parágrafo em branco) também pode ser salva — Notion-like.
+        if (uid != null && t.isNotBlank() && blocosLocal.isNotEmpty()) {
+            if (t != doc.titulo || md != doc.conteudo || blocosLocal != doc.blocos) {
                 scope.launch {
-                    runCatching { FirestoreDocumentos.atualizar(uid, doc.id, t, c) }
+                    runCatching {
+                        FirestoreDocumentos.atualizar(
+                            uid = uid,
+                            id = doc.id,
+                            titulo = t,
+                            conteudo = md,
+                            blocos = blocosLocal,
+                        )
+                    }
                 }
             }
             tituloLocal = t
+            conteudoLocal = md
         } else {
             tituloLocal = doc.titulo
             conteudoLocal = doc.conteudo
+            blocosLocal = doc.blocos.ifEmpty { mdToBlocos(doc.conteudo) }
         }
         editando = false
     }
@@ -580,6 +601,10 @@ fun DocumentoReaderSheet(
                                         }
                                     }
                                 }
+                                ItemMenu("Índice", Icons.Rounded.List) {
+                                    menuAberto = false
+                                    outlineAberto = true
+                                }
                                 ItemMenu("Cânone", Icons.Rounded.MenuBook) {
                                     menuAberto = false
                                     canoneAberto = true
@@ -621,10 +646,7 @@ fun DocumentoReaderSheet(
                         .padding(top = 8.dp, bottom = 36.dp),
                 ) {
                     if (editando) {
-                        // Edição no lugar: título e corpo viram campos sem moldura, com a MESMA
-                        // tipografia do leitor. É o Markdown cru, editável ao vivo bem aqui — vira
-                        // heading/negrito/checkbox quando ele conclui. Fonte-do-texto estilo Obsidian,
-                        // não um formulário à parte.
+                        // Editor por blocos (Notion da Luna): Enter cria parágrafo, / abre tipos.
                         BasicTextField(
                             value = tituloLocal,
                             onValueChange = { tituloLocal = it },
@@ -660,39 +682,18 @@ fun DocumentoReaderSheet(
                                 .background(gradienteArtefato),
                         )
                         Spacer(Modifier.height(18.dp))
-                        BasicTextField(
-                            value = editorValor,
-                            onValueChange = {
-                                editorValor = it
-                                conteudoLocal = it.text
+                        ArtefatoEditor(
+                            blocos = blocosLocal,
+                            onBlocosChange = { next ->
+                                blocosLocal = next
+                                conteudoLocal = blocosToMd(next)
                             },
-                            textStyle = TextStyle(
-                                color = OrbitTokens.textHiN,
-                                fontSize = 16.sp,
-                                lineHeight = 26.sp,
-                            ),
-                            cursorBrush = SolidColor(OrbitTokens.bluePastel),
-                            // O verniz: fora da linha do cursor, some com o `##`/`>` e mostra a linha
-                            // já como título/citação. Na linha ativa, os marcadores voltam esmaecidos
-                            // pra editar. É a mágica "live preview" do Obsidian.
-                            visualTransformation = vernizMarkdown(
-                                editorValor.selection.start,
-                                editorValor.selection.end,
-                            ),
+                            focusBlocoId = focusBlocoId,
+                            onFocusConsumed = { focusBlocoId = null },
+                            onPedirFoco = { focusBlocoId = it },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .heightIn(min = 300.dp),
-                            decorationBox = { inner ->
-                                if (editorValor.text.isEmpty()) {
-                                    Text(
-                                        text = "Escreve aqui em Markdown…",
-                                        color = OrbitTokens.textLowN,
-                                        fontSize = 16.sp,
-                                        lineHeight = 26.sp,
-                                    )
-                                }
-                                inner()
-                            },
                         )
                     } else if (selecionando) {
                         // Marcar trecho: o corpo é a fonte CRUA num campo só-leitura, com o mesmo verniz
@@ -775,12 +776,19 @@ fun DocumentoReaderSheet(
                                 { idx ->
                                     val novo = alternarChecklistNoTexto(conteudoLocal, idx)
                                     conteudoLocal = novo
+                                    val blocosNovos = mdToBlocos(novo)
+                                    blocosLocal = blocosNovos
                                     scope.launch {
                                         runCatching {
                                             // Marcar item não é reescrita — não versiona (senão cada
                                             // ☑ vira uma "versão" e enche o histórico de ruído).
                                             FirestoreDocumentos.atualizar(
-                                                uid, doc.id, tituloLocal, novo, versionar = false,
+                                                uid = uid,
+                                                id = doc.id,
+                                                titulo = tituloLocal,
+                                                conteudo = novo,
+                                                versionar = false,
+                                                blocos = blocosNovos,
                                             )
                                         }
                                     }
@@ -941,6 +949,7 @@ fun DocumentoReaderSheet(
                             // congelado do doc, então não espera o listener pra "pegar".
                             tituloLocal = versao.titulo
                             conteudoLocal = versao.conteudo
+                            blocosLocal = versao.blocos?.ifEmpty { null } ?: mdToBlocos(versao.conteudo)
                             historicoAberto = false
                             Toast.makeText(context, "Versão restaurada", Toast.LENGTH_SHORT).show()
                         } else {
@@ -949,6 +958,14 @@ fun DocumentoReaderSheet(
                     }
                 }
             },
+        )
+    }
+
+    if (outlineAberto) {
+        ArtefatoOutlineSheet(
+            blocos = blocosLocal,
+            onDismiss = { outlineAberto = false },
+            onIrPara = { /* scroll fino fica pro N3.1 — índice já orienta */ },
         )
     }
 }

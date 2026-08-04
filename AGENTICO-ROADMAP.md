@@ -180,9 +180,43 @@ A0 ──► A1 (Lab UI)
 - Planejamento só quando multi-passo (não em tool única óbvia)  
 - **Task list exposta** (abaixo) — a coleira do core vira UI, não só meta-tool  
 - Melhor narrar → agir → fechar (timeline clara)  
-- Explorar stream parcial da resposta final (hoje agentico é “opaco” no texto)  
+- **Narração progressiva** (abaixo A4.2) — pontes «Vou ler…» + SSE `content` mid-loop  
 - Pesquisa profunda / vision: opt-in ou gatilho claro (custo)  
 - Guardrail: max tools / max rodadas por tipo de turno  
+
+### A4.2 — Narração estilo Cursor (pontes entre ações)
+
+**Diagnóstico:** o path agentico descartava `content` quando havia `tool_calls`
+(provider + executor tratavam texto como fim do loop). A UI só mostrava timeline
+recolhida («N passos») — sensação de “ela fez uma ação” sem prosa.
+
+**O que mudou (ship)**
+
+| Camada | Mudança |
+|--------|---------|
+| Provider | `content` + `tool_calls` na mesma resposta |
+| Executor | ponte → `onNarracaoRodada` → continua o loop; texto final junta pontes |
+| Pipeline / SSE | `onNarracao` → `onStreamContentDelta` (`content` mid-loop) |
+| Prompt | `DIRETRIZ_NARRACAO_AGENTICA` + anti-meta com exceção de ponte de 1 frase |
+| Lab | timeline **aberta** enquanto RUNNING; labels live com `…`; toolMeta blocos |
+
+**Sensação alvo**
+
+```
+Vou ler o artefato pra me informar.
+  ⊟ Lendo o documento…          ← timeline aberta
+Entendi. Agora ajusto só esse trecho.
+  ⊟ Ajustando o documento…
+Pronto — troquei a frase X.
+```
+
+**DoD A4.2**
+
+- [x] Provider devolve content+tools  
+- [x] Executor narra e continua; fallback humano (sem «Executei N ações…»)  
+- [x] Diretriz de pontes + afrouxar anti-meta só pra ação  
+- [x] Lab: timeline ao vivo aberta + toolMeta `inserir_blocos` / `ler_bloco` / …  
+- [ ] Smoke aparelho: «lê o artefato e corrige Y» → ponte → lendo → ponte → editando  
 
 ### A4.1 — Task list / plano à vista (sensação Cursor)
 
@@ -227,6 +261,7 @@ Plano · 1/3
 
 - [ ] Fluxo doc ou finanças: timeline legível + resultado certo  
 - [ ] Task list A4.1 verde  
+- [x] Narração A4.2 no core + Lab (smoke aparelho pendente)  
 - [ ] Menos sensação de “travou pensando” em ação simples  
 - [ ] Nenhum loop absurdo em small talk (regressão)  
 

@@ -19,6 +19,7 @@ perfil e auto-update. Backend = **luna-core** (Railway). Canal de update =
 | Abrir | Android Studio → pasta `OrbitLab` |
 | Release | [`RELEASING.md`](RELEASING.md) · assinatura [`SIGNING.md`](SIGNING.md) · endurecimento [`HARDENING.md`](HARDENING.md) |
 | Bolha (chat-head) | [`BOLHA-ROADMAP.md`](BOLHA-ROADMAP.md) · fase [`bolha/B1-gesto-premium.md`](bolha/B1-gesto-premium.md) · código `ui/bolha/` |
+| Artefatos (Notion) | [`ARTEFATOS-ROADMAP.md`](ARTEFATOS-ROADMAP.md) — N0–N3: blocos, editor, tools Luna, outline/criar |
 | Luna agentica | [`AGENTICO-ROADMAP.md`](AGENTICO-ROADMAP.md) — **A0–A1 em curso**: soft router + sem seletor; A4.1 checklist |
 | Build/CI | [`.github/workflows/build-lab.yml`](.github/workflows/build-lab.yml) · [`TESTE-UPDATE.md`](TESTE-UPDATE.md) |
 
