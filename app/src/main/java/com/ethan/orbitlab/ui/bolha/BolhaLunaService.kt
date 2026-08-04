@@ -18,8 +18,10 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.setViewTreeLifecycleOwner
@@ -39,6 +41,9 @@ import kotlinx.coroutines.flow.StateFlow
  *
  * Overlay = só o FAB. O painel de conversa abre em [BolhaPainelActivity] (Activity
  * translúcida) pra o composer completo (anexos/mic/câmera) funcionar de verdade.
+ *
+ * O FAB só aparece com o OrbitLab em segundo plano (e o painel fechado) — com o app
+ * aberto a bolha some pra não cobrir a UI nativa.
  */
 class BolhaLunaService :
     Service(),
@@ -57,6 +62,22 @@ class BolhaLunaService :
 
     private var bolhaX = 0
     private var bolhaY = 240
+    /** Alguma Activity do processo está visível (MainActivity, painel da bolha, …). */
+    private var appEmPrimeiroPlano = false
+
+    private val appLifecycleObserver = LifecycleEventObserver { _, event ->
+        when (event) {
+            Lifecycle.Event.ON_START -> {
+                appEmPrimeiroPlano = true
+                atualizarVisibilidadeFab()
+            }
+            Lifecycle.Event.ON_STOP -> {
+                appEmPrimeiroPlano = false
+                atualizarVisibilidadeFab()
+            }
+            else -> Unit
+        }
+    }
 
     private val params = WindowManager.LayoutParams(
         WindowManager.LayoutParams.WRAP_CONTENT,
@@ -79,9 +100,11 @@ class BolhaLunaService :
 
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         instancia = this
+        appEmPrimeiroPlano = ProcessLifecycleOwner.get().lifecycle.currentState
+            .isAtLeast(Lifecycle.State.STARTED)
+        ProcessLifecycleOwner.get().lifecycle.addObserver(appLifecycleObserver)
         montarBolha()
         _rodando.value = true
-        // Se o painel já estava aberto (recreate), mantém FAB escondida.
         atualizarVisibilidadeFab()
     }
 
@@ -124,13 +147,24 @@ class BolhaLunaService :
 
     /** Toque na bolha → Activity translúcida com o chat completo. */
     private fun expandir() {
+        // Captura o centro do FAB ANTES de esconder (View.GONE zera medidas em alguns OEMs).
+        val v = view
+        val fabCx = params.x + (v?.width?.takeIf { it > 0 } ?: estimativaFabPx()) / 2f
+        val fabCy = params.y + (v?.height?.takeIf { it > 0 } ?: estimativaFabPx()) / 2f
         _painelAberto.value = true
         atualizarVisibilidadeFab()
-        runCatching { startActivity(BolhaPainelActivity.intent(this)) }
+        runCatching { startActivity(BolhaPainelActivity.intent(this, fabCx, fabCy)) }
+    }
+
+    private fun estimativaFabPx(): Int {
+        // 56dp + folga de sombra 12dp de cada lado ≈ 80dp.
+        return (80f * recursos().density).toInt()
     }
 
     private fun atualizarVisibilidadeFab() {
-        view?.visibility = if (_painelAberto.value) View.GONE else View.VISIBLE
+        // Só flutua sobre outros apps: some com o OrbitLab aberto ou o painel expandido.
+        val mostrar = !_painelAberto.value && !appEmPrimeiroPlano
+        view?.visibility = if (mostrar) View.VISIBLE else View.GONE
     }
 
     private fun atualizar() {
@@ -146,6 +180,7 @@ class BolhaLunaService :
     private fun recursos() = resources.displayMetrics
 
     override fun onDestroy() {
+        ProcessLifecycleOwner.get().lifecycle.removeObserver(appLifecycleObserver)
         if (instancia === this) instancia = null
         view?.let { runCatching { windowManager.removeView(it) } }
         view = null

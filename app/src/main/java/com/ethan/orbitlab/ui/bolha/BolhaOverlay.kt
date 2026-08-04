@@ -31,10 +31,10 @@ import com.ethan.orbitlab.ui.theme.OrbitMotion
 import com.ethan.orbitlab.ui.theme.OrbitTokens
 import kotlin.math.roundToInt
 
-private val BolhaTamanho = 44.dp
-private val BolhaAura = 30.dp
-private val BolhaIcone = 18.dp
-private val BolhaFolgaSombra = 10.dp
+private val BolhaTamanho = 56.dp
+private val BolhaAura = 40.dp
+private val BolhaIcone = 22.dp
+private val BolhaFolgaSombra = 12.dp
 
 /**
  * O que se vê no overlay: a bolha da Luna.
@@ -44,7 +44,7 @@ private val BolhaFolgaSombra = 10.dp
  * - tocar → abre a Luna;
  * - toque longo → guarda a bolha (fecha o serviço).
  *
- * Compacta (44dp) com press spring e enter curto — idioma [OrbitMotion].
+ * 56dp com press spring e enter curto — idioma [OrbitMotion].
  */
 @Composable
 fun BolhaOverlay(
@@ -87,11 +87,11 @@ fun BolhaOverlay(
                     alpha = enter.value
                 }
                 .shadow(
-                    elevation = 12.dp,
+                    elevation = 16.dp,
                     shape = CircleShape,
                     clip = false,
-                    ambientColor = OrbitTokens.bluePastel.copy(alpha = 0.38f),
-                    spotColor = Color.Black.copy(alpha = 0.48f),
+                    ambientColor = OrbitTokens.bluePastel.copy(alpha = 0.45f),
+                    spotColor = Color.Black.copy(alpha = 0.55f),
                 )
                 .clip(CircleShape)
                 .background(OrbitTokens.graphiteRaised)

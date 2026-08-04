@@ -43,9 +43,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -80,11 +83,16 @@ import kotlinx.coroutines.launch
  * pra reutilizar o [ChatInputArea] completo (anexos, galeria, câmera, áudio, modo).
  *
  * Continua a MESMA conversa principal ([ChatRepository.conversaPrincipal]).
+ *
+ * @param fabOrigemX centro X do FAB em coords de janela/tela (−1 = fallback).
+ * @param fabOrigemY centro Y do FAB em coords de janela/tela (−1 = fallback).
  */
 @Composable
 fun BolhaLunaPainel(
     onFechar: () -> Unit,
     onAbrirNoApp: () -> Unit,
+    fabOrigemX: Float = -1f,
+    fabOrigemY: Float = -1f,
 ) {
     val appContext = LocalContext.current.applicationContext as Application
     val conversaId = remember { ChatRepository.conversaPrincipal() }
@@ -179,28 +187,43 @@ fun BolhaLunaPainel(
     val scope = rememberCoroutineScope()
     val densidade = LocalDensity.current
     val progresso = remember { Animatable(0f) }
-    var alturaSheetPx by remember { mutableStateOf(0f) }
+    var sheetSize by remember { mutableStateOf(Offset.Zero) }
+    var sheetPos by remember { mutableStateOf(Offset.Zero) }
     var fechando by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        progresso.animateTo(1f, tween(OrbitMotion.msMed + 50))
+        // Um pouco mais longo que o enter padrão — o morph do FAB precisa respirar.
+        progresso.animateTo(1f, tween(OrbitMotion.msMed + 90))
     }
 
     fun fecharAnimado(depois: () -> Unit = onFechar) {
         if (fechando) return
         fechando = true
         scope.launch {
-            progresso.animateTo(0f, tween(OrbitMotion.msFast))
+            progresso.animateTo(0f, tween(OrbitMotion.msFast + 30))
             depois()
         }
     }
 
     val p = progresso.value
-    val slideY = if (alturaSheetPx > 0f) {
-        (1f - p) * alturaSheetPx
+    val temOrigem = fabOrigemX >= 0f && fabOrigemY >= 0f
+    val pivotX = if (temOrigem && sheetSize.x > 0f) {
+        ((fabOrigemX - sheetPos.x) / sheetSize.x).coerceIn(0f, 1f)
     } else {
-        with(densidade) { 48.dp.toPx() } * (1f - p)
+        0.5f
     }
+    val pivotY = if (temOrigem && sheetSize.y > 0f) {
+        ((fabOrigemY - sheetPos.y) / sheetSize.y).coerceIn(0f, 1f)
+    } else {
+        1f
+    }
+    val fabPx = with(densidade) { 56.dp.toPx() }
+    val startScale = if (sheetSize.y > 0f) {
+        (fabPx / sheetSize.y).coerceIn(0.06f, 0.22f)
+    } else {
+        0.12f
+    }
+    val scale = startScale + (1f - startScale) * p
 
     Box(Modifier.fillMaxSize()) {
         Box(
@@ -218,8 +241,19 @@ fun BolhaLunaPainel(
                 .statusBarsPadding()
                 .imePadding()
                 .navigationBarsPadding()
-                .onSizeChanged { alturaSheetPx = it.height.toFloat() }
-                .graphicsLayer { translationY = slideY }
+                .onGloballyPositioned { coords ->
+                    sheetSize = Offset(
+                        coords.size.width.toFloat(),
+                        coords.size.height.toFloat(),
+                    )
+                    sheetPos = coords.positionInWindow()
+                }
+                .graphicsLayer {
+                    transformOrigin = TransformOrigin(pivotX, pivotY)
+                    scaleX = scale
+                    scaleY = scale
+                    alpha = (0.35f + 0.65f * p).coerceIn(0f, 1f)
+                }
                 .clip(RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp))
                 .background(OrbitTokens.graphiteSurf),
         ) {
