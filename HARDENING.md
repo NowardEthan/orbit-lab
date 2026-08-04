@@ -14,7 +14,7 @@ Princípio: **cota e billing são verdade no servidor.** Parede no app é UX.
 | Fase | Tema | Status |
 |------|------|--------|
 | **0** | Docs: Lab = produção sideload | **feita** |
-| **1** | Signing de release + CI + SHA Firebase | **em curso** — wiring no repo; aguarda Ethan (`SIGNING.md`) |
+| **1** | Signing de release + CI + SHA Firebase | **feita** (0.30.4 / code 91; publish manual por 403 do PAT) |
 | **2** | Minify / R8 no `labRelease` | pendente |
 | **3** | Crash reporting (Crashlytics preferido) | pendente |
 | **4** | Rate limit no luna-core | pendente (pode paralelizar com 3) |
@@ -49,13 +49,13 @@ Signing **antes** de R8 (uma variável por release).
 - [x] `signingConfigs.release` no Gradle (quando keystore/props existem)
 - [x] CI decodifica keystore, exige secrets `LAB_*`, verifica que não é debug
 - [x] `.gitignore` + `keystore.properties.example` + nota de migração
-- [ ] Keystore de release gerada e **fora do Git** (backup seguro) — Ethan
-- [ ] Secrets no GitHub Actions (`LAB_KEYSTORE_BASE64`, senhas, alias) — Ethan
-- [ ] SHA-1/256 da release key no Firebase (`com.ethan.orbitlab`) — Ethan
-- [ ] CI verde com `apksigner verify` + Google login OK no APK release
-- [ ] Primeira publish com release key + aviso de desinstalar/reinstalar no grupo
+- [x] Keystore de release + secrets `LAB_*` no GitHub — Ethan
+- [x] CI: decode + build + `apksigner verify` (não-debug) na run 30863984789
+- [x] Publish lab **0.30.4** / code **91** (APK + `updates-lab.json`)
+- [ ] Confirmar Google login no APK release no celular — Ethan
+- [ ] Renovar `ORBIT_RELEASES_TOKEN` (Actions ainda toma 403 no publish; upload foi manual)
 
-**Humano (Ethan):** passos 1–6 de `SIGNING.md`. Depois avisar “secrets prontos”.
+**Próximo humano:** desinstalar Lab antigo → instalar 0.30.4 → testar Google login.
 
 ---
 
