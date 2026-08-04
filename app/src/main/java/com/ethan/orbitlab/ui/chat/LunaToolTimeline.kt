@@ -22,6 +22,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,9 +41,8 @@ import com.ethan.orbitlab.ui.theme.orbitPressable
 /**
  * Timeline de ferramentas (não-web) — recolhível, no idioma do «Raciocínio».
  *
- * Fechada, é só uma linha limpa (a ação em curso, ou "N passos" quando concluiu).
- * Aberta, revela a lista vertical de passos numa caixa com fio à esquerda —
- * a mesma linguagem do reasoning, nada de badges soltos sobre a bolha.
+ * Enquanto há passo RUNNING, fica aberta (estilo Cursor). Ao terminar, recolhe
+ * com resumo do último passo (+ contagem se houver vários).
  */
 @Composable
 fun LunaToolTimeline(
@@ -52,25 +52,47 @@ fun LunaToolTimeline(
 ) {
     if (steps.isEmpty()) return
 
-    var aberto by remember { mutableStateOf(inicialmenteAberto) }
     val rodando = steps.firstOrNull { it.status == LunaActionStepStatus.RUNNING }
+    var aberto by remember { mutableStateOf(inicialmenteAberto || rodando != null) }
+    var usuarioFechou by remember { mutableStateOf(false) }
+
+    // Abre sozinha quando começa a trabalhar; recolhe ao terminar (salvo se ele abriu à mão).
+    LaunchedEffect(rodando != null) {
+        if (rodando != null) {
+            aberto = true
+            usuarioFechou = false
+        } else if (!usuarioFechou) {
+            aberto = false
+        }
+    }
+
+    val ultimoFeito = steps.lastOrNull {
+        it.status == LunaActionStepStatus.DONE || it.status == LunaActionStepStatus.ERROR
+    }
     val resumoBruto = when {
         rodando != null -> rodando.label
         steps.size == 1 -> steps.first().label
+        ultimoFeito != null -> {
+            val n = steps.size
+            if (n > 1) "${ultimoFeito.label} · $n passos" else ultimoFeito.label
+        }
         else -> "${steps.size} passos"
     }
     val resumo = remember(resumoBruto) {
         resumoBruto.lineSequence().firstOrNull().orEmpty()
             .replace(Regex("[#*_`~]"), "")
             .trim()
-            .let { if (it.length > 45) it.take(42) + "…" else it }
+            .let { if (it.length > 52) it.take(49) + "…" else it }
     }
 
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
                 .clip(RoundedCornerShape(8.dp))
-                .orbitPressable { aberto = !aberto }
+                .orbitPressable {
+                    aberto = !aberto
+                    usuarioFechou = !aberto
+                }
                 .padding(vertical = 4.dp, horizontal = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
