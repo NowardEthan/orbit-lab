@@ -22,7 +22,7 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Cliente OpenRouter mínimo — chat stream + visão/vídeo multimodal.
- * Sem pipeline agentico do luna-core.
+ * Harness de **debug** (Fase 5). Produção não embute chave; `isConfigured()` exige DEBUG.
  */
 object OpenRouterClient {
     private val http: OkHttpClient = OkHttpClient.Builder()

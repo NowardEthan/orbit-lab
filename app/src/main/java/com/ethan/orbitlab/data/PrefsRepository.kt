@@ -43,12 +43,6 @@ object PrefsRepository {
     /** Raciocínio SEMPRE visível — não é mais opção do usuário. */
     val reasoningEnabled: StateFlow<Boolean> = MutableStateFlow(true).asStateFlow()
 
-    /**
-     * Chat SEMPRE pelo servidor Luna (Railway/core) — a Luna de verdade, com memória e
-     * ferramentas. O OpenRouter direto foi aposentado (era uma Luna oca e dava pra esquecer ligada).
-     */
-    val lunaDirectEnabled: StateFlow<Boolean> = MutableStateFlow(false).asStateFlow()
-
     private val _vibracao = MutableStateFlow(true)
     val vibracao: StateFlow<Boolean> = _vibracao.asStateFlow()
 

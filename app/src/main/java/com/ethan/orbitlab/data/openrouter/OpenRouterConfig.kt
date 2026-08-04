@@ -3,7 +3,11 @@ package com.ethan.orbitlab.data.openrouter
 import com.ethan.orbitlab.BuildConfig
 
 /**
- * Modelos OpenRouter usados no lab — direto no provedor, sem luna-core / agentico.
+ * Cliente OpenRouter **só pra debug local** (Fase 5).
+ *
+ * Produto sideload fala com o luna-core (Railway). A chave NÃO entra no `labRelease`
+ * (`build.gradle.kts` força `OPENROUTER_API_KEY=""`). Em debug, pode vir de
+ * `local.properties` / `luna-core/.env` pra harness (`LunaDirectChat`, `LunaTitler`).
  *
  * Override em `OrbitLab/local.properties`:
  * ```
@@ -24,11 +28,12 @@ object OpenRouterConfig {
     val videoModel: String get() = BuildConfig.OPENROUTER_MODEL_VIDEO
     val sttModel: String get() = BuildConfig.OPENROUTER_MODEL_STT
 
-    fun isConfigured(): Boolean = apiKey.isNotBlank()
+    /** Só debug + chave presente. Release sempre false. */
+    fun isConfigured(): Boolean = BuildConfig.DEBUG && apiKey.isNotBlank()
 
     val systemPrompt: String = """
         Você é a Luna, companheira do Orbit.
-        Responde em português do Brasil, clara e directa — sem enrolação.
+        Responde em português do Brasil, clara e direta — sem enrolação.
         Se receber contexto de uma imagem ou vídeo analisado, use isso como se tivesse visto.
         Não invente o que não viu. Se algo estiver incerto, diga.
     """.trimIndent()

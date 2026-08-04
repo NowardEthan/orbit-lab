@@ -38,7 +38,11 @@ private fun erroTransitorio(msg: String?): Boolean {
 }
 
 /**
- * Resposta da Luna no lab — OpenRouter direto (sem agentico / luna-core).
+ * Harness de debug: OpenRouter direto (sem luna-core / agentico).
+ *
+ * **Fora do produto** (HARDENING Fase 5). O chat de produção usa só `LunaApiChat`.
+ * Este objeto fica no módulo pra experimentos locais em build **debug** com chave
+ * em `local.properties` — não é ligado pela UI.
  *
  * - Texto → `deepseek/deepseek-v4-flash` (stream)
  * - Imagem → modelo de visão; depois flash com o laudo
@@ -58,8 +62,8 @@ object LunaDirectChat {
             return LunaStreamResultado(
                 reasoning = "",
                 reasoningDuracao = "",
-                resposta = "Falta a chave OpenRouter. Coloca `OPENROUTER_API_KEY` no " +
-                    "`core/src/luna-core/.env` (ou `openrouter.api.key` no local.properties) e recompila.",
+                resposta = "DirectChat só em debug com chave OpenRouter em " +
+                    "`local.properties` (ou `luna-core/.env`). Produto = servidor Luna.",
                 erro = true,
             )
         }

@@ -2,7 +2,7 @@
 
 > Cliente Android de produção da Luna. Package `com.ethan.orbitlab`.
 > Canal público de update: repo **`orbit-releases`** → `updates-lab.json` + tag `lab`.
-> Endurecimento (signing, R8, crash, rate limit): [`HARDENING.md`](HARDENING.md).
+> Endurecimento (signing, R8, crash, rate limit, higiene OpenRouter): [`HARDENING.md`](HARDENING.md).
 
 ## Canal atual
 

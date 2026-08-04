@@ -132,7 +132,6 @@ import com.ethan.orbitlab.data.lunaMessageIdForUser
 import com.ethan.orbitlab.data.newUserMessageId
 import com.ethan.orbitlab.data.lunaapi.LunaApiChat
 import com.ethan.orbitlab.data.lunaapi.LunaApiClient
-import com.ethan.orbitlab.data.openrouter.LunaDirectChat
 import com.ethan.orbitlab.data.voice.VoiceRecorder
 import com.google.firebase.auth.FirebaseAuth
 import com.ethan.orbitlab.ui.theme.OrbitIconButton
@@ -188,7 +187,6 @@ fun ChatScreen(
     LaunchedEffect(streamRepo) {
         streamState.value = streamRepo
     }
-    val lunaDirect by PrefsRepository.lunaDirectEnabled.collectAsState()
     /** Id da bolha Luna em voo (Railway) — some do histórico enquanto o draft streama. */
     var streamLunaMsgId by remember { mutableStateOf(ChatRepository.lunaMsgIdEmVoo(conversaId)) }
     LaunchedEffect(conversaId) {
@@ -242,7 +240,7 @@ fun ChatScreen(
     // mensagem do usuário — quem envia é o onSend. O onRetry chama isto direto, então
     // retomar uma mensagem órfã não duplica a fala do usuário no histórico.
     // textoParaModelo: instruções técnicas só pro servidor; o balão mostra textoEnvio.
-    val dispararResposta = remember(conversaId, streamState, appContext, lunaDirect) {
+    val dispararResposta = remember(conversaId, streamState, appContext) {
         { textoEnvio: String,
           historicoAntes: List<Mensagem>,
           anexos: List<ComposerAttachment>,
@@ -263,30 +261,20 @@ fun ChatScreen(
             }
             val iniciou = ChatRepository.launchTurno(conversaId, lunaMsgId) {
                 try {
-                    val resultado = if (lunaDirect) {
-                        LunaDirectChat.responder(
-                            context = appContext,
-                            historico = historicoAntes,
-                            textoUsuario = textoParaModelo?.takeIf { it.isNotBlank() } ?: textoEnvio,
-                            anexos = anexos,
-                            reference = reference,
-                            onEstado = onEstado,
-                        )
-                    } else {
-                        LunaApiChat.responder(
-                            context = appContext,
-                            conversaId = conversaId,
-                            historico = historicoAntes,
-                            textoUsuario = textoEnvio,
-                            anexos = anexos,
-                            reference = reference,
-                            userMessageId = userMsgId ?: newUserMessageId(),
-                            lunaMessageId = lunaMsgId ?: newUserMessageId(),
-                            reenvio = reenvio,
-                            textoParaModelo = textoParaModelo,
-                            onEstado = onEstado,
-                        )
-                    }
+                    // Fase 5: produto = só luna-core. LunaDirectChat fica fora do caminho.
+                    val resultado = LunaApiChat.responder(
+                        context = appContext,
+                        conversaId = conversaId,
+                        historico = historicoAntes,
+                        textoUsuario = textoEnvio,
+                        anexos = anexos,
+                        reference = reference,
+                        userMessageId = userMsgId ?: newUserMessageId(),
+                        lunaMessageId = lunaMsgId ?: newUserMessageId(),
+                        reenvio = reenvio,
+                        textoParaModelo = textoParaModelo,
+                        onEstado = onEstado,
+                    )
                     if (resultado.cotaEsgotada) {
                         // Cota esgotada: a parede graciosa (acima do composer) já dá o recado.
                         // Não cria balão de erro nem persiste — a fala do usuário fica pra retomar
@@ -318,10 +306,9 @@ fun ChatScreen(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    val origem = if (lunaDirect) "OpenRouter" else "servidor Luna"
                     ChatRepository.enviarMensagem(
                         conversaId = conversaId,
-                        texto = "Erro ao falar com o $origem: ${detalheFalha(e)}",
+                        texto = "Erro ao falar com o servidor Luna: ${detalheFalha(e)}",
                         isLuna = true,
                         messageId = lunaMsgId,
                         persistirNuvem = false,
@@ -340,13 +327,13 @@ fun ChatScreen(
         }
     }
 
-    val onSend = remember(dispararResposta, conversaId, lunaDirect) {
+    val onSend = remember(dispararResposta, conversaId) {
         { texto: String, anexos: List<ComposerAttachment>, reference: ThreadReference? ->
             val textoEnvio = texto.trim()
             val historicoAntes = ChatRepository.getConversa(conversaId)?.mensagens.orEmpty()
-            // Par de ids ordenado (…-0 tua, …-1 Luna) em AMBOS os caminhos. No Railway
-            // evita duplicar; no direto garante que, enquanto o carimbo do servidor não
-            // assenta, o Firestore ordene pelo id e a Luna NUNCA caia acima da tua. 🌙
+            // Par de ids ordenado (…-0 tua, …-1 Luna): upsert no Railway não duplica;
+            // enquanto o carimbo do servidor não assenta, o Firestore ordena pelo id
+            // e a Luna NUNCA cai acima da tua. 🌙
             val userMsgId = newUserMessageId()
             val lunaMsgId = lunaMessageIdForUser(userMsgId)
             ChatRepository.enviarMensagem(
@@ -375,7 +362,7 @@ fun ChatScreen(
     // Retomar sem duplicar: se a última é uma mensagem SUA sem resposta (saiu do app e a
     // resposta se perdeu), ou um erro da Luna, refaz a resposta pra AQUELA mensagem — sem
     // reenviar a fala do usuário. A Luna vê a mensagem uma vez só, como você pediu. 🌙
-    val onRetry = remember(dispararResposta, conversaId, lunaDirect) {
+    val onRetry = remember(dispararResposta, conversaId) {
         {
             // Já tem geração em curso (saiu e voltou) — não dispara outro turno.
             if (!ChatRepository.turnoEmAndamento(conversaId)) {
@@ -397,8 +384,8 @@ fun ChatScreen(
                     alvo?.let { (userMsg, historicoAntes, replyId) ->
                         // Reusa o id da SUA mensagem — o servidor faz upsert e NÃO duplica a tua fala.
                         // (Gerar id novo aqui era o bug: o Railway gravava um segundo turno seu.)
-                        val userMsgId = if (lunaDirect) null else userMsg.id
-                        val lunaMsgId = replyId ?: if (lunaDirect) null else lunaMessageIdForUser(userMsg.id)
+                        val userMsgId = userMsg.id
+                        val lunaMsgId = replyId ?: lunaMessageIdForUser(userMsg.id)
                         // reenvio=true: reescreve o buffer da sessão com o histórico ANTES desta fala,
                         // pra ela entrar uma vez só (o buffer quente do servidor podia tê-la de antes).
                         dispararResposta(userMsg.texto, historicoAntes, emptyList(), userMsg.reference, userMsgId, lunaMsgId, true, null)
@@ -651,8 +638,8 @@ fun ChatScreen(
                             ChatRepository.truncarApos(conversaId, ancora.id)
                             // Servidor: REUSA o id da âncora (upsert → não duplica a tua fala) e usa
                             // um lunaMsgId NOVO pra forçar regeneração (não pegar o cache do turno).
-                            val userMsgId = if (lunaDirect) null else ancora.id
-                            val lunaMsgId = if (lunaDirect) null else newUserMessageId()
+                            val userMsgId = ancora.id
+                            val lunaMsgId = newUserMessageId()
                             // reenvio=true: manda o histórico truncado pro servidor reescrever o
                             // buffer — senão a fala antiga sobrevive e a Luna diz «você já mandou isso».
                             dispararResposta(ancora.texto, historicoAntes, emptyList(), ancora.reference, userMsgId, lunaMsgId, true, null)
