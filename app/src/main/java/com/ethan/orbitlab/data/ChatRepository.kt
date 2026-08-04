@@ -409,11 +409,9 @@ object ChatRepository {
     }
 
     /**
-     * Deixa a Luna batizar a conversa conforme o assunto — UMA vez, no 1º par. O nome nasce
-     * do conteúdo e depois FICA: um título que se troca sozinho a cada tantos turnos parece
-     * "mudar a cada mensagem" e tira o chão de quem usa o nome como referência. Se o assunto
-     * virar outro, isso é uma conversa nova. Chamada barata e à parte do stream; se falhar
-     * (ex.: sem rede), o título fica no palpite imediato e não tenta de novo.
+     * Deixa a Luna batizar a conversa conforme o assunto — UMA vez, no 1º par.
+     * Chama `POST /v1/conversa/titulo` no luna-core (barato). Se falhar, fica o
+     * palpite truncado da 1ª fala e não tenta de novo. Finanças: título fixo do módulo.
      */
     fun talvezRenomearPelaLuna(conversaId: String) {
         // Módulo Finanças: o título é identidade do lugar — não vira assunto do 1º turno.
