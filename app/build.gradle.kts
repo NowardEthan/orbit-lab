@@ -216,6 +216,7 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.androidx.lifecycle.process)
     implementation(libs.coil.compose)
     implementation(libs.coil.video)
     implementation(libs.media3.exoplayer)
