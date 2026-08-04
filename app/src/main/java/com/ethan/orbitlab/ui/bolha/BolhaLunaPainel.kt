@@ -1,6 +1,8 @@
 package com.ethan.orbitlab.ui.bolha
 
 import android.app.Application
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -41,12 +43,16 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -63,9 +69,11 @@ import com.ethan.orbitlab.ui.chat.LunaMarkdownVariante
 import com.ethan.orbitlab.ui.chat.LunaStreamEstado
 import com.ethan.orbitlab.ui.planos.LimiteAtingidoCard
 import com.ethan.orbitlab.ui.theme.Bricolage
+import com.ethan.orbitlab.ui.theme.OrbitMotion
 import com.ethan.orbitlab.ui.theme.OrbitTokens
 import com.ethan.orbitlab.ui.theme.orbitPressable
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.launch
 
 /**
  * O painel de conversa da bolha flutuante — abre por cima de qualquer app.
@@ -165,26 +173,65 @@ fun BolhaLunaPainel(
         }
     }
 
+    val scope = rememberCoroutineScope()
+    val densidade = LocalDensity.current
+    // 0 = fechado (fora da tela), 1 = aberto.
+    val progresso = remember { Animatable(0f) }
+    var alturaSheetPx by remember { mutableStateOf(0f) }
+    var fechando by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        progresso.animateTo(1f, tween(OrbitMotion.msMed + 50))
+    }
+
+    fun fecharAnimado() {
+        if (fechando) return
+        fechando = true
+        scope.launch {
+            progresso.animateTo(0f, tween(OrbitMotion.msFast))
+            onFechar()
+        }
+    }
+
+    fun abrirNoAppAnimado() {
+        if (fechando) return
+        fechando = true
+        scope.launch {
+            progresso.animateTo(0f, tween(OrbitMotion.msInstant))
+            onAbrirNoApp()
+        }
+    }
+
+    val p = progresso.value
+    val slideY = if (alturaSheetPx > 0f) (1f - p) * alturaSheetPx else with(densidade) { 48.dp.toPx() } * (1f - p)
+
     Box(Modifier.fillMaxSize()) {
-        // Scrim — toque fora fecha o painel (volta pra bolha).
+        // Scrim — fade com o progresso; toque fora fecha (volta pra bolha).
         Box(
             Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.5f))
-                .orbitPressable(onClick = onFechar),
+                .graphicsLayer { alpha = p }
+                .background(Color.Black.copy(alpha = 0.42f))
+                .orbitPressable(enabled = !fechando, onClick = { fecharAnimado() }),
         )
         Column(
             Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .fillMaxHeight(0.82f)
+                .fillMaxHeight(0.72f)
                 .statusBarsPadding()
                 .imePadding()
                 .navigationBarsPadding()
-                .clip(RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp))
+                .onSizeChanged { alturaSheetPx = it.height.toFloat() }
+                .graphicsLayer { translationY = slideY }
+                .clip(RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp))
                 .background(OrbitTokens.graphiteSurf),
         ) {
-            CabecalhoPainel(onFechar = onFechar, onAbrirNoApp = onAbrirNoApp)
+            AlcaPainel()
+            CabecalhoPainel(
+                onFechar = { fecharAnimado() },
+                onAbrirNoApp = { abrirNoAppAnimado() },
+            )
 
             Box(Modifier.fillMaxWidth().weight(1f)) {
                 if (mensagens.isEmpty() && ocioso) {
@@ -193,8 +240,8 @@ fun BolhaLunaPainel(
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         items(
                             mensagens.filter { it.id != streamLunaMsgId },
@@ -212,14 +259,32 @@ fun BolhaLunaPainel(
                     usage = usageCota,
                     onVerPlanos = {
                         PlanosNav.abrir()
-                        onAbrirNoApp()
+                        abrirNoAppAnimado()
                     },
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                 )
             } else {
-                ComposerPainel(enabled = ocioso, onEnviar = { enviar(it) })
+                ComposerPainel(enabled = ocioso && !fechando, onEnviar = { enviar(it) })
             }
         }
+    }
+}
+
+@Composable
+private fun AlcaPainel() {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp, bottom = 2.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            Modifier
+                .width(36.dp)
+                .height(3.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(OrbitTokens.textLowN.copy(alpha = 0.45f)),
+        )
     }
 }
 
@@ -228,34 +293,34 @@ private fun CabecalhoPainel(onFechar: () -> Unit, onAbrirNoApp: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
-            .padding(start = 14.dp, end = 8.dp, top = 12.dp, bottom = 8.dp),
+            .padding(start = 12.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             Modifier
-                .size(34.dp)
+                .size(28.dp)
                 .clip(CircleShape)
-                .background(OrbitTokens.bluePastel.copy(alpha = 0.22f)),
+                .background(OrbitTokens.bluePastel.copy(alpha = 0.20f)),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 Icons.Rounded.Nightlight,
                 contentDescription = null,
                 tint = OrbitTokens.bluePastel,
-                modifier = Modifier.size(19.dp),
+                modifier = Modifier.size(16.dp),
             )
         }
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(8.dp))
         Column(Modifier.weight(1f)) {
             Text(
                 "Luna",
                 color = OrbitTokens.textHiN,
-                fontSize = 16.sp,
+                fontSize = 15.sp,
                 fontFamily = Bricolage,
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                "Flutuando · conversa principal",
+                "Conversa principal",
                 color = OrbitTokens.textLowN,
                 fontSize = 11.sp,
             )
@@ -265,20 +330,20 @@ private fun CabecalhoPainel(onFechar: () -> Unit, onAbrirNoApp: () -> Unit) {
             contentDescription = "Abrir no app",
             tint = OrbitTokens.textMidN,
             modifier = Modifier
-                .size(34.dp)
+                .size(32.dp)
                 .clip(CircleShape)
                 .orbitPressable(onClick = onAbrirNoApp)
-                .padding(8.dp),
+                .padding(7.dp),
         )
         Icon(
             Icons.Rounded.Close,
             contentDescription = "Fechar",
             tint = OrbitTokens.textMidN,
             modifier = Modifier
-                .size(34.dp)
+                .size(32.dp)
                 .clip(CircleShape)
                 .orbitPressable(onClick = onFechar)
-                .padding(8.dp),
+                .padding(7.dp),
         )
     }
 }
@@ -293,16 +358,16 @@ private fun VazioPainel() {
         Text(
             "Tô aqui 🌙",
             color = OrbitTokens.textHiN,
-            fontSize = 18.sp,
+            fontSize = 16.sp,
             fontFamily = Bricolage,
             fontWeight = FontWeight.SemiBold,
         )
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(4.dp))
         Text(
-            "Fala comigo sem sair do que você tá fazendo. Continua a mesma conversa do app.",
+            "Fala sem sair do que você tá fazendo — mesma conversa do app.",
             color = OrbitTokens.textMidN,
-            fontSize = 13.sp,
-            lineHeight = 18.sp,
+            fontSize = 12.sp,
+            lineHeight = 17.sp,
         )
     }
 }
@@ -387,16 +452,16 @@ private fun ComposerPainel(enabled: Boolean, onEnviar: (String) -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         TextField(
             value = texto,
             onValueChange = { texto = it },
             modifier = Modifier.weight(1f),
-            placeholder = { Text("Fala comigo…", color = OrbitTokens.textLowN) },
-            maxLines = 4,
-            shape = RoundedCornerShape(22.dp),
+            placeholder = { Text("Fala comigo…", color = OrbitTokens.textLowN, fontSize = 14.sp) },
+            maxLines = 3,
+            shape = RoundedCornerShape(20.dp),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
             keyboardActions = KeyboardActions(onSend = { disparar() }),
             colors = TextFieldDefaults.colors(
@@ -410,10 +475,10 @@ private fun ComposerPainel(enabled: Boolean, onEnviar: (String) -> Unit) {
                 unfocusedTextColor = OrbitTokens.textHiN,
             ),
         )
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(6.dp))
         Box(
             Modifier
-                .size(46.dp)
+                .size(40.dp)
                 .clip(CircleShape)
                 .background(
                     if (podeEnviar) OrbitTokens.bluePastel
@@ -426,7 +491,7 @@ private fun ComposerPainel(enabled: Boolean, onEnviar: (String) -> Unit) {
                 Icons.AutoMirrored.Rounded.Send,
                 contentDescription = "Enviar",
                 tint = if (podeEnviar) OrbitTokens.onBluePastel else OrbitTokens.textLowN,
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size(18.dp),
             )
         }
     }
