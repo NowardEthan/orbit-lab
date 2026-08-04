@@ -32,6 +32,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.LocationOn
+import androidx.compose.material.icons.rounded.SupportAgent
 import androidx.compose.material.icons.rounded.Umbrella
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -97,6 +98,7 @@ fun InicioScreen(
     onNovaConversaComTexto: (String) -> Unit = {},
     onAbrirFinancas: () -> Unit = {},
     onAbrirEstante: () -> Unit = {},
+    onAbrirFala: () -> Unit = {},
     idleAtivo: Boolean = true,
 ) {
     val density = LocalDensity.current
@@ -248,6 +250,7 @@ fun InicioScreen(
                     },
                     onAtualizar = { LocationRepository.atualizarEmBackground(context, forcar = true) },
                 )
+                FalaEthanCard(onAbrir = onAbrirFala)
             }
         }
 
@@ -271,6 +274,59 @@ private fun saudacaoDoDia(): String {
         h in 5..11 -> "Bom dia"
         h in 12..18 -> "Boa tarde"
         else -> "Boa noite"
+    }
+}
+
+/** Canal humano de suporte — leva pro overlay "Fala com o Ethan". */
+@Composable
+private fun FalaEthanCard(onAbrir: () -> Unit) {
+    val shape = RoundedCornerShape(OrbitMetrics.radiusCard)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(OrbitTokens.graphiteSurf)
+            .border(1.dp, OrbitTokens.graphiteHair, shape)
+            .orbitPressable(onClick = onAbrir)
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier
+                .size(38.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(OrbitTokens.graphiteRaised),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Rounded.SupportAgent,
+                contentDescription = null,
+                tint = OrbitTokens.bluePastel,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                "Fala com o Ethan",
+                color = OrbitTokens.textHiN,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                "Achou um problema, teve uma ideia? Fala comigo direto.",
+                color = OrbitTokens.textMidN,
+                fontSize = 12.5.sp,
+                lineHeight = 16.sp,
+            )
+        }
+        Spacer(Modifier.width(10.dp))
+        Icon(
+            Icons.AutoMirrored.Rounded.ArrowForward,
+            contentDescription = null,
+            tint = OrbitTokens.textLowN,
+            modifier = Modifier.size(18.dp),
+        )
     }
 }
 

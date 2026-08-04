@@ -47,6 +47,7 @@ import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.SupportAgent
 import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.SwapVert
 import androidx.compose.material.icons.rounded.WorkspacePremium
@@ -93,6 +94,7 @@ import com.ethan.orbitlab.data.financas.TransferenciaLauncher
 import com.ethan.orbitlab.data.updates.UpdatesRepository
 import com.ethan.orbitlab.ui.ajustes.AjustesScreen
 import com.ethan.orbitlab.ui.auth.LoginScreen
+import com.ethan.orbitlab.ui.chamados.FalaComEthanScreen
 import com.ethan.orbitlab.ui.chat.ChatScreen
 import com.ethan.orbitlab.ui.conversas.ConversasScreen
 import com.ethan.orbitlab.ui.estante.EstanteScreen
@@ -114,6 +116,7 @@ import com.ethan.orbitlab.ui.planos.PlanosScreen
 import com.ethan.orbitlab.ui.planos.UsageMeter
 import com.ethan.orbitlab.data.billing.PlanosNav
 import com.ethan.orbitlab.data.billing.UsageRepository
+import com.ethan.orbitlab.data.chamados.ChamadosRepository
 import com.ethan.orbitlab.data.crash.CrashReporting
 import com.ethan.orbitlab.ui.theme.Bricolage
 import com.ethan.orbitlab.ui.theme.OrbitIconButton
@@ -233,6 +236,8 @@ fun OrbitShell() {
         // A carteira (medidor + parede) segue a mesma sessão: lê /v1/billing/usage e
         // escuta o Firestore pra atualizar sozinha.
         UsageRepository.observar(session?.uid)
+        // "Fala com o Ethan": meus chamados (e, se eu for o Ethan, a caixa de entrada).
+        ChamadosRepository.garantirSessao(session?.uid)
     }
     // Cartões → "Pagar fatura" abre a aba Transferência já pré-preenchida.
     val transferenciaNav by TransferenciaLauncher.navegarTick.collectAsState()
@@ -255,6 +260,18 @@ fun OrbitShell() {
     // Texto digitado no composer do Início: abre uma conversa nova JÁ mandando esta 1ª mensagem.
     var mensagemInicial by remember { mutableStateOf<String?>(null) }
     var novidadesAberto by remember { mutableStateOf(false) }
+
+    // "Fala com o Ethan" — overlay full-screen (tem header/voltar próprios). O badge é do
+    // lado de quem olha: admin vê o que chegou dos usuários; usuário vê as respostas do Ethan.
+    var falaAberto by remember { mutableStateOf(false) }
+    val ehAdminChamados by ChamadosRepository.ehAdmin.collectAsState()
+    val meusChamados by ChamadosRepository.meus.collectAsState()
+    val todosChamados by ChamadosRepository.todos.collectAsState()
+    val chamadosBadge = remember(ehAdminChamados, meusChamados, todosChamados) {
+        if (ehAdminChamados) todosChamados.count { it.naoLidoAdmin }
+        else meusChamados.count { it.naoLidoUsuario }
+    }
+    val chamadosLabel = if (ehAdminChamados) "Chamados" else "Fala com o Ethan"
 
     // Parede do chat / medidor pedem "ver planos" → abre a aba Planos fechando os overlays.
     val planosNavTick by PlanosNav.tick.collectAsState()
@@ -331,6 +348,8 @@ fun OrbitShell() {
     val onFecharNovidades = remember { { novidadesAberto = false } }
     val onAbrirEstante = remember { { abaAtual = OrbitTab.ESTANTE } }
     val onAbrirFinancas = remember { { abaAtual = OrbitTab.FINANCAS } }
+    val onAbrirFala = remember { { falaAberto = true } }
+    val onFecharFala = remember { { falaAberto = false } }
     val onNovaConversa = remember {
         {
             val newId = ChatRepository.criarConversa()
@@ -357,9 +376,10 @@ fun OrbitShell() {
     val temModalFinancas = financasChatAberto
 
     // Botão 'Voltar' nativo: gaveta → widget Finanças → sheet Finanças → overlays.
-    BackHandler(enabled = drawerState.isOpen || temOverlay || financasWidgetAberto || temModalFinancas) {
+    BackHandler(enabled = drawerState.isOpen || temOverlay || financasWidgetAberto || temModalFinancas || falaAberto) {
         when {
             drawerState.isOpen -> scope.launch { drawerState.close() }
+            falaAberto -> falaAberto = false
             financasWidgetAberto -> financasWidgetAberto = false
             financasChatAberto -> financasChatAberto = false
             chatAberto -> chatAberto = false
@@ -369,7 +389,7 @@ fun OrbitShell() {
 
     ModalNavigationDrawer(
         drawerState = drawerState,
-        gesturesEnabled = drawerState.isOpen || (!temOverlay && !temModalFinancas),
+        gesturesEnabled = drawerState.isOpen || (!temOverlay && !temModalFinancas && !falaAberto),
         drawerContent = {
             ModalDrawerSheet(
                 drawerContainerColor = OrbitTokens.graphiteBg,
@@ -385,10 +405,14 @@ fun OrbitShell() {
                     onPerfil = { onAbrirPerfil(); fecharGaveta() },
                     onAbrirConversa = { id -> onOpenChat(id); fecharGaveta() },
                     onNovaConversa = { onNovaConversa(); fecharGaveta() },
+                    chamadosLabel = chamadosLabel,
+                    chamadosBadge = chamadosBadge,
+                    onAbrirFala = { onAbrirFala(); fecharGaveta() },
                 )
             }
         },
     ) {
+        Box(Modifier.fillMaxSize()) {
         ShellConteudo(
             abaAtual = abaAtual,
             temOverlay = temOverlay,
@@ -406,6 +430,7 @@ fun OrbitShell() {
             onMensagemInicialConsumida = { mensagemInicial = null },
             onAbrirEstante = onAbrirEstante,
             onAbrirFinancas = onAbrirFinancas,
+            onAbrirFala = onAbrirFala,
             onConversarComLuna = onConversarComLuna,
             onAbrirPerfil = onAbrirPerfil,
             onFecharChat = onFecharChat,
@@ -430,6 +455,19 @@ fun OrbitShell() {
                 chatAberto = true
             },
         )
+
+            AnimatedVisibility(
+                visible = falaAberto,
+                enter = OrbitMotion.overlayEnter(),
+                exit = OrbitMotion.overlayExit(),
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                FalaComEthanScreen(
+                    ehAdmin = ehAdminChamados,
+                    onFechar = onFecharFala,
+                )
+            }
+        }
     }
 }
 
@@ -451,6 +489,7 @@ private fun ShellConteudo(
     onMensagemInicialConsumida: () -> Unit,
     onAbrirEstante: () -> Unit,
     onAbrirFinancas: () -> Unit,
+    onAbrirFala: () -> Unit,
     onConversarComLuna: () -> Unit,
     onAbrirPerfil: () -> Unit,
     onFecharChat: () -> Unit,
@@ -487,6 +526,7 @@ private fun ShellConteudo(
                                 onNovaConversaComTexto = onNovaConversaComTexto,
                                 onAbrirFinancas = onAbrirFinancas,
                                 onAbrirEstante = onAbrirEstante,
+                                onAbrirFala = onAbrirFala,
                                 idleAtivo = true,
                             )
                             OrbitTab.FINANCAS -> FinancasDashboardScreen()
@@ -646,6 +686,9 @@ private fun OrbitDrawer(
     onPerfil: () -> Unit,
     onAbrirConversa: (String) -> Unit,
     onNovaConversa: () -> Unit,
+    chamadosLabel: String,
+    chamadosBadge: Int,
+    onAbrirFala: () -> Unit,
 ) {
     Column(
         Modifier
@@ -755,6 +798,13 @@ private fun OrbitDrawer(
             DrawerNavItem(Icons.Rounded.WorkspacePremium, "Planos", atual == OrbitTab.PLANO) {
                 onAba(OrbitTab.PLANO)
             }
+            DrawerNavItem(
+                icone = Icons.Rounded.SupportAgent,
+                label = chamadosLabel,
+                ativo = false,
+                onClick = onAbrirFala,
+                badge = chamadosBadge,
+            )
             DrawerNavItem(Icons.Rounded.Person, "Perfil", atual == OrbitTab.PERFIL) {
                 onAba(OrbitTab.PERFIL)
             }
@@ -927,6 +977,7 @@ private fun DrawerNavItem(
     icone: ImageVector,
     label: String,
     ativo: Boolean,
+    badge: Int = 0,
     onClick: () -> Unit,
 ) {
     Row(
@@ -951,6 +1002,27 @@ private fun DrawerNavItem(
             fontSize = 15.5.sp,
             fontWeight = if (ativo) FontWeight.SemiBold else FontWeight.Medium,
         )
+        if (badge > 0) {
+            Spacer(Modifier.weight(1f))
+            val texto = if (badge > 99) "99+" else "$badge"
+            Box(
+                modifier = Modifier
+                    .height(18.dp)
+                    .defaultMinSize(minWidth = 18.dp)
+                    .clip(RoundedCornerShape(99.dp))
+                    .background(OrbitTokens.bluePastel)
+                    .padding(horizontal = if (texto.length > 1) 5.dp else 2.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    texto,
+                    color = OrbitTokens.onBluePastel,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    lineHeight = 10.sp,
+                )
+            }
+        }
     }
 }
 
