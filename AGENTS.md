@@ -18,7 +18,7 @@ perfil e auto-update. Backend = **luna-core** (Railway). Canal de update =
 | Guarda-chuva | submódulo `OrbitLab/` em `luna-workspace` |
 | Abrir | Android Studio → pasta `OrbitLab` |
 | Release | [`RELEASING.md`](RELEASING.md) · assinatura [`SIGNING.md`](SIGNING.md) · endurecimento [`HARDENING.md`](HARDENING.md) |
-| Bolha (chat-head) | [`BOLHA-ROADMAP.md`](BOLHA-ROADMAP.md) · fase atual [`bolha/B0-fundacao.md`](bolha/B0-fundacao.md) · código `ui/bolha/` |
+| Bolha (chat-head) | [`BOLHA-ROADMAP.md`](BOLHA-ROADMAP.md) · fase [`bolha/B1-gesto-premium.md`](bolha/B1-gesto-premium.md) · código `ui/bolha/` |
 | Build/CI | [`.github/workflows/build-lab.yml`](.github/workflows/build-lab.yml) · [`TESTE-UPDATE.md`](TESTE-UPDATE.md) |
 
 ## Armadilhas

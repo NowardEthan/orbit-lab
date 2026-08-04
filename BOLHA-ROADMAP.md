@@ -110,18 +110,20 @@ Ver checklist ticável em [`bolha/B0-fundacao.md`](bolha/B0-fundacao.md).
 
 ## B1 — Gesto premium
 
+**Spec:** [`bolha/B1-gesto-premium.md`](bolha/B1-gesto-premium.md)
+
 **Meta:** a bolha se comporta como chat-head de produto, não protótipo.
 
 ### Escopo
 
 | Item | Detalhe |
 |------|---------|
-| Snap animado | Spring até a borda (não teleporte) |
-| Persistência | Salvar X (lado) + Y em `PrefsRepository`; restaurar no `onCreate` do serviço |
-| Dismiss por arraste | Zona inferior “Guardar” / X; soltar ali desliga (prefs off) |
-| Retirar long-press destrutivo | Ou rebaixar a “atalho avançado” com confirmação — preferência: só zona de dismiss |
-| Haptics | Leve no snap, no abrir, no dismiss |
-| Limites de tela | Não invadir notch / gesture bar; clamp de Y |
+| Snap animado | `ValueAnimator` ~240ms até a borda |
+| Persistência | `PrefsRepository` lado + Y |
+| Dismiss por arraste | Overlay tela cheia no drag + zona “Guardar” |
+| Sem long-press destrutivo | Removido |
+| Haptics | Snap / zona / dismiss / toque — respeita vibração |
+| Limites de tela | Clamp Y (status + gesture) |
 
 ### Fora
 
@@ -129,16 +131,17 @@ Ver checklist ticável em [`bolha/B0-fundacao.md`](bolha/B0-fundacao.md).
 
 ### DoD
 
-- [ ] Soltar anima até a borda em ≤ ~300ms percebidos  
-- [ ] Matar processo / religar → bolha no mesmo canto/Y  
-- [ ] Arrastar pra zona de dismiss desliga sem long-press acidental  
-- [ ] Haptic em snap + dismiss (device com vibrador)  
-- [ ] Smoke B0 ainda verde  
+- [x] Soltar anima até a borda (~240ms)  
+- [x] Religar → mesmo lado + Y (prefs)  
+- [x] Arrastar pra zona de dismiss desliga  
+- [x] Long-press não desliga mais  
+- [x] Haptic em snap + dismiss (se vibração ligada)  
+- [ ] Smoke B0+B1 no aparelho — **Ethan**  
 
 ### Riscos
 
-- `WindowManager` + animação de `params.x/y` no frame — preferir `Animatable`/`ValueAnimator` no serviço ou animar só o Compose e commit na borda no fim  
-- Zona de dismiss não pode roubar toques do app de baixo quando invisível  
+- Durante o arraste a tela cheia captura toques (ok); idle continua WRAP + `NOT_TOUCH_MODAL`  
+- Coordenadas cutout: validar em 2 densidades no smoke  
 
 ---
 
@@ -325,8 +328,8 @@ Em **toda** fase que mexe em UI/motion:
 
 | Fase | Status | Data | Notas |
 |------|--------|------|-------|
-| B0 | 🟡 repo | 2026-08-04 | Spec + contratos no repo; baseline `main` (FAB 56, background-only, morph). Smoke aparelho pendente. Canal lab ainda 0.33.2 (publish 0.33.3 cancelado). |
-| B1 | ⬜ | | |
+| B0 | 🟡 repo | 2026-08-04 | Spec + contratos no repo; baseline `main`. Smoke aparelho pendente. Canal lab 0.33.2. |
+| B1 | 🟡 repo | 2026-08-04 | Snap animado, posição salva, dismiss por arraste, haptics. Smoke aparelho pendente. |
 | B2 | ⬜ | | |
 | B3 | ⬜ | | |
 | B4 | ⬜ | | |

@@ -1,17 +1,24 @@
 package com.ethan.orbitlab.ui.bolha
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Nightlight
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -25,34 +32,141 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.ethan.orbitlab.ui.theme.OrbitMotion
 import com.ethan.orbitlab.ui.theme.OrbitTokens
 import kotlin.math.roundToInt
 
-private val BolhaTamanho = 56.dp
 private val BolhaAura = 40.dp
 private val BolhaIcone = 22.dp
-private val BolhaFolgaSombra = 12.dp
+private val BolhaTamanhoDp = 56.dp
+private val BolhaFolgaSombraDp = 12.dp
 
 /**
- * O que se vê no overlay: a bolha da Luna.
+ * Overlay da bolha.
  *
- * - arrastar → move a janela (o serviço reposiciona o [android.view.WindowManager]);
- * - soltar → gruda na borda mais perto;
- * - tocar → abre a Luna;
- * - toque longo → guarda a bolha (fecha o serviço).
- *
- * 56dp com press spring e enter curto — idioma [OrbitMotion].
+ * - Idle: só o círculo (janela WRAP do serviço).
+ * - Arraste: tela cheia com zona “Guardar” embaixo; soltar ali desliga.
+ * - Toque: abre o painel. Sem long-press destrutivo (B1).
  */
 @Composable
 fun BolhaOverlay(
+    telaCheia: Boolean,
+    offsetX: Int,
+    offsetY: Int,
+    sobreDismiss: Boolean,
+    hapticsLigados: Boolean,
+    onDragStart: () -> Unit,
     onArrastar: (dx: Int, dy: Int) -> Unit,
     onSoltar: () -> Unit,
     onTocar: () -> Unit,
-    onFechar: () -> Unit,
 ) {
+    if (telaCheia) {
+        Box(Modifier.fillMaxSize()) {
+            ZonaDismiss(ativa = sobreDismiss)
+            BolhaFab(
+                modifier = Modifier.offset { IntOffset(offsetX, offsetY) },
+                hapticsLigados = hapticsLigados,
+                onDragStart = onDragStart,
+                onArrastar = onArrastar,
+                onSoltar = onSoltar,
+                onTocar = onTocar,
+            )
+        }
+    } else {
+        BolhaFab(
+            modifier = Modifier,
+            hapticsLigados = hapticsLigados,
+            onDragStart = onDragStart,
+            onArrastar = onArrastar,
+            onSoltar = onSoltar,
+            onTocar = onTocar,
+        )
+    }
+}
+
+@Composable
+private fun ZonaDismiss(ativa: Boolean) {
+    val alpha by animateFloatAsState(
+        targetValue = if (ativa) 1f else 0.55f,
+        animationSpec = OrbitMotion.tweenFast,
+        label = "dismissZone",
+    )
+    val escala by animateFloatAsState(
+        targetValue = if (ativa) 1.06f else 1f,
+        animationSpec = OrbitMotion.springSoft,
+        label = "dismissScale",
+    )
+    Box(
+        Modifier
+            .fillMaxSize()
+            .padding(bottom = 28.dp),
+        contentAlignment = Alignment.BottomCenter,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.graphicsLayer {
+                this.alpha = alpha
+                scaleX = escala
+                scaleY = escala
+            },
+        ) {
+            Box(
+                Modifier
+                    .size(if (ativa) 56.dp else 48.dp)
+                    .shadow(
+                        elevation = if (ativa) 12.dp else 6.dp,
+                        shape = CircleShape,
+                        clip = false,
+                        ambientColor = OrbitTokens.danger.copy(alpha = 0.35f),
+                        spotColor = Color.Black.copy(alpha = 0.4f),
+                    )
+                    .clip(CircleShape)
+                    .background(
+                        if (ativa) OrbitTokens.danger.copy(alpha = 0.92f)
+                        else OrbitTokens.graphiteRaised.copy(alpha = 0.92f),
+                    )
+                    .border(
+                        1.dp,
+                        if (ativa) OrbitTokens.danger else OrbitTokens.graphiteHair,
+                        CircleShape,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Rounded.Close,
+                    contentDescription = null,
+                    tint = if (ativa) Color.White else OrbitTokens.textMidN,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+            Text(
+                if (ativa) "Solta pra guardar" else "Guardar",
+                color = OrbitTokens.textHiN,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+            // Altura invisível que define a “zona quente” (~22% da tela via serviço).
+            Box(Modifier.height(8.dp))
+        }
+    }
+}
+
+@Composable
+private fun BolhaFab(
+    modifier: Modifier,
+    hapticsLigados: Boolean,
+    onDragStart: () -> Unit,
+    onArrastar: (dx: Int, dy: Int) -> Unit,
+    onSoltar: () -> Unit,
+    onTocar: () -> Unit,
+) {
+    val haptics = LocalHapticFeedback.current
     val bordaGradiente = Brush.horizontalGradient(
         listOf(
             OrbitTokens.bluePastel,
@@ -77,10 +191,10 @@ fun BolhaOverlay(
     val enterScale = 0.88f + 0.12f * enter.value
     val escala = enterScale * pressScale.value
 
-    Box(modifier = Modifier.padding(BolhaFolgaSombra)) {
+    Box(modifier = modifier.padding(BolhaFolgaSombraDp)) {
         Box(
             modifier = Modifier
-                .size(BolhaTamanho)
+                .size(BolhaTamanhoDp)
                 .graphicsLayer {
                     scaleX = escala
                     scaleY = escala
@@ -106,18 +220,28 @@ fun BolhaOverlay(
                                 pressionado = false
                             }
                         },
-                        onTap = { onTocar() },
-                        onLongPress = { onFechar() },
+                        onTap = {
+                            if (hapticsLigados) {
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            }
+                            onTocar()
+                        },
                     )
                 }
                 .pointerInput(Unit) {
                     detectDragGestures(
-                        onDragStart = { pressionado = true },
+                        onDragStart = {
+                            pressionado = true
+                            onDragStart()
+                        },
                         onDragEnd = {
                             pressionado = false
                             onSoltar()
                         },
-                        onDragCancel = { pressionado = false },
+                        onDragCancel = {
+                            pressionado = false
+                            onSoltar()
+                        },
                         onDrag = { change, drag ->
                             change.consume()
                             onArrastar(drag.x.roundToInt(), drag.y.roundToInt())
