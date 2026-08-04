@@ -53,7 +53,7 @@ Signing **antes** de R8 (uma variável por release).
 - [x] CI: decode + build + `apksigner verify` (não-debug) na run 30863984789
 - [x] Publish lab **0.30.4** / code **91** (APK + `updates-lab.json`)
 - [ ] Confirmar Google login no APK release no celular — Ethan
-- [ ] Renovar `ORBIT_RELEASES_TOKEN` (Actions ainda toma 403 no publish; upload foi manual)
+- [x] Renovar `ORBIT_RELEASES_TOKEN` — Actions publish verde (run 30864624854)
 
 **Próximo humano:** desinstalar Lab antigo → instalar 0.30.4 → testar Google login.
 
