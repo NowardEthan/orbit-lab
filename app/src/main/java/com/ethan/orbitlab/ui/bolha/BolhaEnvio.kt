@@ -11,6 +11,7 @@ import com.ethan.orbitlab.data.lunaapi.LunaApiClient
 import com.ethan.orbitlab.data.newUserMessageId
 import com.ethan.orbitlab.data.voice.VoiceClip
 import com.ethan.orbitlab.ui.chat.LunaStreamEstado
+import com.ethan.orbitlab.ui.chat.detalheFalha
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -100,7 +101,7 @@ object BolhaEnvio {
             } catch (e: Exception) {
                 ChatRepository.enviarMensagem(
                     conversaId = conversaId,
-                    texto = "Erro ao falar com o servidor Luna: ${e.message ?: e.javaClass.simpleName}",
+                    texto = "Erro ao falar com o servidor Luna: ${detalheFalha(e)}",
                     isLuna = true,
                     messageId = lunaMsgId,
                     persistirNuvem = false,

@@ -233,13 +233,14 @@ Ver checklist ticável em [`bolha/B0-fundacao.md`](bolha/B0-fundacao.md).
 ### DoD
 
 - [x] Reasoning + imagem + timeline no painel (código)  
-- [x] Retry órfã/erro sem duplicar user  
+- [x] Retry órfã/erro sem duplicar user (`ChatTurno` + mesmo `ChatTimeline`/`MessageBubble`)  
 - [x] Composer e cota intactos  
+- [x] Pergunta, referência (swipe/long-press), regerar aspecto, auto-retry, action sheet  
 - [ ] Smoke reasoning/imagem/retry no aparelho  
 
 ### Nota
 
-Reusar composables do `ui/chat/`; evitar fork de bolha. Se algo exigir Activity extra (viewer), bridge mínima ou “abrir no app”.
+Reusar composables do `ui/chat/` (`ChatTimeline`, `MessageBubble`, `ChatTurno`); evitar fork de bolha. Shell (busca/export/estante) fica no app — “Abrir no app”.
 
 ---
 

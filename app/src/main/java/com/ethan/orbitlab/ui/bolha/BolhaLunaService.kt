@@ -87,6 +87,8 @@ class BolhaLunaService :
     private var jaAvisouZonaDismiss = false
     private var peekAtivo = false
     private var xAntesDoPeek = 0
+    /** Arraste ativo — move o WRAP via params, sem virar tela cheia no meio do gesto. */
+    private var arrastando = false
 
     private val ui = MutableStateFlow(
         BolhaUiState(
@@ -292,64 +294,51 @@ class BolhaLunaService :
         snapAnimator?.cancel()
         snapAnimator = null
         jaAvisouZonaDismiss = false
-        val x = params.x
-        val y = params.y
-        params.width = WindowManager.LayoutParams.MATCH_PARENT
-        params.height = WindowManager.LayoutParams.MATCH_PARENT
+        arrastando = true
+        // Mantém WRAP_CONTENT e move params.x/y. Virar MATCH_PARENT no meio do gesto
+        // cancelava o pointer no Compose — FAB ficava “preso”.
+        params.width = WindowManager.LayoutParams.WRAP_CONTENT
+        params.height = WindowManager.LayoutParams.WRAP_CONTENT
         params.flags = FLAGS_BOLHA
-        params.x = 0
-        params.y = 0
-        ui.value = ui.value.copy(
-            offsetX = x,
-            offsetY = y,
-            telaCheia = true,
-            sobreDismiss = false,
-            quickAberto = false,
-        )
-        atualizar()
+        ui.update {
+            it.copy(
+                offsetX = params.x,
+                offsetY = params.y,
+                telaCheia = false,
+                sobreDismiss = false,
+                quickAberto = false,
+            )
+        }
     }
 
     private fun moverArraste(dx: Int, dy: Int) {
-        val st = ui.value
-        if (!st.telaCheia) return
+        if (!arrastando) return
         val fab = tamanhoFabPx()
-        val nx = (st.offsetX + dx).coerceIn(0, (recursos().widthPixels - fab).coerceAtLeast(0))
-        val ny = clampY(st.offsetY + dy, fab)
+        val nx = (params.x + dx).coerceIn(0, (recursos().widthPixels - fab).coerceAtLeast(0))
+        val ny = clampY(params.y + dy, fab)
+        params.x = nx
+        params.y = ny
         val zona = estaNaZonaDismiss(ny, fab)
         if (zona && !jaAvisouZonaDismiss) {
             jaAvisouZonaDismiss = true
             tickHaptic()
         }
         if (!zona) jaAvisouZonaDismiss = false
-        ui.value = st.copy(offsetX = nx, offsetY = ny, sobreDismiss = zona)
+        ui.update { it.copy(offsetX = nx, offsetY = ny, sobreDismiss = zona) }
+        atualizar()
     }
 
     private fun soltarArraste() {
+        if (!arrastando) return
+        arrastando = false
         val st = ui.value
-        if (!st.telaCheia) {
-            grudarNaBordaAnimado(params.x, params.y)
-            return
-        }
         if (st.sobreDismiss) {
             tickHaptic(forte = true)
             CrashReporting.breadcrumb("bolha_dismiss")
             pararSozinho()
             return
         }
-        val fab = tamanhoFabPx()
-        val x = st.offsetX.coerceIn(0, (recursos().widthPixels - fab).coerceAtLeast(0))
-        val y = clampY(st.offsetY, fab)
-        params.width = WindowManager.LayoutParams.WRAP_CONTENT
-        params.height = WindowManager.LayoutParams.WRAP_CONTENT
-        params.x = x
-        params.y = y
-        ui.value = st.copy(
-            offsetX = x,
-            offsetY = y,
-            telaCheia = false,
-            sobreDismiss = false,
-        )
-        atualizar()
+        ui.update { it.copy(sobreDismiss = false, telaCheia = false) }
         view?.post {
             grudarNaBordaAnimado(params.x, params.y)
             agendarPeek()
