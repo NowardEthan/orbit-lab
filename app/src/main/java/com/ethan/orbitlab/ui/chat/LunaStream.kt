@@ -317,11 +317,20 @@ fun LunaStreamDraft(
                 val labelImagem = estado.actionRun?.imagemEmGeracao()
                 Column(modifier.fillMaxWidth(0.92f)) {
                     estado.actionRun?.let { run ->
-                        LunaActionTimeline(
-                            run = run,
-                            inicialmenteAberto = run.status == LunaActionRunStatus.RUNNING,
-                        )
-                        Spacer(Modifier.height(8.dp))
+                        if (run.fluxo.isNotEmpty()) {
+                            LunaFluxoAgentico(
+                                run = run,
+                                textoFallback = "",
+                                aoVivo = run.status == LunaActionRunStatus.RUNNING,
+                            )
+                            Spacer(Modifier.height(8.dp))
+                        } else {
+                            LunaActionTimeline(
+                                run = run,
+                                inicialmenteAberto = run.status == LunaActionRunStatus.RUNNING,
+                            )
+                            Spacer(Modifier.height(8.dp))
+                        }
                     }
                     when {
                         labelImagem != null -> {
@@ -331,7 +340,7 @@ fun LunaStreamDraft(
                             )
                         }
                         mostrarRaciocinio && estado.parcial.isNotBlank() -> {
-                            Column(modifier.fillMaxWidth(0.85f)) {
+                            Column(Modifier.fillMaxWidth(0.85f)) {
                                 LunaReasoning(
                                     texto = estado.parcial,
                                     inicialmenteAberto = true,
@@ -400,13 +409,6 @@ private fun StreamRespostaDraft(
             modifier = Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.Start,
         ) {
-            actionRun?.let { run ->
-                LunaActionTimeline(
-                    run = run,
-                    inicialmenteAberto = run.status == LunaActionRunStatus.RUNNING,
-                )
-                Spacer(Modifier.height(8.dp))
-            }
             if (mostrarRaciocinio && reasoning.isNotBlank()) {
                 LunaReasoning(
                     texto = reasoning,
@@ -418,14 +420,32 @@ private fun StreamRespostaDraft(
                 )
                 Spacer(Modifier.height(8.dp))
             }
-            // Enquanto digita, a Luna já aparece em largura total, texto solto (sem bolha) —
-            // pra não haver pulo visual quando a resposta assenta no histórico.
-            Box(modifier = Modifier.fillMaxWidth()) {
-                Column {
-                    LunaMarkdown(content = respostaParcial)
-                    Spacer(Modifier.height(4.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        StreamCaret()
+            val run = actionRun
+            if (run != null && run.fluxo.isNotEmpty()) {
+                // Fio Cursor: pontes e tools intercalados; caret no fim enquanto streama.
+                LunaFluxoAgentico(
+                    run = run,
+                    textoFallback = respostaParcial,
+                    aoVivo = run.status == LunaActionRunStatus.RUNNING,
+                    mostrarCaret = true,
+                )
+            } else {
+                run?.let { r ->
+                    LunaActionTimeline(
+                        run = r,
+                        inicialmenteAberto = r.status == LunaActionRunStatus.RUNNING,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                }
+                // Enquanto digita, a Luna já aparece em largura total, texto solto (sem bolha) —
+                // pra não haver pulo visual quando a resposta assenta no histórico.
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    Column {
+                        LunaMarkdown(content = respostaParcial)
+                        Spacer(Modifier.height(4.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            StreamCaret()
+                        }
                     }
                 }
             }
@@ -434,7 +454,7 @@ private fun StreamRespostaDraft(
 }
 
 @Composable
-private fun StreamCaret() {
+internal fun StreamCaret() {
     val infinite = rememberInfiniteTransition(label = "caret")
     val a by infinite.animateFloat(
         initialValue = 0.2f,

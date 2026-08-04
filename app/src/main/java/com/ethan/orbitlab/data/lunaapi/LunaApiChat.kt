@@ -22,6 +22,7 @@ import com.ethan.orbitlab.ui.chat.LunaFonteStatus
 import com.ethan.orbitlab.ui.chat.LunaStreamEstado
 import com.ethan.orbitlab.ui.chat.LunaStreamResultado
 import com.ethan.orbitlab.ui.chat.LunaWebFonte
+import com.ethan.orbitlab.ui.chat.LunaTurnoSegmento
 import com.ethan.orbitlab.ui.chat.PassoPlano
 import com.ethan.orbitlab.ui.chat.ThreadReference
 import com.ethan.orbitlab.ui.chat.ehFerramentaDePlano
@@ -316,8 +317,21 @@ object LunaApiChat {
         // acende o painel de pesquisa que já existe — antes a gente só ignorava esses eventos.
         val acaoSteps = mutableListOf<LunaActionStep>()
 
+        // Fio Cursor: narração e tools na ordem do SSE (não “todas as tools em cima”).
+        val fluxo = mutableListOf<LunaTurnoSegmento>()
+
         // Checklist do plano do turno (coleira `planejar`) — snapshot do SSE `tipo: "plano"`.
         var planoAtual = emptyList<PassoPlano>()
+
+        fun anexarNarracao(delta: String) {
+            if (delta.isEmpty()) return
+            val last = fluxo.lastOrNull()
+            if (last is LunaTurnoSegmento.Narracao) {
+                fluxo[fluxo.lastIndex] = LunaTurnoSegmento.Narracao(last.texto + delta)
+            } else {
+                fluxo += LunaTurnoSegmento.Narracao(delta)
+            }
+        }
 
         // Imagens que a Luna desenhou neste turno. A URL nasce no servidor (depois do upload) e
         // chega no `fim_ferramenta` de `gerar_imagem` — não está nos argumentos, viaja no evento.
@@ -354,6 +368,7 @@ object LunaApiChat {
                 steps = steps,
                 profile = if (usouWeb) LunaActionProfile.DEEP_RESEARCH else LunaActionProfile.TASK,
                 plano = planoAtual,
+                fluxo = fluxo.toList(),
             )
         }
 
@@ -379,7 +394,7 @@ object LunaApiChat {
             val arg = extrairArgAcao(ferramenta, json.optJSONObject("argumentos"))
             val meta = toolMeta(ferramenta)
             if (tipo == "inicio_ferramenta") {
-                acaoSteps += LunaActionStep(
+                val step = LunaActionStep(
                     id = "acao-${acaoSteps.size}",
                     label = meta.live(arg),
                     detail = arg.takeIf { it.isNotBlank() },
@@ -388,6 +403,8 @@ object LunaApiChat {
                     queries = listOfNotNull(arg.takeIf { it.isNotBlank() && meta.kind == com.ethan.orbitlab.ui.chat.LunaActionStepKind.SEARCH }),
                     ferramenta = ferramenta,
                 )
+                acaoSteps += step
+                fluxo += LunaTurnoSegmento.Acao(step.id)
             } else if (tipo == "fim_ferramenta") {
                 val sucesso = json.optBoolean("sucesso", true)
                 val fontes = parseFontesAcao(ferramenta, json.optJSONArray("fontes"))
@@ -445,12 +462,14 @@ object LunaApiChat {
             val temWeb = acaoSteps.any { it.ferramenta?.let(::ehFerramentaDeWeb) == true }
             if (!temWeb) return
             if (acaoSteps.any { it.kind == LunaActionStepKind.WRITE }) return
-            acaoSteps += LunaActionStep(
+            val step = LunaActionStep(
                 id = "acao-escrevendo",
                 label = "Escrevendo a resposta",
                 status = LunaActionStepStatus.RUNNING,
                 kind = LunaActionStepKind.WRITE,
             )
+            acaoSteps += step
+            fluxo += LunaTurnoSegmento.Acao(step.id)
         }
 
         fun emitirUi() {
@@ -490,6 +509,7 @@ object LunaApiChat {
             faseAtual = ""
             rotuloAtual = ""
             acaoSteps.clear()
+            fluxo.clear()
             planoAtual = emptyList()
             imagensGeradas.clear()
             perguntaPendente = null
@@ -508,6 +528,7 @@ object LunaApiChat {
                         // Primeiro pedaço de texto = ela parou de buscar e começou a redigir.
                         if (respostaBuf.isEmpty()) marcarEscrevendo()
                         respostaBuf.append(event.delta)
+                        anexarNarracao(event.delta)
                         emitirUi()
                     }
                     is LunaApiClient.StreamEvent.Acao -> {
