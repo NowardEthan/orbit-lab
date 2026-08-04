@@ -1,6 +1,7 @@
 package com.ethan.orbitlab.data.firebase
 
 import android.net.Uri
+import androidx.annotation.Keep
 import com.ethan.orbitlab.data.Conversa
 import com.ethan.orbitlab.data.Mensagem
 import com.ethan.orbitlab.data.formatarHoraCurta
@@ -557,6 +558,7 @@ object FirestoreChat {
     }
 }
 
+@Keep
 data class ConversaMeta(
     val id: String,
     val titulo: String,
