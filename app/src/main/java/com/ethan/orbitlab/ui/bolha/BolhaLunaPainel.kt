@@ -4,6 +4,8 @@ import android.app.Application
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -54,6 +56,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import com.ethan.orbitlab.data.ChatRepository
 import com.ethan.orbitlab.data.Mensagem
 import com.ethan.orbitlab.data.PrefsRepository
@@ -159,19 +162,36 @@ fun BolhaLunaPainel(
     val scale = startScale + (1f - startScale) * p
     val cantoTopo = (40f - 18f * p).dp
 
+    // Scrim visual em tela cheia — SEM clickable. Antes o dismiss era um orbitPressable
+    // full-screen atrás do sheet: toques em buracos do composer (Spacer, padding, scale do
+    // press) vazavam pro fundo e fechavam o modal.
     Box(Modifier.fillMaxSize()) {
         Box(
             Modifier
                 .fillMaxSize()
                 .graphicsLayer { alpha = p }
-                .background(Color.Black.copy(alpha = 0.48f))
-                .orbitPressable(enabled = !fechando, onClick = { fecharAnimado() }),
+                .background(Color.Black.copy(alpha = 0.48f)),
+        )
+        // Só a faixa acima do sheet (≈10%) fecha o painel.
+        Box(
+            Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .fillMaxHeight(0.10f)
+                .zIndex(0f)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    enabled = !fechando && p > 0.85f,
+                    onClick = { fecharAnimado() },
+                ),
         )
         Column(
             Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .fillMaxHeight(0.90f)
+                .zIndex(1f)
                 .statusBarsPadding()
                 .imePadding()
                 .navigationBarsPadding()
@@ -189,7 +209,13 @@ fun BolhaLunaPainel(
                     alpha = (0.35f + 0.65f * p).coerceIn(0f, 1f)
                 }
                 .clip(RoundedCornerShape(topStart = cantoTopo, topEnd = cantoTopo))
-                .background(OrbitTokens.graphiteSurf),
+                .background(OrbitTokens.graphiteSurf)
+                // Absorve toques em áreas “vazias” do sheet (não deixa cair no scrim).
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = {},
+                ),
         ) {
             AlcaPainel()
             CabecalhoPainel(
