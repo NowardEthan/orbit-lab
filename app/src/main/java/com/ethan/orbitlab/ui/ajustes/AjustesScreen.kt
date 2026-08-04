@@ -1,6 +1,7 @@
 package com.ethan.orbitlab.ui.ajustes
 
 import android.Manifest
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -24,6 +25,7 @@ import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.LocationOn
+import androidx.compose.material.icons.rounded.Nightlight
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.TravelExplore
@@ -35,6 +37,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -53,6 +56,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil.compose.AsyncImage
 import com.ethan.orbitlab.BuildConfig
 import com.ethan.orbitlab.data.AuthProvider
@@ -64,6 +70,8 @@ import com.ethan.orbitlab.data.local.LocationRepository
 import com.ethan.orbitlab.data.updates.ApkInstaller
 import com.ethan.orbitlab.data.updates.UpdatesRepository
 import com.ethan.orbitlab.data.updates.isNewer
+import com.ethan.orbitlab.ui.bolha.BolhaLunaService
+import com.ethan.orbitlab.ui.bolha.OverlayPermissao
 import com.ethan.orbitlab.ui.theme.OrbitMetrics
 import com.ethan.orbitlab.ui.theme.OrbitTokens
 import com.ethan.orbitlab.ui.theme.orbitPressable
@@ -105,6 +113,34 @@ fun AjustesScreen(
             PrefsRepository.setLocalizacaoAtiva(true)
             LocationRepository.atualizarEmBackground(context, forcar = true)
         }
+    }
+
+    val bolhaAtiva by PrefsRepository.bolhaAtiva.collectAsState()
+    // Em Android 13+ a notificação fixa do serviço precisa de permissão; a bolha liga de qualquer jeito.
+    val permNotificacao = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { }
+    // Voltou da tela "desenhar sobre outros apps"? Se concedeu, sobe a bolha sozinha.
+    var aguardandoOverlay by remember { mutableStateOf(false) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val obs = LifecycleEventObserver { _, event ->
+            if (event != Lifecycle.Event.ON_RESUME) return@LifecycleEventObserver
+            when {
+                aguardandoOverlay && OverlayPermissao.concedida(context) -> {
+                    aguardandoOverlay = false
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        permNotificacao.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                    BolhaLunaService.ligar(context)
+                }
+                PrefsRepository.bolhaAtiva.value -> {
+                    BolhaLunaService.tentarReligarSePreferida(context)
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(obs)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
     }
 
     var downloading by remember { mutableStateOf(false) }
@@ -277,6 +313,31 @@ fun AjustesScreen(
                     } else {
                         PrefsRepository.setLocalizacaoAtiva(false)
                         LocationRepository.limpar()
+                    }
+                },
+            )
+            Divisoria()
+            LinhaSwitch(
+                icone = Icons.Rounded.Nightlight,
+                titulo = "Bolha da Luna",
+                subtitulo = "Deixa a Luna flutuando sobre outros apps pra conversar a qualquer hora",
+                checado = bolhaAtiva,
+                onCheck = { ligar ->
+                    if (ligar) {
+                        if (OverlayPermissao.concedida(context)) {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                permNotificacao.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            }
+                            BolhaLunaService.ligar(context)
+                        } else {
+                            // Sem diálogo: Android manda pra Ajustes; ao voltar com permissão, liga sozinha.
+                            PrefsRepository.setBolhaAtiva(true)
+                            aguardandoOverlay = true
+                            OverlayPermissao.abrirAjustes(context)
+                        }
+                    } else {
+                        aguardandoOverlay = false
+                        BolhaLunaService.desligar(context)
                     }
                 },
             )

@@ -93,6 +93,8 @@ import com.ethan.orbitlab.data.financas.TransferenciaLauncher
 import com.ethan.orbitlab.data.updates.UpdatesRepository
 import com.ethan.orbitlab.ui.ajustes.AjustesScreen
 import com.ethan.orbitlab.ui.auth.LoginScreen
+import com.ethan.orbitlab.ui.bolha.BolhaLunaService
+import com.ethan.orbitlab.ui.bolha.BolhaNav
 import com.ethan.orbitlab.ui.chat.ChatScreen
 import com.ethan.orbitlab.ui.conversas.ConversasScreen
 import com.ethan.orbitlab.ui.estante.EstanteScreen
@@ -226,6 +228,8 @@ fun OrbitShell() {
         mutableStateOf(orbitTabFromPrefs(PrefsRepository.ultimaAba) ?: OrbitTab.INICIO)
     }
 
+    val context = LocalContext.current
+
     // Finanças: um listener compartilhado enquanto a sessão existir.
     LaunchedEffect(session?.uid) {
         CrashReporting.setUsuario(session?.uid)
@@ -233,6 +237,8 @@ fun OrbitShell() {
         // A carteira (medidor + parede) segue a mesma sessão: lê /v1/billing/usage e
         // escuta o Firestore pra atualizar sozinha.
         UsageRepository.observar(session?.uid)
+        // Bolha: se estava ligada e ainda tem permissão, sobe de novo.
+        BolhaLunaService.tentarReligarSePreferida(context)
     }
     // Cartões → "Pagar fatura" abre a aba Transferência já pré-preenchida.
     val transferenciaNav by TransferenciaLauncher.navegarTick.collectAsState()
@@ -255,6 +261,15 @@ fun OrbitShell() {
     // Texto digitado no composer do Início: abre uma conversa nova JÁ mandando esta 1ª mensagem.
     var mensagemInicial by remember { mutableStateOf<String?>(null) }
     var novidadesAberto by remember { mutableStateOf(false) }
+
+    // Bolha flutuante → "abrir no app": mesma conversa principal, overlay de chat.
+    LaunchedEffect(Unit) {
+        BolhaNav.abrirChat.collect {
+            conversaAtivaId = ChatRepository.conversaPrincipal()
+            chatAberto = true
+            novidadesAberto = false
+        }
+    }
 
     // Parede do chat / medidor pedem "ver planos" → abre a aba Planos fechando os overlays.
     val planosNavTick by PlanosNav.tick.collectAsState()
