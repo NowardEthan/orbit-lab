@@ -2,4 +2,18 @@
 <resources>
 
     <style name="Theme.OrbitLab" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!-- Painel da bolha: Activity translúcida por cima do app anterior. -->
+    <style name="Theme.OrbitLab.BolhaPainel" parent="Theme.OrbitLab">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:colorBackgroundCacheHint">@null</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:windowAnimationStyle">@null</item>
+    </style>
 </resources>
