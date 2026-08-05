@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import androidx.exifinterface.media.ExifInterface
 import com.ethan.orbitlab.ui.chat.AttachmentKind
@@ -153,11 +154,34 @@ object ChatMediaUpload {
         } catch (e: Exception) {
             throw IOException(recado(attachment, e), e)
         }
+        val thumbnailUrl = if (attachment.kind == AttachmentKind.VIDEO) {
+            subirThumbnailVideo(context, "$path.thumbnail.jpg", local)
+        } else {
+            null
+        }
         return attachment.copy(
             uri = Uri.parse(subida.url),
+            thumbnailUri = thumbnailUrl?.let(Uri::parse),
             mime = subida.mime,
             sizeLabel = tamanhoLegivel(subida.bytes),
         )
+    }
+
+    private suspend fun subirThumbnailVideo(
+        context: Context,
+        path: String,
+        local: Uri,
+    ): String? = withContext(Dispatchers.IO) {
+        val frame = extrairFrameVideo(context, local) ?: return@withContext null
+        try {
+            subirArquivo(context, path, Uri.fromFile(frame), "image/jpeg").url
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
+        } finally {
+            frame.delete()
+        }
     }
 
     /** O que de fato foi parar no Storage (pode ser uma versão enxuta do original). */
@@ -335,6 +359,37 @@ object ChatMediaUpload {
             else -> 0
         }
     }.getOrDefault(0)
+
+    private fun extrairFrameVideo(context: Context, uri: Uri): File? = runCatching {
+        val retriever = MediaMetadataRetriever()
+        try {
+            retriever.setDataSource(context, uri)
+            val bruta = retriever.getFrameAtTime(
+                1_000_000L,
+                MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+            ) ?: retriever.frameAtTime ?: return null
+            val escala = (LADO_MAX.toFloat() / maxOf(bruta.width, bruta.height)).coerceAtMost(1f)
+            val pronta = if (escala < 1f) {
+                Bitmap.createScaledBitmap(
+                    bruta,
+                    (bruta.width * escala).toInt().coerceAtLeast(1),
+                    (bruta.height * escala).toInt().coerceAtLeast(1),
+                    true,
+                ).also { if (it !== bruta) bruta.recycle() }
+            } else {
+                bruta
+            }
+
+            val destino = File(File(context.cacheDir, "uploads").apply { mkdirs() }, "video_frame_${System.nanoTime()}.jpg")
+            destino.outputStream().use { saida ->
+                pronta.compress(Bitmap.CompressFormat.JPEG, QUALIDADE, saida)
+            }
+            pronta.recycle()
+            destino.takeIf { it.length() > 0L }
+        } finally {
+            retriever.release()
+        }
+    }.getOrNull()
 
     private fun tamanhoLegivel(bytes: Long): String = when {
         bytes <= 0L -> "—"

@@ -314,6 +314,10 @@ object LunaApiChat {
                                 },
                             )
                             put("url", url)
+                            att.thumbnailUri
+                                ?.toString()
+                                ?.takeIf { ChatMediaUpload.isRemoteUri(att.thumbnailUri) }
+                                ?.let { put("thumbnailUrl", it) }
                         },
                     )
                 }

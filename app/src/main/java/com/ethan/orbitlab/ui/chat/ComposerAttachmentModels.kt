@@ -17,6 +17,7 @@ data class ComposerAttachment(
     val sizeLabel: String,
     val mime: String,
     val uri: Uri? = null,
+    val thumbnailUri: Uri? = null,
     val sizeBytes: Long = 0L,
     val swatch: Color = Color(0xFF3A4558),
 )
