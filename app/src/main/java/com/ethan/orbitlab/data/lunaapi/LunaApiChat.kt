@@ -94,17 +94,10 @@ object LunaApiChat {
             "web_search" -> argumentos.optString("query")
             "ler_url" -> argumentos.optString("url")
             "consultar_atlas" -> argumentos.optString("termo").ifBlank { argumentos.optString("query") }
-            // Artefatos: SEMPRE título humano (nunca markdown/corpo — isso virava «Acrescentou em "Acrescentou…"»).
             "criar_artefato", "editar_artefato", "editar_trecho_artefato", "ler_artefato",
             "ler_secao", "buscar_no_artefato", "ler_estrutura", "inserir_blocos",
             "editar_bloco_artefato", "ler_bloco", "anotar_canone", "listar_artefatos",
-            -> tituloArtefatoDosArgs(argumentos).ifBlank {
-                when (ferramenta) {
-                    "ler_secao" -> argumentos.optString("secao")
-                    "buscar_no_artefato" -> argumentos.optString("query")
-                    else -> ""
-                }
-            }
+            -> resumoUiArtefato(ferramenta, argumentos)
             else -> {
                 val chavesPreferenciais = listOf("titulo", "nome", "termo", "query", "url", "secao", "passo")
                 val chave = chavesPreferenciais.firstOrNull {
@@ -114,6 +107,49 @@ object LunaApiChat {
             }
         }
         return limparPayloadHumano(bruto)
+    }
+
+    /**
+     * Resumo humano pro badge: título + alvo (seção / preview), sem hash nem markdown longo.
+     * Formato: `Título` ou `Título · Cap. 2` ou `Título · «preview…»`.
+     */
+    private fun resumoUiArtefato(ferramenta: String, argumentos: JSONObject): String {
+        val titulo = tituloArtefatoDosArgs(argumentos)
+        val extra = when (ferramenta) {
+            "ler_secao" -> {
+                argumentos.optString("secao")
+                    .ifBlank { argumentos.optString("numero") }
+                    .ifBlank { argumentos.optString("titulo") }
+                    .trim()
+                    .take(40)
+            }
+            "buscar_no_artefato" -> argumentos.optString("query").trim().take(40)
+            "inserir_blocos" -> previewMarkdownCurto(
+                argumentos.optString("markdown").ifBlank { argumentos.optString("conteudo") },
+            )
+            "editar_trecho_artefato" -> previewMarkdownCurto(argumentos.optString("trecho_novo"))
+            "editar_bloco_artefato" -> previewMarkdownCurto(argumentos.optString("text"))
+            "editar_artefato" -> previewMarkdownCurto(argumentos.optString("conteudo"))
+            else -> ""
+        }
+        return when {
+            titulo.isNotBlank() && extra.isNotBlank() -> "$titulo · $extra"
+            titulo.isNotBlank() -> titulo
+            extra.isNotBlank() -> extra
+            else -> ""
+        }
+    }
+
+    private fun previewMarkdownCurto(raw: String): String {
+        val t = raw.trim()
+        if (t.isBlank() || pareceCodigoOuPayloadTecnico(t)) return ""
+        // Prefer heading da 1ª linha se houver.
+        val primeira = t.lineSequence().firstOrNull().orEmpty()
+            .replace(Regex("^#{1,6}\\s*"), "")
+            .replace(Regex("[#*_`~\\[\\]()]"), "")
+            .trim()
+        if (primeira.isBlank()) return ""
+        return if (primeira.length > 40) primeira.take(37) + "…" else primeira
     }
 
     /** Título pra badge: `titulo` explícito, senão resolve `id` no cache da estante. */

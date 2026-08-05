@@ -372,7 +372,13 @@ object FirestoreChat {
         }
         return buildMap {
             put("ferramenta", ferramenta)
-            put("argumento", step.queries.firstOrNull() ?: step.detail ?: step.label)
+            // Só resumo humano — NÃO cair no label (eco «Acrescentou» / «Leu» no reload).
+            put(
+                "argumento",
+                step.queries.firstOrNull()?.takeIf { it.isNotBlank() }
+                    ?: step.detail?.takeIf { it.isNotBlank() }
+                    ?: "",
+            )
             put("sucesso", step.status == LunaActionStepStatus.DONE)
             if (step.sources.isNotEmpty()) {
                 put(
