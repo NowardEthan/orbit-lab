@@ -3,6 +3,7 @@ package com.ethan.orbitlab.ui.chat
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -14,12 +15,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.clip
@@ -37,6 +43,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ethan.orbitlab.ui.theme.OrbitTokens
+import kotlinx.coroutines.delay
 
 @Composable
 internal fun LunaTextoVivo(
@@ -167,6 +174,24 @@ internal fun LunaStatusDot(
 ) {
     val rodando = status == LunaActionStepStatus.RUNNING
     val erro = status == LunaActionStepStatus.ERROR
+    val concluido = status == LunaActionStepStatus.DONE
+    var statusAnterior by remember { mutableStateOf(status) }
+    var flashConclusao by remember { mutableStateOf(false) }
+    LaunchedEffect(status) {
+        val acabouAgora = statusAnterior == LunaActionStepStatus.RUNNING &&
+            (status == LunaActionStepStatus.DONE || status == LunaActionStepStatus.ERROR)
+        statusAnterior = status
+        if (acabouAgora) {
+            flashConclusao = true
+            delay(540)
+            flashConclusao = false
+        }
+    }
+    val flash by animateFloatAsState(
+        targetValue = if (flashConclusao) 1f else 0f,
+        animationSpec = tween(durationMillis = if (flashConclusao) 140 else 520),
+        label = "dot-flash",
+    )
     val pulso = if (rodando) {
         val transicao = rememberInfiniteTransition(label = "status-dot")
         val animado by transicao.animateFloat(
@@ -185,22 +210,39 @@ internal fun LunaStatusDot(
     val cor = when {
         erro -> OrbitTokens.danger
         rodando -> OrbitTokens.bluePastel
-        status == LunaActionStepStatus.DONE -> OrbitTokens.online
+        concluido -> OrbitTokens.online
         else -> OrbitTokens.textLowN
     }
     Box(
         modifier
             .size(size)
             .graphicsLayer {
-                val escala = if (rodando) 0.9f + 0.16f * pulso else 1f
+                val escala = if (rodando) 0.9f + 0.16f * pulso else 1f + 0.18f * flash
                 scaleX = escala
                 scaleY = escala
                 alpha = if (rodando) 0.65f + 0.35f * pulso else 0.88f
             }
             .clip(CircleShape)
-            .background(cor.copy(alpha = if (rodando) 0.24f else 0.14f))
-            .border(1.dp, cor.copy(alpha = if (rodando) 0.88f else 0.42f), CircleShape),
-    )
+            .background(cor.copy(alpha = if (rodando) 0.24f else 0.14f + 0.18f * flash))
+            .border(1.dp, cor.copy(alpha = if (rodando) 0.88f else 0.42f + 0.42f * flash), CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        when {
+            concluido -> Icon(
+                imageVector = Icons.Rounded.Check,
+                contentDescription = null,
+                tint = cor.copy(alpha = 0.95f),
+                modifier = Modifier.size((size.value * 0.72f).dp),
+            )
+            erro -> Text(
+                text = "!",
+                color = cor,
+                fontSize = (size.value * 0.82f).sp,
+                fontWeight = FontWeight.Bold,
+                lineHeight = (size.value * 0.82f).sp,
+            )
+        }
+    }
 }
 
 internal fun Modifier.liveSurface(ativo: Boolean, erro: Boolean = false): Modifier {

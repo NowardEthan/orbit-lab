@@ -51,7 +51,6 @@ fun LunaToolClusterCursor(
 ) {
     if (steps.isEmpty()) return
     val rodando = steps.any { it.status == LunaActionStepStatus.RUNNING }
-    val erro = steps.any { it.status == LunaActionStepStatus.ERROR }
     var aberto by remember(steps.map { it.id }.joinToString()) {
         mutableStateOf(rodando)
     }
@@ -73,12 +72,12 @@ fun LunaToolClusterCursor(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .liveSurface(ativo = rodando, erro = erro)
+                .liveSurface(ativo = rodando, erro = false)
                 .orbitPressable {
                     aberto = !aberto
                     usuarioMexeu = true
                 }
-                .padding(horizontal = if (rodando || erro) 8.dp else 0.dp, vertical = 6.dp),
+                .padding(horizontal = if (rodando) 8.dp else 0.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(7.dp),
         ) {
@@ -108,7 +107,7 @@ fun LunaToolClusterCursor(
             } else {
                 Text(
                     text = resumo,
-                    color = if (erro) OrbitTokens.danger else OrbitTokens.textMidN,
+                    color = OrbitTokens.textMidN,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Normal,
                     lineHeight = 17.sp,

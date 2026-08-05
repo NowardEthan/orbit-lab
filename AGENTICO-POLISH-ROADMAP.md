@@ -13,12 +13,16 @@ trabalha, leitura quieta quando assenta, e passos/ações com estados claros sem
 - Badges de ferramenta mais quietos quando concluídos e mais luminosos quando ativos.
 - Histórico assentado sem animação infinita.
 
+Status: entregue em `0.35.16`.
+
 ## Fase 2 — microinterações de conclusão
 
 - Passo que termina ganha um acendimento curto e assenta.
 - Transição RUNNING → DONE com check discreto.
 - Erros em âmbar/vermelho só no passo afetado.
 - Checklist do plano risca etapas com movimento leve.
+
+Status: entregue em `0.35.17`.
 
 ## Fase 3 — copy e agrupamento
 

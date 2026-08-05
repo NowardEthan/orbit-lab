@@ -1,8 +1,10 @@
 package com.ethan.orbitlab.ui.chat
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -29,8 +31,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -110,15 +115,21 @@ private fun PlanoLinha(
     passo: PassoPlano,
     ativo: Boolean,
 ) {
-    val pulso by rememberInfiniteTransition(label = "planoCorrente").animateFloat(
-        initialValue = 0.55f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(900),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "planoPulso",
-    )
+    val pulso = if (ativo) {
+        val transicao = rememberInfiniteTransition(label = "planoCorrente")
+        val animado by transicao.animateFloat(
+            initialValue = 0.55f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(900),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "planoPulso",
+        )
+        animado
+    } else {
+        1f
+    }
     val corTexto by animateColorAsState(
         targetValue = when {
             passo.feito -> OrbitTokens.textLowN
@@ -126,6 +137,11 @@ private fun PlanoLinha(
             else -> OrbitTokens.textMidN
         },
         label = "planoCor",
+    )
+    val risco by animateFloatAsState(
+        targetValue = if (passo.feito) 1f else 0f,
+        animationSpec = tween(durationMillis = 420, easing = LinearEasing),
+        label = "riscoPlano",
     )
 
     Row(
@@ -142,10 +158,23 @@ private fun PlanoLinha(
             fontSize = 13.sp,
             lineHeight = 18.sp,
             fontWeight = if (ativo) FontWeight.Medium else FontWeight.Normal,
-            textDecoration = if (passo.feito) TextDecoration.LineThrough else null,
             maxLines = 3,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier
+                .weight(1f)
+                .drawWithContent {
+                    drawContent()
+                    if (risco > 0f) {
+                        val y = size.height * 0.54f
+                        drawLine(
+                            color = OrbitTokens.textLowN.copy(alpha = 0.58f),
+                            start = Offset(0f, y),
+                            end = Offset(size.width * risco, y),
+                            strokeWidth = 1.dp.toPx(),
+                            cap = StrokeCap.Round,
+                        )
+                    }
+                },
         )
     }
 }
@@ -154,6 +183,11 @@ private fun PlanoLinha(
 private fun CaixaPlano(marcado: Boolean, ativo: Boolean) {
     val shape = RoundedCornerShape(6.dp)
     val lado = 18.dp
+    val checkScale by animateFloatAsState(
+        targetValue = if (marcado) 1f else 0.82f,
+        animationSpec = tween(durationMillis = 260),
+        label = "checkPlano",
+    )
     when {
         marcado -> Box(
             modifier = Modifier
@@ -167,7 +201,13 @@ private fun CaixaPlano(marcado: Boolean, ativo: Boolean) {
                 imageVector = Icons.Rounded.Check,
                 contentDescription = null,
                 tint = OrbitFills.accent.onFill,
-                modifier = Modifier.size(13.dp),
+                modifier = Modifier
+                    .size(13.dp)
+                    .graphicsLayer {
+                        scaleX = checkScale
+                        scaleY = checkScale
+                    }
+                    .alpha(checkScale),
             )
         }
         ativo -> Box(
