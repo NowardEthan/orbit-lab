@@ -130,6 +130,17 @@ object LunaApiChat {
             "editar_trecho_artefato" -> previewMarkdownCurto(argumentos.optString("trecho_novo"))
             "editar_bloco_artefato" -> previewMarkdownCurto(argumentos.optString("text"))
             "editar_artefato" -> previewMarkdownCurto(argumentos.optString("conteudo"))
+            "anotar_canone" -> {
+                val acao = argumentos.optString("acao").ifBlank { "anotar" }.trim()
+                val fato = argumentos.optString("fato")
+                    .ifBlank { argumentos.optString("fato_novo") }
+                    .trim()
+                    .take(36)
+                when {
+                    fato.isNotBlank() -> "$acao · $fato"
+                    else -> acao
+                }
+            }
             else -> ""
         }
         return when {
