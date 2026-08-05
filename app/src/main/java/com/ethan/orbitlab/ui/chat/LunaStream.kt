@@ -138,32 +138,6 @@ suspend fun executarStreamLuna(
     )
 }
 
-/** Demo: anima fases da pesquisa profunda e depois o relatório. */
-suspend fun executarStreamPesquisaProfunda(
-    onEstado: (LunaStreamEstado) -> Unit,
-): LunaStreamResultado {
-    val snapshots = demoResearchSnapshots()
-    snapshots.dropLast(1).forEach { (live, run) ->
-        onEstado(
-            LunaStreamEstado.Pesquisando(
-                run = run.toDeepResearchActionRun(),
-                liveLabel = live,
-            ),
-        )
-        delay(520L)
-    }
-    val runFinal = snapshots.last().second.toDeepResearchActionRun()
-    onEstado(LunaStreamEstado.Pesquisando(run = runFinal, liveLabel = "Relatório pronto"))
-    delay(280L)
-
-    return executarStreamLuna(
-        reasoningCompleto = demoReasoningPesquisaProfunda(),
-        respostaCompleta = demoMarkdownPesquisaProfunda(),
-        onEstado = onEstado,
-        actionRun = runFinal,
-    )
-}
-
 /** Demo: tools (imagem/vídeo/arquivo) — strip, sem painel de pesquisa. */
 suspend fun executarStreamFerramentas(
     anexos: List<ComposerAttachment>,
