@@ -1004,34 +1004,21 @@ fun MessageBubble(
                 // bolha padrão, mais estreita, ancorada à direita.
                 .fillMaxWidth(if (msg.isLuna) 1f else 0.82f),
         ) {
-            // Pesquisa profunda: a resposta vira um DOSSIÊ (card de relatório com
-            // assinatura violeta), montado mais abaixo no lugar da bolha comum. Aqui em
-            // cima só entra o strip de ferramentas das tarefas que NÃO são web.
-            val dossieRun = if (msg.isLuna) {
-                msg.actionRun?.takeIf { it.isDeepResearch() }?.toLegacyResearchRun()
-            } else {
-                null
-            }
             // Fio Cursor (narração↔tools): o fluxo carrega checklist + texto; não empilha timeline.
+            // Pesquisa web entra nesse mesmo fio — sem dossiê/painel à parte.
             val fluxoCursor = msg.isLuna &&
                 msg.actionRun != null &&
-                dossieRun == null &&
                 msg.actionRun.fluxo.isNotEmpty()
 
-            if (!fluxoCursor && msg.isLuna && msg.actionRun != null && dossieRun == null) {
+            if (!fluxoCursor && msg.isLuna && msg.actionRun != null) {
                 LunaActionTimeline(
                     run = msg.actionRun,
                     inicialmenteAberto = false,
                 )
                 Spacer(Modifier.height(8.dp))
-            } else if (!fluxoCursor && msg.isLuna) {
-                msg.actionRun?.plano?.takeIf { it.isNotEmpty() }?.let { plano ->
-                    LunaPlanChecklist(plano = plano, aoVivo = false)
-                    Spacer(Modifier.height(8.dp))
-                }
             }
 
-            if (mostrarRaciocinio && msg.isLuna && !msg.reasoning.isNullOrBlank() && dossieRun == null) {
+            if (mostrarRaciocinio && msg.isLuna && !msg.reasoning.isNullOrBlank()) {
                 LunaReasoning(
                     texto = msg.reasoning,
                     duracaoLabel = msg.reasoningDuracao,
@@ -1065,13 +1052,7 @@ fun MessageBubble(
                 if (temTexto) Spacer(Modifier.height(8.dp))
             }
 
-            if (dossieRun != null && temTexto) {
-                LunaDossieCard(
-                    run = dossieRun,
-                    resposta = msg.texto,
-                    inicialmenteAberto = false,
-                )
-            } else if (fluxoCursor && msg.actionRun != null) {
+            if (fluxoCursor && msg.actionRun != null) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()

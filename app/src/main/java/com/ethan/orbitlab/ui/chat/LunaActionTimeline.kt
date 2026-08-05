@@ -8,20 +8,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
 /**
- * Orquestra a UI de ações da Luna:
- * - plano (coleira) → [LunaPlanChecklist] sempre à vista
- * - tools (imagem/vídeo/memória…) → [LunaToolTimeline]
- * - web → [LunaResearchPanel] só se [LunaActionProfile.DEEP_RESEARCH]
+ * Orquestra a UI de ações da Luna (timeline agentica first):
+ * - plano (coleira) → [LunaPlanChecklist]
+ * - tools (web, imagem, memória, artefato…) → [LunaToolTimeline]
+ *
+ * Pesquisa web entra no mesmo fio das outras tools — sem painel/dossiê à parte.
  */
 @Composable
 fun LunaActionTimeline(
     run: LunaActionRun,
-    liveLabel: String? = null,
+    @Suppress("UNUSED_PARAMETER") liveLabel: String? = null,
     inicialmenteAberto: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val tools = run.toolSteps()
-    val research = run.toLegacyResearchRun()
     val aoVivo = run.status == LunaActionRunStatus.RUNNING
 
     Column(
@@ -32,17 +32,9 @@ fun LunaActionTimeline(
             LunaPlanChecklist(plano = run.plano, aoVivo = aoVivo)
         }
         if (tools.isNotEmpty()) {
-            // Ao vivo: abre a trilha (Cursor). No histórico: respeita inicialmenteAberto.
             LunaToolTimeline(
                 steps = tools,
                 inicialmenteAberto = inicialmenteAberto || aoVivo,
-            )
-        }
-        if (run.isDeepResearch() && research != null) {
-            LunaResearchPanel(
-                run = research,
-                liveLabel = liveLabel,
-                inicialmenteAberto = inicialmenteAberto,
             )
         }
     }

@@ -3,8 +3,9 @@ package com.ethan.orbitlab.ui.chat
 /**
  * Modelo unificado de ações da Luna — espelho de `orbit-mobile/src/lib/lunaActionModel.ts`.
  *
- * - **deep-research**: usou web (`web_search` / `ler_url`) → painel de pesquisa profunda
- * - **task**: só tools (imagem, vídeo, memória…) → strip de chips, sem painel
+ * Timeline agentica first: web (`web_search` / `ler_url` / `verificar_fontes`) entra no
+ * mesmo fio das outras tools. O profile DEEP_RESEARCH ainda marca o run no wire, mas a UI
+ * não abre painel/dossiê separado.
  */
 
 enum class LunaActionProfile {
@@ -110,7 +111,8 @@ fun LunaActionRun.imagemEmGeracao(): String? {
 fun LunaActionRun.toolSteps(): List<LunaActionStep> =
     steps.filter { step ->
         val f = step.ferramenta
-        f == null || (!ehFerramentaDeWeb(f) && !ehFerramentaDePlano(f))
+        // Meta-tools do plano ficam só na checklist. Web entra na timeline agentica.
+        f == null || !ehFerramentaDePlano(f)
     }
 
 fun LunaActionRun.webSteps(): List<LunaActionStep> =
