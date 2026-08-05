@@ -104,6 +104,8 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
@@ -187,6 +189,7 @@ fun ChatScreen(
     val perguntaAtiva = turno.perguntaAtiva
     var messageReference by remember(conversaId) { mutableStateOf<ThreadReference?>(null) }
     var actionSheetMsg by remember { mutableStateOf<Mensagem?>(null) }
+    var composerSeed by remember(conversaId) { mutableStateOf<ComposerSeed?>(null) }
     var exportAberto by remember { mutableStateOf(false) }
     var buscaAberta by remember { mutableStateOf(false) }
     // Documentos desta conversa (a estante) — escutados do Firestore, desenhados como cartões no
@@ -340,6 +343,8 @@ fun ChatScreen(
                     streamState = streamState,
                     messageReference = messageReference,
                     onClearReference = { messageReference = null },
+                    seed = composerSeed,
+                    onSeedConsumido = { composerSeed = null },
                     onSend = { texto, anexos, ref ->
                         onSend(texto, anexos, ref)
                         messageReference = null
@@ -415,6 +420,16 @@ fun ChatScreen(
                     }
                 },
                 onReenviar = { turno.reenviarDesde(sheetMsg) },
+                onEditarReenviar = {
+                    val rascunho = turno.prepararEdicaoParaReenviar(sheetMsg) ?: return@MessageActionSheet
+                    messageReference = rascunho.reference
+                    composerSeed = ComposerSeed(
+                        token = System.currentTimeMillis(),
+                        texto = rascunho.texto,
+                        anexos = rascunho.anexos,
+                    )
+                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                },
             )
         }
     }
@@ -1150,6 +1165,16 @@ fun MessageBubble(
     }
 }
 
+/**
+ * Rascunho injetado no composer (editar e reenviar, quick reply…).
+ * [token] muda a cada injeção pra o LaunchedEffect disparar mesmo com o mesmo texto.
+ */
+data class ComposerSeed(
+    val token: Long,
+    val texto: String,
+    val anexos: List<ComposerAttachment> = emptyList(),
+)
+
 @Composable
 fun ChatInputArea(
     onSend: (String, List<ComposerAttachment>, ThreadReference?) -> Unit,
@@ -1160,6 +1185,9 @@ fun ChatInputArea(
     containerColor: Color = OrbitTokens.graphiteSurf,
     /** Seed do campo (ex.: rascunho do quick reply da bolha). */
     textoInicial: String = "",
+    /** Injeção pontual (editar e reenviar) — consumida assim que aplicada. */
+    seed: ComposerSeed? = null,
+    onSeedConsumido: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -1176,10 +1204,24 @@ fun ChatInputArea(
     var recordState by remember { mutableStateOf(RecordState.Idle) }
     var dragOffset by remember { mutableStateOf(Offset.Zero) }
     var segundos by remember { mutableIntStateOf(0) }
+    val focusRequester = remember { FocusRequester() }
 
     val haptics = LocalHapticFeedback.current
     val keyboard = LocalSoftwareKeyboardController.current
     val density = LocalDensity.current
+
+    LaunchedEffect(seed?.token) {
+        val s = seed ?: return@LaunchedEffect
+        texto = s.texto
+        anexos = s.anexos
+        onSeedConsumido()
+        // Um quadro pra o campo já ter o texto antes de pedir foco/teclado.
+        delay(24)
+        runCatching {
+            focusRequester.requestFocus()
+            keyboard?.show()
+        }
+    }
     val cancelThresholdPx = with(density) { 120.dp.toPx() }
     val lockThresholdPx = with(density) { 90.dp.toPx() }
 
@@ -1396,7 +1438,9 @@ fun ChatInputArea(
                                 fontSize = 15.sp,
                                 lineHeight = 20.sp,
                             ),
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(focusRequester),
                             cursorBrush = SolidColor(OrbitTokens.bluePastel),
                             maxLines = ComposerMaxLines,
                             decorationBox = { inner ->

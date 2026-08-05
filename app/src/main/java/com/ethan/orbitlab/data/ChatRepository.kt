@@ -494,11 +494,22 @@ object ChatRepository {
      * (inclusive) e apaga o que vem depois — local e na nuvem (soft-delete).
      */
     fun truncarApos(conversaId: String, ancoraId: String) {
+        truncarMensagens(conversaId, ancoraId, incluirAncora = true)
+    }
+
+    /**
+     * Editar e reenviar: remove a âncora e tudo depois — o texto volta pro composer.
+     */
+    fun truncarDesde(conversaId: String, ancoraId: String) {
+        truncarMensagens(conversaId, ancoraId, incluirAncora = false)
+    }
+
+    private fun truncarMensagens(conversaId: String, ancoraId: String, incluirAncora: Boolean) {
         val conv = getConversa(conversaId) ?: return
         val idx = conv.mensagens.indexOfFirst { it.id == ancoraId }
         if (idx < 0) return
-        val mantidas = conv.mensagens.take(idx + 1)
-        val removidas = conv.mensagens.drop(idx + 1).map { it.id }
+        val mantidas = if (incluirAncora) conv.mensagens.take(idx + 1) else conv.mensagens.take(idx)
+        val removidas = conv.mensagens.drop(mantidas.size).map { it.id }
         if (removidas.isEmpty()) return
 
         _conversas.update { lista ->

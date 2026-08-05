@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.FormatQuote
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Refresh
@@ -48,12 +49,15 @@ fun MessageActionSheet(
     onReferenciarImagem: (ComposerAttachment) -> Unit,
     onCopiar: () -> Unit,
     onReenviar: () -> Unit = {},
+    onEditarReenviar: () -> Unit = {},
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val imagens = mensagem.attachments.filter {
         it.kind == AttachmentKind.IMAGE || it.kind == AttachmentKind.VIDEO
     }
     val podeReferenciarTexto = mensagem.texto.isNotBlank() || mensagem.attachments.isNotEmpty()
+    // Editar faz sentido quando há fala tua (ou a da Luna implica a fala anterior).
+    val podeEditarReenviar = !mensagem.isLuna || mensagem.texto.isNotBlank()
 
     // Ações "leves" (referenciar / copiar) vão juntas num cartão; reenviar fica à parte
     // porque apaga o que vem depois — merece respiro e cor de aviso.
@@ -124,17 +128,30 @@ fun MessageActionSheet(
                 Spacer(Modifier.height(12.dp))
             }
 
-            // Reenviar — destaque de aviso (some o que vem depois).
+            // Reenviar / editar — destaque de aviso (some o que vem depois).
             GrupoAcoes(
-                listOf(
-                    AcaoItem(
-                        icone = Icons.Rounded.Refresh,
-                        label = "Reenviar",
-                        subtitle = "A Luna responde de novo; o que vem depois é apagado",
-                        aviso = true,
-                        onClick = { onReenviar(); onDismiss() },
-                    ),
-                ),
+                buildList {
+                    if (podeEditarReenviar) {
+                        add(
+                            AcaoItem(
+                                icone = Icons.Rounded.Edit,
+                                label = "Editar e reenviar",
+                                subtitle = "Ajusta o texto no composer; o que vem depois some",
+                                aviso = true,
+                                onClick = { onEditarReenviar(); onDismiss() },
+                            ),
+                        )
+                    }
+                    add(
+                        AcaoItem(
+                            icone = Icons.Rounded.Refresh,
+                            label = "Reenviar",
+                            subtitle = "A Luna responde de novo; o que vem depois é apagado",
+                            aviso = true,
+                            onClick = { onReenviar(); onDismiss() },
+                        ),
+                    )
+                },
             )
         }
     }
