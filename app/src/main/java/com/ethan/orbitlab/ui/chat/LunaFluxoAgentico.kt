@@ -5,11 +5,16 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.ethan.orbitlab.ui.theme.OrbitTokens
 
 /**
  * Fio agentico estilo Cursor: checklist (se houver) + narração e tools **intercalados**.
@@ -32,7 +37,11 @@ fun LunaFluxoAgentico(
             )
             if (textoFallback.isNotBlank()) {
                 Spacer(Modifier.height(8.dp))
-                LunaMarkdown(content = textoFallback)
+                if (aoVivo) {
+                    TextoAgenticoAoVivo(texto = textoFallback)
+                } else {
+                    LunaMarkdown(content = textoFallback)
+                }
             }
             if (mostrarCaret) {
                 Spacer(Modifier.height(4.dp))
@@ -56,14 +65,29 @@ fun LunaFluxoAgentico(
             LunaPlanChecklist(plano = run.plano, aoVivo = aoVivo)
         }
 
-        blocos.forEach { bloco ->
-            when (bloco) {
-                is FluxoUiBloco.Narracao -> {
-                    val t = bloco.texto.trim()
-                    if (t.isNotEmpty()) LunaMarkdown(content = t)
-                }
-                is FluxoUiBloco.Tools -> {
-                    LunaToolClusterCursor(steps = bloco.steps)
+        blocos.forEachIndexed { index, bloco ->
+            val ultimo = index == blocos.lastIndex
+            val chave = when (bloco) {
+                is FluxoUiBloco.Narracao ->
+                    if (aoVivo && ultimo) "narracao-viva" else "narracao-${bloco.texto.hashCode()}"
+                is FluxoUiBloco.Tools ->
+                    "tools-${bloco.steps.joinToString("|") { "${it.id}:${it.status}" }}"
+            }
+            key(chave) {
+                when (bloco) {
+                    is FluxoUiBloco.Narracao -> {
+                        val t = bloco.texto.trim()
+                        if (t.isNotEmpty()) {
+                            if (aoVivo && ultimo) {
+                                TextoAgenticoAoVivo(texto = t)
+                            } else {
+                                LunaMarkdown(content = t)
+                            }
+                        }
+                    }
+                    is FluxoUiBloco.Tools -> {
+                        LunaToolClusterCursor(steps = bloco.steps)
+                    }
                 }
             }
         }
@@ -72,6 +96,21 @@ fun LunaFluxoAgentico(
             StreamCaret()
         }
     }
+}
+
+@Composable
+private fun TextoAgenticoAoVivo(
+    texto: String,
+    modifier: Modifier = Modifier,
+) {
+    Text(
+        text = texto,
+        color = OrbitTokens.textHiN,
+        fontSize = 15.sp,
+        lineHeight = 21.sp,
+        fontWeight = FontWeight.Normal,
+        modifier = modifier.fillMaxWidth(),
+    )
 }
 
 private sealed class FluxoUiBloco {

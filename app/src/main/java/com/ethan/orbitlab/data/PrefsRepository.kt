@@ -22,7 +22,6 @@ object PrefsRepository {
     private const val KEY_ANCORA = "orbit.lab.lugar.ancora"
     private const val KEY_GAVETA_FINANCAS = "orbit.lab.gaveta.financas.aberta"
     private const val KEY_CONVERSA_FINANCAS = "orbit.lab.financas.conversa"
-    private const val KEY_CONTEXTO_COMERCIAL = "orbit.lab.contexto.comercial"
     private const val KEY_LOCALIZACAO = "orbit.lab.localizacao.ativa"
     private const val KEY_LOCAL_SNAPSHOT = "orbit.lab.localizacao.snapshot"
     private const val KEY_TECNICO_IDS = "orbit.lab.tecnico.msgids"
@@ -80,13 +79,6 @@ object PrefsRepository {
     val modoAgentico: StateFlow<Boolean> = _modoAgentico.asStateFlow()
 
     /**
-     * Contexto visível da sidebar: pessoal por padrão, comercial quando o usuário troca.
-     * Por enquanto é uma preferência de UI; a separação de dados vem quando houver contrato.
-     */
-    private val _contextoComercial = MutableStateFlow(false)
-    val contextoComercial: StateFlow<Boolean> = _contextoComercial.asStateFlow()
-
-    /**
      * Compartilhar localização + clima com a Luna — opt-in, DESLIGADO por default. Ligado,
      * o app capta o GPS, resolve cidade/uf e busca o clima; isso dá à Luna o «onde» (antes
      * ela só tinha o «quando»). Desligado, nada de local sai do aparelho.
@@ -125,7 +117,6 @@ object PrefsRepository {
         }
         _modoTecnico.value = false
         _modoAgentico.value = false
-        _contextoComercial.value = prefs.getBoolean(KEY_CONTEXTO_COMERCIAL, false)
         _localizacaoAtiva.value = prefs.getBoolean(KEY_LOCALIZACAO, false)
         _bolhaAtiva.value = prefs.getBoolean(KEY_BOLHA_ATIVA, false)
         bolhaLadoEsquerdo = prefs.getBoolean(KEY_BOLHA_LADO_ESQ, true)
@@ -276,11 +267,6 @@ object PrefsRepository {
                 .apply { if (enabled) putBoolean(KEY_MODO_TECNICO, false) }
                 .apply()
         }
-    }
-
-    fun setContextoComercial(enabled: Boolean) {
-        _contextoComercial.value = enabled
-        if (::prefs.isInitialized) prefs.edit().putBoolean(KEY_CONTEXTO_COMERCIAL, enabled).apply()
     }
 
     fun setLocalizacaoAtiva(enabled: Boolean) {

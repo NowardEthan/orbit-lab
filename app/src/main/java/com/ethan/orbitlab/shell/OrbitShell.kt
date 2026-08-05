@@ -679,16 +679,6 @@ private fun OrbitDrawer(
             modifier = Modifier.padding(start = 8.dp, top = 18.dp, bottom = 12.dp),
         )
 
-        val contextoComercial by PrefsRepository.contextoComercial.collectAsState()
-        ContextoSidebarSwitch(
-            comercial = contextoComercial,
-            onPessoal = { PrefsRepository.setContextoComercial(false) },
-            onComercial = { PrefsRepository.setContextoComercial(true) },
-            modifier = Modifier
-                .padding(horizontal = 4.dp)
-                .padding(bottom = 18.dp),
-        )
-
         // Destinos
         Column(
             Modifier
@@ -901,64 +891,6 @@ private fun OrbitDrawer(
  * Cabeçalho de seção que abre/fecha os filhos — pra Finanças (e futuras seções densas)
  * não engolir a gaveta inteira.
  */
-@Composable
-private fun ContextoSidebarSwitch(
-    comercial: Boolean,
-    onPessoal: () -> Unit,
-    onComercial: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier
-            .fillMaxWidth()
-            .height(42.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(OrbitTokens.graphiteSurf)
-            .border(1.dp, OrbitTokens.graphiteHair, RoundedCornerShape(12.dp))
-            .padding(4.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        ContextoSidebarSegmento(
-            texto = "Pessoal",
-            ativo = !comercial,
-            onClick = onPessoal,
-            modifier = Modifier.weight(1f),
-        )
-        ContextoSidebarSegmento(
-            texto = "Comercial",
-            ativo = comercial,
-            onClick = onComercial,
-            modifier = Modifier.weight(1f),
-        )
-    }
-}
-
-@Composable
-private fun ContextoSidebarSegmento(
-    texto: String,
-    ativo: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Box(
-        modifier
-            .fillMaxSize()
-            .clip(RoundedCornerShape(9.dp))
-            .background(if (ativo) OrbitTokens.graphiteRaised else OrbitTokens.graphiteSurf)
-            .orbitPressable(enabled = !ativo, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            texto,
-            color = if (ativo) OrbitTokens.bluePastel else OrbitTokens.textMidN,
-            fontSize = 12.5.sp,
-            fontFamily = Bricolage,
-            fontWeight = if (ativo) FontWeight.SemiBold else FontWeight.Medium,
-            lineHeight = 14.sp,
-        )
-    }
-}
-
 @Composable
 private fun DrawerSecaoColapsavel(
     titulo: String,

@@ -63,6 +63,8 @@ private fun erroTransitorio(msg: String?): Boolean {
  * Mostra fases (analisando / memória / escrevendo) e pinta o texto conforme chega.
  */
 object LunaApiChat {
+    private const val UI_FRAME_STREAM_MS = 32L
+    private const val UI_FRAME_STATUS_MS = 80L
 
     private fun rotuloFase(phase: String): String = when (phase) {
         "analysing" -> "Analisando…"
@@ -555,9 +557,15 @@ object LunaApiChat {
             fluxo += LunaTurnoSegmento.Acao(step.id)
         }
 
-        fun emitirUi() {
+        var ultimoEmitUiMs = 0L
+
+        fun emitirUi(forcar: Boolean = false) {
             val texto = respostaBuf.toString()
             val reasoning = reasoningBuf.toString()
+            val agora = System.currentTimeMillis()
+            val intervalo = if (texto.isNotEmpty()) UI_FRAME_STREAM_MS else UI_FRAME_STATUS_MS
+            if (!forcar && ultimoEmitUiMs > 0L && agora - ultimoEmitUiMs < intervalo) return
+            ultimoEmitUiMs = agora
             val durMs = System.currentTimeMillis() - t0
             val durLabel = "${(durMs / 1000.0).roundToInt().coerceAtLeast(1)}s"
             val run = montarRun(LunaActionRunStatus.RUNNING)
@@ -657,7 +665,7 @@ object LunaApiChat {
                             enfileirarUi {
                                 withContext(Dispatchers.Main) {
                                     aplicarAcao(event.json)
-                                    emitirUi()
+                                    emitirUi(forcar = true)
                                 }
                             }
                         }
@@ -666,6 +674,9 @@ object LunaApiChat {
                 }
                 // Espera a fila esvaziar (último typewriter) antes de fechar o turno / retry.
                 cadeiaRevelacao.join()
+                withContext(Dispatchers.Main) {
+                    emitirUi(forcar = true)
+                }
                 // Só repete se o servidor NÃO deu sinal de ter recebido (sem TTFB e sem nenhuma
                 // fase) E a resposta ainda não chegou pelo Firestore. Se ele já começou a gerar
                 // e a conexão caiu no meio, repetir faria a Luna responder DUAS vezes — a 2ª
