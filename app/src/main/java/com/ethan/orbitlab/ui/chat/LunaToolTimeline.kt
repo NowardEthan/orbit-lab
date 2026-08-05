@@ -161,15 +161,14 @@ fun LunaToolTimeline(
 }
 
 /**
- * Passo de ferramenta no fio.
- * - [comoChip] true (default): chrome grafite distinto da prosa da Luna (fluxo Cursor).
- * - false: linha quieta dentro da timeline recolhível (sem caixa dupla).
+ * Linha quieta dentro da timeline legado — sem glifo ⊟/⌕ (no aparelho virava «Icon»).
+ * No fio agentico o cluster colapsável é [LunaToolClusterCursor].
  */
 @Composable
 fun LunaToolPassoInline(
     step: LunaActionStep,
     modifier: Modifier = Modifier,
-    comoChip: Boolean = true,
+    @Suppress("UNUSED_PARAMETER") comoChip: Boolean = true,
 ) {
     val rodando = step.status == LunaActionStepStatus.RUNNING
     val erro = step.status == LunaActionStepStatus.ERROR
@@ -177,84 +176,33 @@ fun LunaToolPassoInline(
         step.label.lineSequence().firstOrNull().orEmpty()
             .replace(Regex("[#*_`~]"), "")
             .trim()
-            .let { if (it.length > 48) it.take(45) + "…" else it }
-    }
-    val detalhe = step.detail?.trim()?.takeIf { d ->
-        d.isNotBlank() &&
-            d != step.label &&
-            !eCodigoOuPayloadTecnico(d) &&
-            !pareceIdHash(d) &&
-            !step.label.contains(d, ignoreCase = true)
-    }
-    val shape = RoundedCornerShape(8.dp)
-    val rowMod = if (comoChip) {
-        modifier
-            .clip(shape)
-            .background(OrbitTokens.graphiteSurf)
-            .border(
-                1.dp,
-                when {
-                    erro -> OrbitTokens.danger.copy(alpha = 0.35f)
-                    rodando -> OrbitTokens.bluePastel.copy(alpha = 0.28f)
-                    else -> OrbitTokens.graphiteHair
-                },
-                shape,
-            )
-            .padding(horizontal = 10.dp, vertical = 7.dp)
-    } else {
-        modifier.fillMaxWidth()
+            .let { if (it.length > 52) it.take(49) + "…" else it }
     }
     Row(
-        modifier = rowMod,
-        verticalAlignment = if (comoChip) Alignment.CenterVertically else Alignment.Top,
-        horizontalArrangement = Arrangement.spacedBy(if (comoChip) 8.dp else 9.dp),
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Box(
-            modifier = Modifier
-                .size(if (comoChip) 14.dp else 15.dp)
-                .then(if (!comoChip) Modifier.padding(top = 2.dp) else Modifier),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (rodando) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(12.dp),
-                    strokeWidth = 1.4.dp,
-                    color = OrbitTokens.bluePastel,
-                )
-            } else {
-                Text(
-                    step.kind.icone(),
-                    color = if (erro) OrbitTokens.danger else OrbitTokens.textLowN,
-                    fontSize = if (comoChip) 11.sp else 12.sp,
-                )
-            }
-        }
-        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-            Text(
-                labelLimpo,
-                color = when {
-                    rodando -> OrbitTokens.bluePastel
-                    erro -> OrbitTokens.danger
-                    comoChip -> OrbitTokens.textMidN
-                    else -> OrbitTokens.textHiN
-                },
-                fontSize = if (comoChip) 12.sp else 13.sp,
-                fontWeight = FontWeight.Medium,
-                lineHeight = if (comoChip) 15.sp else 17.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+        if (rodando) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(11.dp),
+                strokeWidth = 1.3.dp,
+                color = OrbitTokens.bluePastel,
             )
-            if (detalhe != null) {
-                Text(
-                    detalhe,
-                    color = OrbitTokens.textLowN,
-                    fontSize = if (comoChip) 11.sp else 12.sp,
-                    lineHeight = if (comoChip) 14.sp else 16.sp,
-                    maxLines = if (comoChip) 1 else 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
         }
+        Text(
+            labelLimpo,
+            color = when {
+                rodando -> OrbitTokens.bluePastel
+                erro -> OrbitTokens.danger
+                else -> OrbitTokens.textMidN
+            },
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Normal,
+            lineHeight = 16.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

@@ -199,8 +199,8 @@ recolhida («N passos») — sensação de “ela fez uma ação” sem prosa.
 | Pipeline / SSE | `onNarracao` → `onStreamContentDelta` (`content` mid-loop) |
 | Prompt | `DIRETRIZ_NARRACAO_AGENTICA` + anti-meta com exceção de ponte de 1 frase |
 | Lab | fio **intercalado** (`LunaFluxoAgentico` + `fluxo` no Firestore); toolMeta blocos |
-| Lab UX | typewriter nas pontes (SSE em bloco → revelação); chip grafite ≠ prosa |
-| Core coleira | texto-só **não** encerra com ☐; nudge + `maxRodadas` dinâmico; `planejar` ≤ 5 |
+| Lab UX | typewriter nas pontes; badges Cursor (colapsáveis, sem ícone); cluster de tools |
+| Core | coleira ☐ + `DIRETRIZ_AMBIENTAR` (ler antes, conferir depois; web se precisar) |
 
 **Sensação alvo**
 
