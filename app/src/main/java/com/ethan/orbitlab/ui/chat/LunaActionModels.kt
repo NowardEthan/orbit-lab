@@ -274,13 +274,25 @@ fun toolMeta(ferramenta: String): ToolMeta = when (ferramenta) {
     )
     "editar_bloco_artefato" -> ToolMeta(
         kind = LunaActionStepKind.WRITE,
-        live = { "Editando o bloco…" },
-        done = { "Editou o bloco" },
+        live = { arg ->
+            val h = resolverTituloHumano(arg)
+            if (h.isBlank()) "Editando o bloco…" else "Editando bloco em \"$h\"…"
+        },
+        done = { arg ->
+            val h = resolverTituloHumano(arg)
+            if (h.isBlank()) "Editou o bloco" else "Editou bloco em \"$h\""
+        },
     )
     "ler_bloco" -> ToolMeta(
         kind = LunaActionStepKind.SUMMARIZE,
-        live = { "Lendo o bloco…" },
-        done = { "Leu o bloco" },
+        live = { arg ->
+            val h = resolverTituloHumano(arg)
+            if (h.isBlank()) "Lendo o bloco…" else "Lendo bloco de \"$h\"…"
+        },
+        done = { arg ->
+            val h = resolverTituloHumano(arg)
+            if (h.isBlank()) "Leu o bloco" else "Leu bloco de \"$h\""
+        },
     )
     "ler_artefato" -> ToolMeta(
         kind = LunaActionStepKind.SUMMARIZE,
@@ -295,8 +307,14 @@ fun toolMeta(ferramenta: String): ToolMeta = when (ferramenta) {
     )
     "ler_estrutura" -> ToolMeta(
         kind = LunaActionStepKind.SUMMARIZE,
-        live = { "Consultando a estrutura…" },
-        done = { "Consultou a estrutura" },
+        live = { arg ->
+            val h = resolverTituloHumano(arg)
+            if (h.isBlank()) "Consultando a estrutura…" else "Consultando estrutura de \"$h\"…"
+        },
+        done = { arg ->
+            val h = resolverTituloHumano(arg)
+            if (h.isBlank()) "Consultou a estrutura" else "Consultou estrutura de \"$h\""
+        },
     )
     "ler_secao" -> ToolMeta(
         kind = LunaActionStepKind.SUMMARIZE,

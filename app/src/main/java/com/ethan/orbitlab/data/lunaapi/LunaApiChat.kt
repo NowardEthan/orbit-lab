@@ -94,27 +94,38 @@ object LunaApiChat {
             "web_search" -> argumentos.optString("query")
             "ler_url" -> argumentos.optString("url")
             "consultar_atlas" -> argumentos.optString("termo").ifBlank { argumentos.optString("query") }
-            "criar_artefato", "editar_artefato", "editar_trecho_artefato", "ler_artefato", "ler_secao", "buscar_no_artefato" -> {
-                val titulo = argumentos.optString("titulo").takeIf { it.isNotBlank() }
-                val alteracao = argumentos.optString("alteracao").takeIf { it.isNotBlank() }
-                val secao = argumentos.optString("secao").takeIf { it.isNotBlank() }
-                val query = argumentos.optString("query").takeIf { it.isNotBlank() }
-                when {
-                    !titulo.isNullOrBlank() && !alteracao.isNullOrBlank() -> "$titulo ($alteracao)"
-                    !titulo.isNullOrBlank() -> titulo
-                    !secao.isNullOrBlank() -> secao
-                    !query.isNullOrBlank() -> query
-                    !alteracao.isNullOrBlank() -> alteracao
+            // Artefatos: SEMPRE título humano (nunca markdown/corpo — isso virava «Acrescentou em "Acrescentou…"»).
+            "criar_artefato", "editar_artefato", "editar_trecho_artefato", "ler_artefato",
+            "ler_secao", "buscar_no_artefato", "ler_estrutura", "inserir_blocos",
+            "editar_bloco_artefato", "ler_bloco", "anotar_canone", "listar_artefatos",
+            -> tituloArtefatoDosArgs(argumentos).ifBlank {
+                when (ferramenta) {
+                    "ler_secao" -> argumentos.optString("secao")
+                    "buscar_no_artefato" -> argumentos.optString("query")
                     else -> ""
                 }
             }
             else -> {
                 val chavesPreferenciais = listOf("titulo", "nome", "termo", "query", "url", "secao", "passo")
-                val chave = chavesPreferenciais.firstOrNull { argumentos.has(it) && argumentos.optString(it).isNotBlank() }
+                val chave = chavesPreferenciais.firstOrNull {
+                    argumentos.has(it) && argumentos.optString(it).isNotBlank()
+                }
                 if (chave != null) argumentos.optString(chave) else ""
             }
         }
         return limparPayloadHumano(bruto)
+    }
+
+    /** Título pra badge: `titulo` explícito, senão resolve `id` no cache da estante. */
+    private fun tituloArtefatoDosArgs(argumentos: JSONObject): String {
+        val titulo = argumentos.optString("titulo").trim()
+        if (titulo.isNotBlank() && !pareceCodigoOuPayloadTecnico(titulo) && titulo.length <= 80) {
+            return titulo
+        }
+        val id = argumentos.optString("id").ifBlank { argumentos.optString("documento_id") }.trim()
+        if (id.isBlank()) return ""
+        val cached = com.ethan.orbitlab.data.firebase.FirestoreDocumentos.obterTitulo(id)
+        return cached?.takeIf { it.isNotBlank() }.orEmpty()
     }
 
     private fun limparPayloadHumano(texto: String): String {

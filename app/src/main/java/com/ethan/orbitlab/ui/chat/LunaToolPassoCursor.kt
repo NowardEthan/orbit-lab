@@ -125,8 +125,7 @@ fun LunaToolClusterCursor(
 private fun LinhaDetalheTool(step: LunaActionStep) {
     val rodando = step.status == LunaActionStepStatus.RUNNING
     val erro = step.status == LunaActionStepStatus.ERROR
-    val verbo = remember(step) { verboDetalheTool(step) }
-    val alvo = remember(step) { alvoDetalheTool(step) }
+    val partes = remember(step) { partesLinhaDetalhe(step) }
     val stats = remember(step) { statsDiffDoLabel(step) }
 
     val linha = buildAnnotatedString {
@@ -140,17 +139,17 @@ private fun LinhaDetalheTool(step: LunaActionStep) {
                 fontWeight = FontWeight.Normal,
             ),
         ) {
-            append(verbo)
+            append(partes.acao)
         }
-        if (alvo.isNotBlank()) {
-            append(" ")
+        if (partes.referencia.isNotBlank()) {
+            append(" · ")
             withStyle(
                 SpanStyle(
                     color = if (erro) OrbitTokens.danger else OrbitTokens.textMidN,
                     fontWeight = FontWeight.Medium,
                 ),
             ) {
-                append(alvo)
+                append(partes.referencia)
             }
         }
         if (stats != null) {
@@ -174,11 +173,16 @@ private fun LinhaDetalheTool(step: LunaActionStep) {
     )
 }
 
-/** Resumo colapsado: «Consultou estrutura, ajustou documento» / contagens. */
+private data class PartesLinhaDetalhe(val acao: String, val referencia: String)
+
+/** Resumo colapsado: «Consultou estrutura · Livro» / contagens. */
 internal fun resumoClusterTools(steps: List<LunaActionStep>): String {
     if (steps.isEmpty()) return ""
     if (steps.size == 1) {
-        return limparLabelTool(steps.first().label)
+        val p = partesLinhaDetalhe(steps.first())
+        return if (p.referencia.isNotBlank()) "${p.acao} · ${p.referencia}" else p.acao.ifBlank {
+            limparLabelTool(steps.first().label)
+        }
     }
     val reads = steps.count {
         it.kind == LunaActionStepKind.READ ||
@@ -218,42 +222,50 @@ private fun limparLabelTool(label: String): String =
         .trim()
         .let { if (it.length > 56) it.take(53) + "…" else it }
 
-private fun verboDetalheTool(step: LunaActionStep): String {
-    if (step.status == LunaActionStepStatus.RUNNING) {
-        return when (step.kind) {
-            LunaActionStepKind.READ, LunaActionStepKind.MEMORY -> "Lendo"
-            LunaActionStepKind.SEARCH -> "Pesquisando"
-            LunaActionStepKind.WRITE -> "Editando"
-            LunaActionStepKind.VISION, LunaActionStepKind.VIDEO -> "Olhando"
-            else -> "Trabalhando"
+/**
+ * Uma linha limpa: ação + referência do artefato.
+ * Nunca repete («Consultou a estrutura a estrutura») nem cola verbo errado no label.
+ */
+private fun partesLinhaDetalhe(step: LunaActionStep): PartesLinhaDetalhe {
+    val label = limparLabelTool(step.label)
+    val ref = referenciaArtefato(step)
+    val acao = when (step.ferramenta) {
+        "ler_estrutura" -> if (step.status == LunaActionStepStatus.RUNNING) "Consultando estrutura" else "Consultou estrutura"
+        "inserir_blocos" -> if (step.status == LunaActionStepStatus.RUNNING) "Acrescentando" else "Acrescentou"
+        "editar_artefato", "editar_trecho_artefato", "editar_bloco_artefato" ->
+            if (step.status == LunaActionStepStatus.RUNNING) "Editando" else "Editou"
+        "ler_artefato", "ler_secao", "ler_bloco" ->
+            if (step.status == LunaActionStepStatus.RUNNING) "Lendo" else "Leu"
+        "criar_artefato" -> if (step.status == LunaActionStepStatus.RUNNING) "Criando" else "Criou"
+        "web_search" -> if (step.status == LunaActionStepStatus.RUNNING) "Pesquisando" else "Pesquisou"
+        "listar_artefatos" -> if (step.status == LunaActionStepStatus.RUNNING) "Listando estante" else "Listou a estante"
+        else -> {
+            // Sem ferramenta conhecida: usa o label inteiro e NÃO anexa ref (evita eco).
+            return PartesLinhaDetalhe(acao = label, referencia = "")
         }
     }
-    return when (step.kind) {
-        LunaActionStepKind.READ, LunaActionStepKind.MEMORY -> "Leu"
-        LunaActionStepKind.SEARCH -> "Pesquisou"
-        LunaActionStepKind.WRITE -> "Editou"
-        LunaActionStepKind.VISION, LunaActionStepKind.VIDEO -> "Olhou"
-        LunaActionStepKind.VERIFY -> "Conferiu"
-        LunaActionStepKind.RUN -> "Rodou"
-        else -> limparLabelTool(step.label).take(24).ifBlank { "Fez" }
+    // Se a ref já está no label («… de "Livro"»), não repete.
+    if (ref.isNotBlank() && label.contains(ref, ignoreCase = true)) {
+        return PartesLinhaDetalhe(acao = label, referencia = "")
     }
+    return PartesLinhaDetalhe(acao = acao, referencia = ref)
 }
 
-private fun alvoDetalheTool(step: LunaActionStep): String {
-    val d = step.detail?.trim()?.takeIf {
-        it.isNotBlank() &&
-            !pareceIdHash(it) &&
-            it.length < 80 &&
-            !it.startsWith("{") &&
-            !it.startsWith("[")
-    }
-    if (d != null) return d
-    // Tira o verbo do label («Consultou a estrutura» → «a estrutura»).
+/** Título/alvo humano do passo — nunca o markdown nem eco do próprio label. */
+private fun referenciaArtefato(step: LunaActionStep): String {
+    val d = step.detail?.trim().orEmpty()
+    if (d.isBlank() || pareceIdHash(d) || d.startsWith("{") || d.startsWith("[")) return ""
+    if (d.length > 72) return ""
     val label = limparLabelTool(step.label)
-    val semVerbo = label
-        .replace(Regex("^(Consultou|Lendo|Leu|Editou|Editando|Ajustou|Ajustando|Pesquisou|Pesquisando|Criou|Criando|Olhou|Olhando)\\s+", RegexOption.IGNORE_CASE), "")
-        .trim()
-    return semVerbo.take(56)
+    // Detail que é só eco do label («a estrutura», «no documento») → ignora.
+    val ruido = listOf(
+        "a estrutura", "estrutura", "o documento", "no documento", "documento",
+        "o artefato", "artefato", "a seção", "seção", "o bloco", "bloco",
+    )
+    if (ruido.any { d.equals(it, ignoreCase = true) }) return ""
+    if (label.contains(d, ignoreCase = true)) return ""
+    // Tirar aspas extras do título.
+    return d.trim('"').trim()
 }
 
 /** Extrai +N -M se o label/detail trouxer (ex. futuro do core). */
