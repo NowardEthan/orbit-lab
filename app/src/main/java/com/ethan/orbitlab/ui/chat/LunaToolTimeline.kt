@@ -4,7 +4,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
@@ -13,12 +12,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowRight
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -98,11 +95,7 @@ fun LunaToolTimeline(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             if (rodando != null) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(13.dp),
-                    strokeWidth = 1.5.dp,
-                    color = OrbitTokens.bluePastel,
-                )
+                LunaStatusDot(status = LunaActionStepStatus.RUNNING, size = 10.dp)
             } else {
                 Icon(
                     imageVector = if (aberto) {
@@ -115,14 +108,24 @@ fun LunaToolTimeline(
                     modifier = Modifier.size(18.dp),
                 )
             }
-            Text(
-                text = resumo,
-                color = OrbitTokens.textMidN,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            if (rodando != null) {
+                LunaTextoVivo(
+                    text = resumo,
+                    fontSize = 13.sp,
+                    lineHeight = 17.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                )
+            } else {
+                Text(
+                    text = resumo,
+                    color = OrbitTokens.textMidN,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
 
         AnimatedVisibility(
@@ -139,11 +142,10 @@ fun LunaToolTimeline(
                     .background(OrbitTokens.graphiteSurf)
                     .border(1.dp, OrbitTokens.graphiteHair, RoundedCornerShape(10.dp)),
             ) {
-                Box(
-                    Modifier
-                        .width(2.5.dp)
-                        .fillMaxHeight()
-                        .background(OrbitTokens.bluePastel.copy(alpha = 0.45f)),
+                LunaLiveRail(
+                    aoVivo = rodando != null,
+                    erro = steps.any { it.status == LunaActionStepStatus.ERROR },
+                    modifier = Modifier.fillMaxHeight(),
                 )
                 Column(
                     modifier = Modifier
@@ -188,26 +190,31 @@ fun LunaToolPassoInline(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        LunaStatusDot(status = step.status, size = 8.dp)
         if (rodando) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(11.dp),
-                strokeWidth = 1.3.dp,
-                color = OrbitTokens.bluePastel,
+            LunaTextoVivo(
+                text = labelLimpo,
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
+                fontWeight = FontWeight.Normal,
+                maxLines = 1,
+                modifier = Modifier.weight(1f),
+            )
+        } else {
+            Text(
+                labelLimpo,
+                color = when {
+                    erro -> OrbitTokens.danger
+                    else -> OrbitTokens.textMidN
+                },
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Normal,
+                lineHeight = 16.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
             )
         }
-        Text(
-            labelLimpo,
-            color = when {
-                rodando -> OrbitTokens.bluePastel
-                erro -> OrbitTokens.danger
-                else -> OrbitTokens.textMidN
-            },
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Normal,
-            lineHeight = 16.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
     }
 }
 

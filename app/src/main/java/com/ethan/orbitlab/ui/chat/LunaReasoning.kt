@@ -1,7 +1,6 @@
 package com.ethan.orbitlab.ui.chat
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -35,11 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ethan.orbitlab.ui.theme.OrbitMotion
@@ -172,44 +167,11 @@ fun LunaReasoningPensando(
                 )
             }
         }
-        TextoPensandoComBrilho(label = label)
-    }
-}
-
-@Composable
-private fun TextoPensandoComBrilho(label: String) {
-    val transicao = rememberInfiniteTransition(label = "texto-pensando")
-    val progresso by transicao.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1450, easing = LinearEasing),
-        ),
-        label = "brilho",
-    )
-    var tamanhoTexto by remember { mutableStateOf(IntSize.Zero) }
-    val largura = tamanhoTexto.width.toFloat().coerceAtLeast(1f)
-    val faixa = largura * 0.42f
-    val centro = -faixa + (largura + faixa * 2f) * progresso
-    val brush = Brush.linearGradient(
-        colorStops = arrayOf(
-            0f to OrbitTokens.textLowN.copy(alpha = 0.72f),
-            0.42f to OrbitTokens.textMidN.copy(alpha = 0.86f),
-            0.5f to OrbitTokens.textHiN,
-            0.58f to OrbitTokens.bluePastel,
-            1f to OrbitTokens.textLowN.copy(alpha = 0.72f),
-        ),
-        start = Offset(centro - faixa, 0f),
-        end = Offset(centro + faixa, 0f),
-    )
-
-    Text(
-        text = label,
-        style = TextStyle(
-            brush = brush,
+        LunaTextoVivo(
+            text = label,
             fontSize = 13.sp,
             fontWeight = FontWeight.Medium,
-        ),
-        onTextLayout = { tamanhoTexto = it.size },
-    )
+            maxLines = 1,
+        )
+    }
 }

@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
@@ -69,11 +68,9 @@ fun LunaPlanChecklist(
             .background(OrbitTokens.graphiteSurf)
             .border(1.dp, OrbitTokens.graphiteHair, shape),
     ) {
-        Box(
-            Modifier
-                .width(2.5.dp)
-                .fillMaxHeight()
-                .background(OrbitTokens.bluePastel.copy(alpha = 0.45f)),
+        LunaLiveRail(
+            aoVivo = aoVivo && feitos < plano.size,
+            modifier = Modifier.fillMaxHeight(),
         )
         Column(
             modifier = Modifier
@@ -81,13 +78,23 @@ fun LunaPlanChecklist(
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(
-                text = resumo,
-                color = OrbitTokens.textMidN,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                letterSpacing = 0.2.sp,
-            )
+            if (aoVivo && feitos < plano.size) {
+                LunaTextoVivo(
+                    text = resumo,
+                    fontSize = 12.sp,
+                    lineHeight = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                )
+            } else {
+                Text(
+                    text = resumo,
+                    color = OrbitTokens.textMidN,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 0.2.sp,
+                )
+            }
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 plano.forEachIndexed { i, passo ->
                     val ativo = aoVivo && i == corrente && !passo.feito

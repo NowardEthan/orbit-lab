@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -16,7 +17,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowRight
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -51,6 +51,7 @@ fun LunaToolClusterCursor(
 ) {
     if (steps.isEmpty()) return
     val rodando = steps.any { it.status == LunaActionStepStatus.RUNNING }
+    val erro = steps.any { it.status == LunaActionStepStatus.ERROR }
     var aberto by remember(steps.map { it.id }.joinToString()) {
         mutableStateOf(rodando)
     }
@@ -72,20 +73,17 @@ fun LunaToolClusterCursor(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .liveSurface(ativo = rodando, erro = erro)
                 .orbitPressable {
                     aberto = !aberto
                     usuarioMexeu = true
                 }
-                .padding(vertical = 3.dp),
+                .padding(horizontal = if (rodando || erro) 8.dp else 0.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
         ) {
             if (rodando) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(12.dp),
-                    strokeWidth = 1.4.dp,
-                    color = OrbitTokens.bluePastel,
-                )
+                LunaStatusDot(status = LunaActionStepStatus.RUNNING, size = 10.dp)
             } else {
                 Icon(
                     imageVector = if (aberto) {
@@ -98,16 +96,27 @@ fun LunaToolClusterCursor(
                     modifier = Modifier.size(16.dp),
                 )
             }
-            Text(
-                text = resumo,
-                color = if (rodando) OrbitTokens.bluePastel else OrbitTokens.textMidN,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Normal,
-                lineHeight = 17.sp,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false),
-            )
+            if (rodando) {
+                LunaTextoVivo(
+                    text = resumo,
+                    fontSize = 13.sp,
+                    lineHeight = 17.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 2,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+            } else {
+                Text(
+                    text = resumo,
+                    color = if (erro) OrbitTokens.danger else OrbitTokens.textMidN,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Normal,
+                    lineHeight = 17.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+            }
         }
 
         AnimatedVisibility(
@@ -137,75 +146,85 @@ private fun LinhaDetalheTool(step: LunaActionStep) {
     val stats = remember(step) { statsDiffDoLabel(step) }
     val snippet = remember(step) { snippetDoDetail(step) }
 
-    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-        val linha = buildAnnotatedString {
-            withStyle(
-                SpanStyle(
-                    color = when {
-                        erro -> OrbitTokens.danger
-                        rodando -> OrbitTokens.bluePastel
-                        else -> OrbitTokens.textLowN
-                    },
-                    fontWeight = FontWeight.Normal,
-                ),
-            ) {
-                append(partes.acao)
-            }
-            if (partes.referencia.isNotBlank()) {
-                append(" · ")
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
+    ) {
+        LunaStatusDot(status = step.status, size = 7.dp, modifier = Modifier.padding(top = 4.dp))
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(1.dp),
+        ) {
+            val linha = buildAnnotatedString {
                 withStyle(
                     SpanStyle(
-                        color = if (erro) OrbitTokens.danger else OrbitTokens.textMidN,
-                        fontWeight = FontWeight.Medium,
+                        color = when {
+                            erro -> OrbitTokens.danger
+                            rodando -> OrbitTokens.bluePastel
+                            else -> OrbitTokens.textLowN
+                        },
+                        fontWeight = FontWeight.Normal,
                     ),
                 ) {
-                    append(partes.referencia)
+                    append(partes.acao)
+                }
+                if (partes.referencia.isNotBlank()) {
+                    append(" · ")
+                    withStyle(
+                        SpanStyle(
+                            color = if (erro) OrbitTokens.danger else OrbitTokens.textMidN,
+                            fontWeight = FontWeight.Medium,
+                        ),
+                    ) {
+                        append(partes.referencia)
+                    }
+                }
+                if (stats != null) {
+                    append(" ")
+                    withStyle(SpanStyle(color = OrbitTokens.online, fontWeight = FontWeight.Medium)) {
+                        append("+${stats.first}")
+                    }
+                    append(" ")
+                    withStyle(SpanStyle(color = OrbitTokens.danger, fontWeight = FontWeight.Medium)) {
+                        append("-${stats.second}")
+                    }
                 }
             }
-            if (stats != null) {
-                append(" ")
-                withStyle(SpanStyle(color = OrbitTokens.online, fontWeight = FontWeight.Medium)) {
-                    append("+${stats.first}")
-                }
-                append(" ")
-                withStyle(SpanStyle(color = OrbitTokens.danger, fontWeight = FontWeight.Medium)) {
-                    append("-${stats.second}")
-                }
-            }
-        }
 
-        Text(
-            text = linha,
-            fontSize = 12.sp,
-            lineHeight = 16.sp,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
-        if (snippet.isNotBlank()) {
             Text(
-                text = snippet,
-                color = OrbitTokens.textLowN,
-                fontSize = 11.sp,
-                lineHeight = 14.sp,
-                maxLines = 1,
+                text = linha,
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-        }
-        if (step.queries.isNotEmpty()) {
-            Text(
-                text = step.queries.take(2).joinToString(" · ") { q ->
-                    val t = q.trim().trim('"')
-                    if (t.length > 42) "“${t.take(39)}…”" else "“$t”"
-                },
-                color = OrbitTokens.textLowN,
-                fontSize = 11.sp,
-                lineHeight = 14.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        if (step.sources.isNotEmpty()) {
-            FontesCompactas(fontes = step.sources)
+            if (snippet.isNotBlank()) {
+                Text(
+                    text = snippet,
+                    color = OrbitTokens.textLowN,
+                    fontSize = 11.sp,
+                    lineHeight = 14.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (step.queries.isNotEmpty()) {
+                Text(
+                    text = step.queries.take(2).joinToString(" · ") { q ->
+                        val t = q.trim().trim('"')
+                        if (t.length > 42) "“${t.take(39)}…”" else "“$t”"
+                    },
+                    color = OrbitTokens.textLowN,
+                    fontSize = 11.sp,
+                    lineHeight = 14.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (step.sources.isNotEmpty()) {
+                FontesCompactas(fontes = step.sources)
+            }
         }
     }
 }
@@ -232,7 +251,8 @@ private fun FontesCompactas(fontes: List<LunaWebFonte>) {
                 maxLines = 1,
                 modifier = Modifier
                     .clip(RoundedCornerShape(999.dp))
-                    .background(OrbitTokens.graphiteRaised)
+                    .background(OrbitTokens.graphiteRaised.copy(alpha = 0.66f))
+                    .border(1.dp, OrbitTokens.graphiteHair, RoundedCornerShape(999.dp))
                     .orbitPressable {
                         runCatching {
                             context.startActivity(
