@@ -684,7 +684,9 @@ private fun OrbitDrawer(
             comercial = contextoComercial,
             onPessoal = { PrefsRepository.setContextoComercial(false) },
             onComercial = { PrefsRepository.setContextoComercial(true) },
-            modifier = Modifier.padding(horizontal = 4.dp, bottom = 18.dp),
+            modifier = Modifier
+                .padding(horizontal = 4.dp)
+                .padding(bottom = 18.dp),
         )
 
         // Destinos
