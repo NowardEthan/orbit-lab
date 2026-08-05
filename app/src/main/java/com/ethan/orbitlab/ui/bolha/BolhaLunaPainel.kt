@@ -64,6 +64,7 @@ import com.ethan.orbitlab.data.billing.PlanosNav
 import com.ethan.orbitlab.data.billing.UsageRepository
 import com.ethan.orbitlab.ui.chat.ChatInputArea
 import com.ethan.orbitlab.ui.chat.ChatTimeline
+import com.ethan.orbitlab.ui.chat.ComposerSeed
 import com.ethan.orbitlab.ui.chat.MessageActionSheet
 import com.ethan.orbitlab.ui.chat.ThreadReference
 import com.ethan.orbitlab.ui.chat.buildImageReference
@@ -114,6 +115,7 @@ fun BolhaLunaPainel(
 
     var messageReference by remember { mutableStateOf<ThreadReference?>(null) }
     var actionSheetMsg by remember { mutableStateOf<Mensagem?>(null) }
+    var composerSeed by remember { mutableStateOf<ComposerSeed?>(null) }
 
     val scope = rememberCoroutineScope()
     val densidade = LocalDensity.current
@@ -289,6 +291,8 @@ fun BolhaLunaPainel(
                         onClearReference = { messageReference = null },
                         containerColor = OrbitTokens.graphiteRaised,
                         textoInicial = rascunhoInicial,
+                        seed = composerSeed,
+                        onSeedConsumido = { composerSeed = null },
                     )
                 }
             }
@@ -319,6 +323,16 @@ fun BolhaLunaPainel(
                     }
                 },
                 onReenviar = { turno.reenviarDesde(sheetMsg) },
+                onEditarReenviar = {
+                    val rascunho = turno.prepararEdicaoParaReenviar(sheetMsg) ?: return@MessageActionSheet
+                    messageReference = rascunho.reference
+                    composerSeed = ComposerSeed(
+                        token = System.currentTimeMillis(),
+                        texto = rascunho.texto,
+                        anexos = rascunho.anexos,
+                    )
+                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                },
             )
         }
     }

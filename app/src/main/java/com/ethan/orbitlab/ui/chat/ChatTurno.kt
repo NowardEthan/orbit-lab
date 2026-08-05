@@ -207,14 +207,8 @@ class ChatTurno(
 
     fun reenviarDesde(sheetMsg: Mensagem) {
         if (streamState.value !is LunaStreamEstado.Idle) return
+        val ancora = ancoraUsuarioPara(sheetMsg) ?: return
         val msgs = ChatRepository.getConversa(conversaId)?.mensagens.orEmpty()
-        val ancora: Mensagem? = if (!sheetMsg.isLuna) {
-            sheetMsg
-        } else {
-            val idx = msgs.indexOfFirst { it.id == sheetMsg.id }
-            if (idx >= 0) msgs.take(idx).lastOrNull { !it.isLuna } else null
-        }
-        if (ancora == null) return
         val historicoAntes = msgs.take(msgs.indexOfFirst { it.id == ancora.id })
         ChatRepository.truncarApos(conversaId, ancora.id)
         val userMsgId = ancora.id
@@ -230,7 +224,39 @@ class ChatTurno(
             null,
         )
     }
+
+    /**
+     * Editar antes de reenviar: tira a fala (e o que veio depois) da thread e devolve
+     * o rascunho pro composer. O próximo envio vira a nova mensagem.
+     */
+    fun prepararEdicaoParaReenviar(sheetMsg: Mensagem): RascunhoEdicaoMensagem? {
+        if (streamState.value !is LunaStreamEstado.Idle) return null
+        val ancora = ancoraUsuarioPara(sheetMsg) ?: return null
+        ChatRepository.truncarDesde(conversaId, ancora.id)
+        return RascunhoEdicaoMensagem(
+            texto = ancora.texto,
+            anexos = ancora.attachments,
+            reference = ancora.reference,
+        )
+    }
+
+    private fun ancoraUsuarioPara(sheetMsg: Mensagem): Mensagem? {
+        val msgs = ChatRepository.getConversa(conversaId)?.mensagens.orEmpty()
+        return if (!sheetMsg.isLuna) {
+            sheetMsg
+        } else {
+            val idx = msgs.indexOfFirst { it.id == sheetMsg.id }
+            if (idx >= 0) msgs.take(idx).lastOrNull { !it.isLuna } else null
+        }
+    }
 }
+
+/** Rascunho que volta ao composer ao «Editar e reenviar». */
+data class RascunhoEdicaoMensagem(
+    val texto: String,
+    val anexos: List<ComposerAttachment> = emptyList(),
+    val reference: ThreadReference? = null,
+)
 
 data class ChatTurnoState(
     val turno: ChatTurno,
