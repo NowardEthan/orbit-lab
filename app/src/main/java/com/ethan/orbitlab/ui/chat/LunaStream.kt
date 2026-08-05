@@ -263,7 +263,8 @@ internal fun fatiarTokensStream(texto: String): List<String> {
     return out
 }
 
-private fun atrasoToken(token: String): Long = when {
+/** Atraso por token no typewriter (stream conversacional e revelação das pontes agenticas). */
+internal fun atrasoToken(token: String): Long = when {
     token.startsWith("```") -> 280L
     token.all { it == '\n' } -> if (token.length >= 2) 90L else 45L
     token.isBlank() -> 12L
