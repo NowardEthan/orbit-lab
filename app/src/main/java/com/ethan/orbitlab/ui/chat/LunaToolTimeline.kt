@@ -151,18 +151,25 @@ fun LunaToolTimeline(
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalArrangement = Arrangement.spacedBy(9.dp),
                 ) {
-                    steps.forEach { step -> LunaToolPassoInline(step) }
+                    steps.forEach { step ->
+                        LunaToolPassoInline(step = step, comoChip = false)
+                    }
                 }
             }
         }
     }
 }
 
-/** Uma linha de tool no fio (também usada no fluxo intercalado estilo Cursor). */
+/**
+ * Passo de ferramenta no fio.
+ * - [comoChip] true (default): chrome grafite distinto da prosa da Luna (fluxo Cursor).
+ * - false: linha quieta dentro da timeline recolhível (sem caixa dupla).
+ */
 @Composable
 fun LunaToolPassoInline(
     step: LunaActionStep,
     modifier: Modifier = Modifier,
+    comoChip: Boolean = true,
 ) {
     val rodando = step.status == LunaActionStepStatus.RUNNING
     val erro = step.status == LunaActionStepStatus.ERROR
@@ -170,29 +177,55 @@ fun LunaToolPassoInline(
         step.label.lineSequence().firstOrNull().orEmpty()
             .replace(Regex("[#*_`~]"), "")
             .trim()
-            .let { if (it.length > 50) it.take(47) + "…" else it }
+            .let { if (it.length > 48) it.take(45) + "…" else it }
+    }
+    val detalhe = step.detail?.trim()?.takeIf { d ->
+        d.isNotBlank() &&
+            d != step.label &&
+            !eCodigoOuPayloadTecnico(d) &&
+            !pareceIdHash(d) &&
+            !step.label.contains(d, ignoreCase = true)
+    }
+    val shape = RoundedCornerShape(8.dp)
+    val rowMod = if (comoChip) {
+        modifier
+            .clip(shape)
+            .background(OrbitTokens.graphiteSurf)
+            .border(
+                1.dp,
+                when {
+                    erro -> OrbitTokens.danger.copy(alpha = 0.35f)
+                    rodando -> OrbitTokens.bluePastel.copy(alpha = 0.28f)
+                    else -> OrbitTokens.graphiteHair
+                },
+                shape,
+            )
+            .padding(horizontal = 10.dp, vertical = 7.dp)
+    } else {
+        modifier.fillMaxWidth()
     }
     Row(
-        modifier = modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.Top,
-        horizontalArrangement = Arrangement.spacedBy(9.dp),
+        modifier = rowMod,
+        verticalAlignment = if (comoChip) Alignment.CenterVertically else Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(if (comoChip) 8.dp else 9.dp),
     ) {
-        // Marcador do passo — spinner enquanto roda, senão o glifo do tipo (quieto).
         Box(
-            modifier = Modifier.size(15.dp).padding(top = 2.dp),
+            modifier = Modifier
+                .size(if (comoChip) 14.dp else 15.dp)
+                .then(if (!comoChip) Modifier.padding(top = 2.dp) else Modifier),
             contentAlignment = Alignment.Center,
         ) {
             if (rodando) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(12.dp),
-                    strokeWidth = 1.5.dp,
+                    strokeWidth = 1.4.dp,
                     color = OrbitTokens.bluePastel,
                 )
             } else {
                 Text(
                     step.kind.icone(),
                     color = if (erro) OrbitTokens.danger else OrbitTokens.textLowN,
-                    fontSize = 12.sp,
+                    fontSize = if (comoChip) 11.sp else 12.sp,
                 )
             }
         }
@@ -202,28 +235,22 @@ fun LunaToolPassoInline(
                 color = when {
                     rodando -> OrbitTokens.bluePastel
                     erro -> OrbitTokens.danger
+                    comoChip -> OrbitTokens.textMidN
                     else -> OrbitTokens.textHiN
                 },
-                fontSize = 13.sp,
+                fontSize = if (comoChip) 12.sp else 13.sp,
                 fontWeight = FontWeight.Medium,
-                lineHeight = 17.sp,
+                lineHeight = if (comoChip) 15.sp else 17.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            val detalhe = step.detail?.trim()?.takeIf { d ->
-                d.isNotBlank() &&
-                d != step.label &&
-                !eCodigoOuPayloadTecnico(d) &&
-                !pareceIdHash(d) &&
-                !step.label.contains(d, ignoreCase = true)
-            }
             if (detalhe != null) {
                 Text(
                     detalhe,
                     color = OrbitTokens.textLowN,
-                    fontSize = 12.sp,
-                    lineHeight = 16.sp,
-                    maxLines = 2,
+                    fontSize = if (comoChip) 11.sp else 12.sp,
+                    lineHeight = if (comoChip) 14.sp else 16.sp,
+                    maxLines = if (comoChip) 1 else 2,
                     overflow = TextOverflow.Ellipsis,
                 )
             }

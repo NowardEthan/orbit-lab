@@ -25,12 +25,22 @@ import com.ethan.orbitlab.ui.chat.LunaWebFonte
 import com.ethan.orbitlab.ui.chat.LunaTurnoSegmento
 import com.ethan.orbitlab.ui.chat.PassoPlano
 import com.ethan.orbitlab.ui.chat.ThreadReference
+import com.ethan.orbitlab.ui.chat.atrasoToken
 import com.ethan.orbitlab.ui.chat.ehFerramentaDePlano
 import com.ethan.orbitlab.ui.chat.ehFerramentaDeWeb
+import com.ethan.orbitlab.ui.chat.fatiarTokensStream
 import com.ethan.orbitlab.ui.chat.formatMessageWithReference
 import com.ethan.orbitlab.ui.chat.toolMeta
 import android.os.Handler
 import android.os.Looper
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.TimeZone
@@ -497,65 +507,111 @@ object LunaApiChat {
             mainHandler.post { onEstado(estado) }
         }
 
+        // Fila serial: pontes agenticas chegam em bloco no SSE; revelamos token a token
+        // (typewriter) e só então aplicamos a próxima ação — ordem Cursor no fio.
+        val revelacaoJob = SupervisorJob()
+        val revelacaoScope = CoroutineScope(Dispatchers.Default + revelacaoJob)
+        var cadeiaRevelacao: Job = revelacaoScope.launch { }
+
+        fun enfileirarUi(block: suspend () -> Unit) {
+            val anterior = cadeiaRevelacao
+            cadeiaRevelacao = revelacaoScope.launch {
+                anterior.join()
+                block()
+            }
+        }
+
+        suspend fun revelarConteudo(delta: String) {
+            if (delta.isEmpty()) return
+            withContext(Dispatchers.Main) {
+                if (respostaBuf.isEmpty()) marcarEscrevendo()
+            }
+            // Deltas miúdos = stream real do path conversacional — não atrasa de novo.
+            val tokens = fatiarTokensStream(delta)
+            val typewriter = tokens.size > 1 && delta.length >= 12
+            if (!typewriter) {
+                withContext(Dispatchers.Main) {
+                    respostaBuf.append(delta)
+                    anexarNarracao(delta)
+                    emitirUi()
+                }
+                return
+            }
+            for (token in tokens) {
+                withContext(Dispatchers.Main) {
+                    respostaBuf.append(token)
+                    anexarNarracao(token)
+                    emitirUi()
+                }
+                delay(atrasoToken(token))
+            }
+        }
+
         // Retry em falha de rede/conexão: se abortar SEM ter transmitido nada, evicta o
         // socket morto do pool e tenta de novo (não duplica texto já mostrado).
         var result = LunaApiClient.ChatResult(text = "", sessionId = "")
         var tentativa = 0
         val maxTentativas = 3
-        while (true) {
-            tentativa++
-            respostaBuf.setLength(0)
-            reasoningBuf.setLength(0)
-            faseAtual = ""
-            rotuloAtual = ""
-            acaoSteps.clear()
-            fluxo.clear()
-            planoAtual = emptyList()
-            imagensGeradas.clear()
-            perguntaPendente = null
-            result = LunaApiClient.chatStream(idToken, body) { event ->
-                when (event) {
-                    is LunaApiClient.StreamEvent.Status -> {
-                        faseAtual = event.phase
-                        rotuloAtual = event.label ?: ""
-                        if (respostaBuf.isEmpty()) emitirUi()
+        try {
+            while (true) {
+                tentativa++
+                respostaBuf.setLength(0)
+                reasoningBuf.setLength(0)
+                faseAtual = ""
+                rotuloAtual = ""
+                acaoSteps.clear()
+                fluxo.clear()
+                planoAtual = emptyList()
+                imagensGeradas.clear()
+                perguntaPendente = null
+                cadeiaRevelacao = revelacaoScope.launch { }
+                result = LunaApiClient.chatStream(idToken, body) { event ->
+                    when (event) {
+                        is LunaApiClient.StreamEvent.Status -> {
+                            faseAtual = event.phase
+                            rotuloAtual = event.label ?: ""
+                            if (respostaBuf.isEmpty()) emitirUi()
+                        }
+                        is LunaApiClient.StreamEvent.Reasoning -> {
+                            reasoningBuf.append(event.delta)
+                            emitirUi()
+                        }
+                        is LunaApiClient.StreamEvent.Content -> {
+                            enfileirarUi { revelarConteudo(event.delta) }
+                        }
+                        is LunaApiClient.StreamEvent.Acao -> {
+                            // Espera a ponte terminar de “digitar” antes do chip da tool.
+                            enfileirarUi {
+                                withContext(Dispatchers.Main) {
+                                    aplicarAcao(event.json)
+                                    emitirUi()
+                                }
+                            }
+                        }
+                        is LunaApiClient.StreamEvent.Error -> Unit
                     }
-                    is LunaApiClient.StreamEvent.Reasoning -> {
-                        reasoningBuf.append(event.delta)
-                        emitirUi()
-                    }
-                    is LunaApiClient.StreamEvent.Content -> {
-                        // Primeiro pedaço de texto = ela parou de buscar e começou a redigir.
-                        if (respostaBuf.isEmpty()) marcarEscrevendo()
-                        respostaBuf.append(event.delta)
-                        anexarNarracao(event.delta)
-                        emitirUi()
-                    }
-                    is LunaApiClient.StreamEvent.Acao -> {
-                        // Acende a timeline ao vivo: o passo nasce/fecha e o painel de pesquisa
-                        // (que já existia) reflete cada busca/leitura conforme acontece.
-                        aplicarAcao(event.json)
-                        emitirUi()
-                    }
-                    is LunaApiClient.StreamEvent.Error -> Unit
                 }
+                // Espera a fila esvaziar (último typewriter) antes de fechar o turno / retry.
+                cadeiaRevelacao.join()
+                // Só repete se o servidor NÃO deu sinal de ter recebido (sem TTFB e sem nenhuma
+                // fase) E a resposta ainda não chegou pelo Firestore. Se ele já começou a gerar
+                // e a conexão caiu no meio, repetir faria a Luna responder DUAS vezes — a 2ª
+                // reescrevia a 1ª (foi o que aconteceu de manhã). Aí a gente mostra o erro + botão.
+                val semSinalDoServidor = result.ttfbMs == null && result.phasesMs.isEmpty()
+                val jaChegou = com.ethan.orbitlab.data.ChatRepository
+                    .respostaJaChegou(conversaId, lunaMessageId) != null
+                val podeRepetir = result.error != null && respostaBuf.isEmpty() &&
+                    semSinalDoServidor && !jaChegou && erroTransitorio(result.error)
+                if (podeRepetir && tentativa < maxTentativas) {
+                    LunaApiClient.evictConnections()
+                    mainHandler.post { onEstado(LunaStreamEstado.Raciocinando("")) }
+                    kotlinx.coroutines.delay(tentativa * 1200L)
+                    continue
+                }
+                break
             }
-            // Só repete se o servidor NÃO deu sinal de ter recebido (sem TTFB e sem nenhuma
-            // fase) E a resposta ainda não chegou pelo Firestore. Se ele já começou a gerar
-            // e a conexão caiu no meio, repetir faria a Luna responder DUAS vezes — a 2ª
-            // reescrevia a 1ª (foi o que aconteceu de manhã). Aí a gente mostra o erro + botão.
-            val semSinalDoServidor = result.ttfbMs == null && result.phasesMs.isEmpty()
-            val jaChegou = com.ethan.orbitlab.data.ChatRepository
-                .respostaJaChegou(conversaId, lunaMessageId) != null
-            val podeRepetir = result.error != null && respostaBuf.isEmpty() &&
-                semSinalDoServidor && !jaChegou && erroTransitorio(result.error)
-            if (podeRepetir && tentativa < maxTentativas) {
-                LunaApiClient.evictConnections()
-                mainHandler.post { onEstado(LunaStreamEstado.Raciocinando("")) }
-                kotlinx.coroutines.delay(tentativa * 1200L)
-                continue
-            }
-            break
+        } finally {
+            revelacaoJob.cancel()
         }
 
         val totalMs = System.currentTimeMillis() - t0

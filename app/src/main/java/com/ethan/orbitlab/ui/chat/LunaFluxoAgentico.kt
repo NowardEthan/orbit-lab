@@ -6,7 +6,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
@@ -47,7 +49,8 @@ fun LunaFluxoAgentico(
 
     Column(
         modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalAlignment = Alignment.Start,
     ) {
         if (run.plano.isNotEmpty()) {
             LunaPlanChecklist(plano = run.plano, aoVivo = aoVivo)
@@ -65,9 +68,12 @@ fun LunaFluxoAgentico(
                     val step = stepsById[seg.stepId] ?: return@forEach
                     // Meta-tools de plano não entram no fio (a checklist já é a UI).
                     if (step.ferramenta != null && ehFerramentaDePlano(step.ferramenta)) return@forEach
+                    // Chip enxuto à esquerda — não estica como o parágrafo da Luna.
                     LunaToolPassoInline(
                         step = step,
-                        modifier = Modifier.padding(vertical = 2.dp),
+                        modifier = Modifier
+                            .widthIn(max = 320.dp)
+                            .padding(top = 2.dp, bottom = 2.dp),
                     )
                 }
             }
