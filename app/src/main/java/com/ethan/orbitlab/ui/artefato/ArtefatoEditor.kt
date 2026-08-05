@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -21,9 +20,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckBox
 import androidx.compose.material.icons.rounded.CheckBoxOutlineBlank
-import androidx.compose.material.icons.rounded.DragHandle
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -38,6 +38,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -60,8 +61,8 @@ import com.ethan.orbitlab.ui.theme.OrbitTokens
 import com.ethan.orbitlab.ui.theme.OrbitType
 
 /**
- * Editor Notion-like: uma linha por bloco, Enter cria parágrafo, Backspace no vazio funde/apaga,
- * `/` abre o menu de tipos.
+ * Editor Notion-like: uma linha por bloco, Enter continua lista/todo ou cria parágrafo,
+ * Backspace no vazio funde/apaga, `/` abre o menu de tipos filtrável.
  */
 @Composable
 fun ArtefatoEditor(
@@ -83,15 +84,15 @@ fun ArtefatoEditor(
         if (blocos.isEmpty()) onBlocosChange(lista)
     }
 
+    val paginaVazia =
+        lista.size == 1 &&
+            lista[0].text.isEmpty() &&
+            lista[0].type == TipoBlocoArtefato.paragraph
+
     Column(
         modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        if (lista.size == 1 && lista[0].text.isEmpty() && lista[0].type == TipoBlocoArtefato.paragraph) {
-            EmptyStateArtefato(hint = emptyHint)
-            Spacer(Modifier.height(8.dp))
-        }
-
         lista.forEachIndexed { index, bloco ->
             BlocoLinha(
                 bloco = bloco,
@@ -99,11 +100,28 @@ fun ArtefatoEditor(
                 total = lista.size,
                 pedirFoco = focusBlocoId == bloco.id,
                 onFocoPedidoConsumido = onFocusConsumed,
+                emptyHintPrimeiro = if (paginaVazia) emptyHint else null,
                 onChange = { novo ->
                     onBlocosChange(lista.toMutableList().also { it[index] = novo })
                 },
                 onEnter = {
-                    val novo = BlocoArtefato(id = novoIdBloco(), type = TipoBlocoArtefato.paragraph, text = "")
+                    val tipoContinua = when (bloco.type) {
+                        TipoBlocoArtefato.bullet,
+                        TipoBlocoArtefato.numbered,
+                        TipoBlocoArtefato.todo,
+                        -> bloco.type
+                        else -> TipoBlocoArtefato.paragraph
+                    }
+                    val propsContinua = when (tipoContinua) {
+                        TipoBlocoArtefato.todo -> PropsBlocoArtefato(checked = false)
+                        else -> null
+                    }
+                    val novo = BlocoArtefato(
+                        id = novoIdBloco(),
+                        type = tipoContinua,
+                        text = "",
+                        props = propsContinua,
+                    )
                     val next = lista.toMutableList()
                     next.add(index + 1, novo)
                     onBlocosChange(next)
@@ -118,12 +136,12 @@ fun ArtefatoEditor(
                     onPedirFoco(focoId)
                 },
                 onSlashTipo = { tipo, props ->
-                    val limpo = bloco.text.removePrefix("/").trimStart()
+                    // Descarta o `/query` — o tipo já define o bloco.
                     onBlocosChange(
                         lista.toMutableList().also {
                             it[index] = bloco.copy(
                                 type = tipo,
-                                text = if (tipo == TipoBlocoArtefato.divider) "" else limpo,
+                                text = "",
                                 props = props,
                             )
                         },
@@ -138,35 +156,27 @@ fun ArtefatoEditor(
                     next[j] = tmp
                     onBlocosChange(next)
                 },
+                onApagar = {
+                    if (lista.size <= 1) {
+                        onBlocosChange(
+                            listOf(
+                                BlocoArtefato(
+                                    id = lista[0].id,
+                                    type = TipoBlocoArtefato.paragraph,
+                                    text = "",
+                                ),
+                            ),
+                        )
+                    } else {
+                        val next = lista.toMutableList()
+                        next.removeAt(index)
+                        val focoId = next[(index - 1).coerceAtLeast(0)].id
+                        onBlocosChange(next)
+                        onPedirFoco(focoId)
+                    }
+                },
             )
         }
-    }
-}
-
-@Composable
-private fun EmptyStateArtefato(hint: String) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(OrbitTokens.graphiteSurf.copy(alpha = 0.55f))
-            .border(1.dp, OrbitTokens.graphiteHair, RoundedCornerShape(14.dp))
-            .padding(horizontal = 16.dp, vertical = 18.dp),
-    ) {
-        Text(
-            text = "Página vazia",
-            color = OrbitTokens.textHiN,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.SemiBold,
-            fontFamily = OrbitType.display,
-        )
-        Spacer(Modifier.height(4.dp))
-        Text(
-            text = hint,
-            color = OrbitTokens.textMidN,
-            fontSize = 13.sp,
-            lineHeight = 18.sp,
-        )
     }
 }
 
@@ -177,11 +187,13 @@ private fun BlocoLinha(
     total: Int,
     pedirFoco: Boolean,
     onFocoPedidoConsumido: () -> Unit,
+    emptyHintPrimeiro: String?,
     onChange: (BlocoArtefato) -> Unit,
     onEnter: () -> Unit,
     onBackspaceVazio: () -> Unit,
     onSlashTipo: (TipoBlocoArtefato, PropsBlocoArtefato?) -> Unit,
     onMover: (Int) -> Unit,
+    onApagar: () -> Unit,
 ) {
     val focusRequester = remember(bloco.id) { FocusRequester() }
     var focused by remember(bloco.id) { mutableStateOf(false) }
@@ -203,12 +215,29 @@ private fun BlocoLinha(
         }
     }
 
+    val shape = RoundedCornerShape(8.dp)
+    val fundoTipo = when (bloco.type) {
+        TipoBlocoArtefato.callout -> OrbitTokens.bluePastel.copy(alpha = 0.08f)
+        TipoBlocoArtefato.quote -> OrbitTokens.graphiteSurf.copy(alpha = 0.4f)
+        TipoBlocoArtefato.code -> OrbitTokens.graphiteRaised.copy(alpha = 0.55f)
+        else -> Color.Transparent
+    }
+    val fundoFoco = if (focused) OrbitTokens.graphiteSurf.copy(alpha = 0.45f) else fundoTipo
+    val bordaFoco = if (focused) {
+        Modifier.border(1.dp, OrbitTokens.graphiteHair, shape)
+    } else {
+        Modifier
+    }
+
     if (bloco.type == TipoBlocoArtefato.divider) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 10.dp)
-                .clickable { /* selecionável no futuro */ },
+                .clip(shape)
+                .then(bordaFoco)
+                .background(fundoFoco)
+                .padding(horizontal = 8.dp, vertical = 10.dp)
+                .clickable { focused = true },
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
@@ -233,6 +262,7 @@ private fun BlocoLinha(
                 podeDescer = index < total - 1,
                 onMover = onMover,
                 onTipo = { t, p -> onSlashTipo(t, p) },
+                onApagar = onApagar,
             )
         }
         return
@@ -240,20 +270,16 @@ private fun BlocoLinha(
 
     val style = estiloDoBloco(bloco)
     val prefix = prefixoVisual(bloco)
+    val querySlash = if (valor.text.startsWith("/")) valor.text.removePrefix("/") else ""
+    val opcoesSlash = lembrarOpcoesFiltradas(querySlash)
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(
-                when (bloco.type) {
-                    TipoBlocoArtefato.callout -> OrbitTokens.bluePastel.copy(alpha = 0.08f)
-                    TipoBlocoArtefato.quote -> OrbitTokens.graphiteSurf.copy(alpha = 0.4f)
-                    TipoBlocoArtefato.code -> OrbitTokens.graphiteRaised.copy(alpha = 0.55f)
-                    else -> androidx.compose.ui.graphics.Color.Transparent
-                },
-            )
-            .padding(vertical = 2.dp),
+            .clip(shape)
+            .then(bordaFoco)
+            .background(fundoFoco)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
         verticalAlignment = Alignment.Top,
     ) {
         if (bloco.type == TipoBlocoArtefato.todo) {
@@ -324,13 +350,15 @@ private fun BlocoLinha(
                 decorationBox = { inner ->
                     if (valor.text.isEmpty() && focused) {
                         Text(
-                            text = when (bloco.type) {
-                                TipoBlocoArtefato.heading -> "Título"
-                                TipoBlocoArtefato.bullet, TipoBlocoArtefato.numbered -> "Item"
-                                TipoBlocoArtefato.todo -> "Tarefa"
-                                TipoBlocoArtefato.quote -> "Citação"
-                                TipoBlocoArtefato.callout -> "Destaque"
-                                TipoBlocoArtefato.code -> "código…"
+                            text = when {
+                                emptyHintPrimeiro != null -> emptyHintPrimeiro
+                                bloco.type == TipoBlocoArtefato.heading -> "Título"
+                                bloco.type == TipoBlocoArtefato.bullet ||
+                                    bloco.type == TipoBlocoArtefato.numbered -> "Item"
+                                bloco.type == TipoBlocoArtefato.todo -> "Tarefa"
+                                bloco.type == TipoBlocoArtefato.quote -> "Citação"
+                                bloco.type == TipoBlocoArtefato.callout -> "Destaque"
+                                bloco.type == TipoBlocoArtefato.code -> "código…"
                                 else -> "Escreva, ou /"
                             },
                             color = OrbitTokens.textLowN,
@@ -344,13 +372,13 @@ private fun BlocoLinha(
             )
 
             DropdownMenu(
-                expanded = slashAberto,
+                expanded = slashAberto && opcoesSlash.isNotEmpty(),
                 onDismissRequest = { slashAberto = false },
                 shape = RoundedCornerShape(14.dp),
                 containerColor = OrbitTokens.graphiteRaised,
                 border = BorderStroke(1.dp, OrbitTokens.graphiteHair),
             ) {
-                SlashOpcoes.forEach { op ->
+                opcoesSlash.forEach { op ->
                     DropdownMenuItem(
                         text = {
                             Column {
@@ -373,7 +401,22 @@ private fun BlocoLinha(
                 podeDescer = index < total - 1,
                 onMover = onMover,
                 onTipo = { t, p -> onSlashTipo(t, p) },
+                onApagar = onApagar,
             )
+        }
+    }
+}
+
+@Composable
+private fun lembrarOpcoesFiltradas(query: String): List<SlashOpcao> {
+    val q = query.trim().lowercase()
+    return remember(q) {
+        if (q.isEmpty()) {
+            SlashOpcoes
+        } else {
+            SlashOpcoes.filter {
+                it.titulo.lowercase().contains(q) || it.subtitulo.lowercase().contains(q)
+            }
         }
     }
 }
@@ -384,15 +427,17 @@ private fun MenuBlocoHandle(
     podeDescer: Boolean,
     onMover: (Int) -> Unit,
     onTipo: (TipoBlocoArtefato, PropsBlocoArtefato?) -> Unit,
+    onApagar: () -> Unit,
 ) {
     var aberto by remember { mutableStateOf(false) }
     Box {
         Icon(
-            Icons.Rounded.DragHandle,
+            Icons.Rounded.MoreVert,
             contentDescription = "Opções do bloco",
             tint = OrbitTokens.textLowN,
             modifier = Modifier
-                .size(20.dp)
+                .size(40.dp)
+                .padding(8.dp)
                 .clickable { aberto = true },
         )
         DropdownMenu(
@@ -400,6 +445,7 @@ private fun MenuBlocoHandle(
             onDismissRequest = { aberto = false },
             containerColor = OrbitTokens.graphiteRaised,
             shape = RoundedCornerShape(14.dp),
+            border = BorderStroke(1.dp, OrbitTokens.graphiteHair),
         ) {
             if (podeSubir) {
                 DropdownMenuItem(
@@ -413,6 +459,15 @@ private fun MenuBlocoHandle(
                     onClick = { aberto = false; onMover(1) },
                 )
             }
+            if (podeSubir || podeDescer) {
+                HorizontalDivider(color = OrbitTokens.graphiteHair)
+            }
+            Text(
+                "Transformar em",
+                color = OrbitTokens.textLowN,
+                fontSize = 11.sp,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+            )
             SlashOpcoes.forEach { op ->
                 DropdownMenuItem(
                     text = { Text(op.titulo, color = OrbitTokens.textHiN, fontSize = 13.sp) },
@@ -422,6 +477,14 @@ private fun MenuBlocoHandle(
                     },
                 )
             }
+            HorizontalDivider(color = OrbitTokens.graphiteHair)
+            DropdownMenuItem(
+                text = { Text("Apagar bloco", color = OrbitTokens.textHiN) },
+                onClick = {
+                    aberto = false
+                    onApagar()
+                },
+            )
         }
     }
 }
