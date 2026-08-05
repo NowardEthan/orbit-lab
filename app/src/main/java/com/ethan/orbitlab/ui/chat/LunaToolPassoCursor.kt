@@ -127,50 +127,63 @@ private fun LinhaDetalheTool(step: LunaActionStep) {
     val erro = step.status == LunaActionStepStatus.ERROR
     val partes = remember(step) { partesLinhaDetalhe(step) }
     val stats = remember(step) { statsDiffDoLabel(step) }
+    val snippet = remember(step) { snippetDoDetail(step) }
 
-    val linha = buildAnnotatedString {
-        withStyle(
-            SpanStyle(
-                color = when {
-                    erro -> OrbitTokens.danger
-                    rodando -> OrbitTokens.bluePastel
-                    else -> OrbitTokens.textLowN
-                },
-                fontWeight = FontWeight.Normal,
-            ),
-        ) {
-            append(partes.acao)
-        }
-        if (partes.referencia.isNotBlank()) {
-            append(" · ")
+    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+        val linha = buildAnnotatedString {
             withStyle(
                 SpanStyle(
-                    color = if (erro) OrbitTokens.danger else OrbitTokens.textMidN,
-                    fontWeight = FontWeight.Medium,
+                    color = when {
+                        erro -> OrbitTokens.danger
+                        rodando -> OrbitTokens.bluePastel
+                        else -> OrbitTokens.textLowN
+                    },
+                    fontWeight = FontWeight.Normal,
                 ),
             ) {
-                append(partes.referencia)
+                append(partes.acao)
+            }
+            if (partes.referencia.isNotBlank()) {
+                append(" · ")
+                withStyle(
+                    SpanStyle(
+                        color = if (erro) OrbitTokens.danger else OrbitTokens.textMidN,
+                        fontWeight = FontWeight.Medium,
+                    ),
+                ) {
+                    append(partes.referencia)
+                }
+            }
+            if (stats != null) {
+                append(" ")
+                withStyle(SpanStyle(color = OrbitTokens.online, fontWeight = FontWeight.Medium)) {
+                    append("+${stats.first}")
+                }
+                append(" ")
+                withStyle(SpanStyle(color = OrbitTokens.danger, fontWeight = FontWeight.Medium)) {
+                    append("-${stats.second}")
+                }
             }
         }
-        if (stats != null) {
-            append(" ")
-            withStyle(SpanStyle(color = OrbitTokens.online, fontWeight = FontWeight.Medium)) {
-                append("+${stats.first}")
-            }
-            append(" ")
-            withStyle(SpanStyle(color = OrbitTokens.danger, fontWeight = FontWeight.Medium)) {
-                append("-${stats.second}")
-            }
+
+        Text(
+            text = linha,
+            fontSize = 12.sp,
+            lineHeight = 16.sp,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (snippet.isNotBlank()) {
+            Text(
+                text = snippet,
+                color = OrbitTokens.textLowN,
+                fontSize = 11.sp,
+                lineHeight = 14.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
-
-    Text(
-        text = linha,
-        fontSize = 12.sp,
-        lineHeight = 16.sp,
-        maxLines = 2,
-        overflow = TextOverflow.Ellipsis,
-    )
 }
 
 private data class PartesLinhaDetalhe(val acao: String, val referencia: String)
@@ -224,11 +237,13 @@ private fun limparLabelTool(label: String): String =
 
 /**
  * Uma linha limpa: ação + referência do artefato.
- * Nunca repete («Consultou a estrutura a estrutura») nem cola verbo errado no label.
+ * Se não há ref, cai no label do toolMeta (nunca verbo sozinho «Leu»).
  */
 private fun partesLinhaDetalhe(step: LunaActionStep): PartesLinhaDetalhe {
     val label = limparLabelTool(step.label)
-    val ref = referenciaArtefato(step)
+    val refCompleta = referenciaArtefato(step)
+    // detail pode ser «Título · preview» — a 1ª parte é a referência principal.
+    val ref = refCompleta.substringBefore(" · ").trim().ifBlank { refCompleta }
     val acao = when (step.ferramenta) {
         "ler_estrutura" -> if (step.status == LunaActionStepStatus.RUNNING) "Consultando estrutura" else "Consultou estrutura"
         "inserir_blocos" -> if (step.status == LunaActionStepStatus.RUNNING) "Acrescentando" else "Acrescentou"
@@ -240,31 +255,43 @@ private fun partesLinhaDetalhe(step: LunaActionStep): PartesLinhaDetalhe {
         "web_search" -> if (step.status == LunaActionStepStatus.RUNNING) "Pesquisando" else "Pesquisou"
         "listar_artefatos" -> if (step.status == LunaActionStepStatus.RUNNING) "Listando estante" else "Listou a estante"
         else -> {
-            // Sem ferramenta conhecida: usa o label inteiro e NÃO anexa ref (evita eco).
             return PartesLinhaDetalhe(acao = label, referencia = "")
         }
     }
-    // Se a ref já está no label («… de "Livro"»), não repete.
-    if (ref.isNotBlank() && label.contains(ref, ignoreCase = true)) {
+    if (ref.isBlank()) {
+        // Sem título/alvo: mostra o label rico do toolMeta em vez do verbo sozinho.
+        return PartesLinhaDetalhe(acao = label.ifBlank { acao }, referencia = "")
+    }
+    if (label.contains(ref, ignoreCase = true)) {
         return PartesLinhaDetalhe(acao = label, referencia = "")
     }
     return PartesLinhaDetalhe(acao = acao, referencia = ref)
+}
+
+/** Segunda linha quieta: trecho depois de « · » no detail (preview / seção). */
+private fun snippetDoDetail(step: LunaActionStep): String {
+    val d = step.detail?.trim().orEmpty()
+    if (!d.contains(" · ")) return ""
+    val trecho = d.substringAfter(" · ").trim()
+    if (trecho.isBlank() || pareceIdHash(trecho)) return ""
+    return if (trecho.length > 56) trecho.take(53) + "…" else trecho
 }
 
 /** Título/alvo humano do passo — nunca o markdown nem eco do próprio label. */
 private fun referenciaArtefato(step: LunaActionStep): String {
     val d = step.detail?.trim().orEmpty()
     if (d.isBlank() || pareceIdHash(d) || d.startsWith("{") || d.startsWith("[")) return ""
-    if (d.length > 72) return ""
+    if (d.length > 96) return ""
     val label = limparLabelTool(step.label)
     // Detail que é só eco do label («a estrutura», «no documento») → ignora.
     val ruido = listOf(
         "a estrutura", "estrutura", "o documento", "no documento", "documento",
         "o artefato", "artefato", "a seção", "seção", "o bloco", "bloco",
     )
-    if (ruido.any { d.equals(it, ignoreCase = true) }) return ""
-    if (label.contains(d, ignoreCase = true)) return ""
-    // Tirar aspas extras do título.
+    val principal = d.substringBefore(" · ").trim().ifBlank { d }
+    if (ruido.any { principal.equals(it, ignoreCase = true) }) return ""
+    if (label.contains(principal, ignoreCase = true) && !d.contains(" · ")) return ""
+    // Tirar aspas extras do título (mantém «Título · preview» no detail bruto).
     return d.trim('"').trim()
 }
 
