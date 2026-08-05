@@ -254,6 +254,16 @@ private fun partesLinhaDetalhe(step: LunaActionStep): PartesLinhaDetalhe {
         "criar_artefato" -> if (step.status == LunaActionStepStatus.RUNNING) "Criando" else "Criou"
         "web_search" -> if (step.status == LunaActionStepStatus.RUNNING) "Pesquisando" else "Pesquisou"
         "listar_artefatos" -> if (step.status == LunaActionStepStatus.RUNNING) "Listando estante" else "Listou a estante"
+        "consultar_neuronio" -> {
+            val esp = step.neuronioEspecialidade?.lowercase().orEmpty()
+            val nome = when (esp) {
+                "auditoria" -> "Auditoria"
+                "canone" -> "Cânone"
+                "pesquisa" -> "Pesquisa"
+                else -> "Orientação"
+            }
+            if (step.status == LunaActionStepStatus.RUNNING) "Consultando $nome" else "Consultou $nome"
+        }
         else -> {
             return PartesLinhaDetalhe(acao = label, referencia = "")
         }

@@ -352,8 +352,10 @@ Pronto — tá no fim do cap. 2.
 
 - [x] A6.1 Stream token-a-token (ou deltas) no loop com tools (`onDelta` + SSE agentico)  
 - [x] A6.2 `consultar_neuronio` (orientação/auditoria) + badge Lab  
+- [x] A6.3 especialidades `canone` + `pesquisa`; teto 2 consultas/turno  
+- [x] A6.4 base: SSE `papelUi` / `neuronio` + prefixo «Neurônio ·» na timeline Lab  
 - [ ] Soft router: “oi” → 0 neurônios LLM (smoke)  
-- [ ] A6.3+ mais especialistas / UX escritório  
+- [ ] Polish visual “escritório” (cores/colapso) quando shippar Lab  
 - [ ] Doc no `AGENTICO-ROADMAP` atualizado com aprendizados  
 
 ### Relação com A4
@@ -388,7 +390,7 @@ Ao especificar, preferir **A0/A1…** deste arquivo.
 | A3 | 🟡 | 2026-08-04 | Profundidade por turno no pipeline; smoke pendente |
 | A4 | 🟡 | 2026-08-04 | A4.1 checklist no Lab (código); smoke pendente |
 | A5 | ⬜ | | |
-| A6 | 🟡 | 2026-08-05 | A6.0–A6.2 no core (anti-loop, stream fino, neurônio); smoke + A6.3+ pendentes |
+| A6 | 🟡 | 2026-08-05 | A6.0–A6.4 base no core+Lab (código); smoke + polish visual pendentes |
 
 ---
 
