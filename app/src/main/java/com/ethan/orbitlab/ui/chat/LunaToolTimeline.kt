@@ -172,11 +172,16 @@ fun LunaToolPassoInline(
 ) {
     val rodando = step.status == LunaActionStepStatus.RUNNING
     val erro = step.status == LunaActionStepStatus.ERROR
-    val labelLimpo = remember(step.label) {
-        step.label.lineSequence().firstOrNull().orEmpty()
+    val labelLimpo = remember(step.label, step.papelUi) {
+        val base = step.label.lineSequence().firstOrNull().orEmpty()
             .replace(Regex("[#*_`~]"), "")
             .trim()
             .let { if (it.length > 52) it.take(49) + "…" else it }
+        if (step.papelUi == "neuronio" && !base.contains("Neurônio", ignoreCase = true)) {
+            "Neurônio · $base"
+        } else {
+            base
+        }
     }
     Row(
         modifier = modifier.fillMaxWidth(),

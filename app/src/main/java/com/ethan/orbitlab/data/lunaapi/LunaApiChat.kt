@@ -467,6 +467,9 @@ object LunaApiChat {
             val arg = extrairArgAcao(ferramenta, json.optJSONObject("argumentos"))
             val meta = toolMeta(ferramenta)
             if (tipo == "inicio_ferramenta") {
+                val papelUi = json.optString("papelUi").takeIf { it.isNotBlank() }
+                val esp = json.optJSONObject("neuronio")?.optString("especialidade")
+                    ?.takeIf { it.isNotBlank() }
                 val step = LunaActionStep(
                     id = "acao-${acaoSteps.size}",
                     label = meta.live(arg),
@@ -475,12 +478,17 @@ object LunaApiChat {
                     kind = meta.kind,
                     queries = listOfNotNull(arg.takeIf { it.isNotBlank() && meta.kind == com.ethan.orbitlab.ui.chat.LunaActionStepKind.SEARCH }),
                     ferramenta = ferramenta,
+                    papelUi = papelUi,
+                    neuronioEspecialidade = esp,
                 )
                 acaoSteps += step
                 fluxo += LunaTurnoSegmento.Acao(step.id)
             } else if (tipo == "fim_ferramenta") {
                 val sucesso = json.optBoolean("sucesso", true)
                 val fontes = parseFontesAcao(ferramenta, json.optJSONArray("fontes"))
+                val papelUi = json.optString("papelUi").takeIf { it.isNotBlank() }
+                val esp = json.optJSONObject("neuronio")?.optString("especialidade")
+                    ?.takeIf { it.isNotBlank() }
                 // A Luna desenhou: guarda a imagem pra virar cartão na bolha dela.
                 json.optJSONObject("imagem")?.let { img ->
                     val url = img.optString("url").takeIf { it.isNotBlank() }
@@ -520,6 +528,8 @@ object LunaApiChat {
                         } else {
                             aberto.citations
                         },
+                        papelUi = papelUi ?: aberto.papelUi,
+                        neuronioEspecialidade = esp ?: aberto.neuronioEspecialidade,
                     )
                 }
             }

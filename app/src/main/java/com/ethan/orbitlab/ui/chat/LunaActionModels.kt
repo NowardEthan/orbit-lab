@@ -52,6 +52,9 @@ data class LunaActionStep(
     val sources: List<LunaWebFonte> = emptyList(),
     val citations: List<LunaCitacao> = emptyList(),
     val ferramenta: String? = null,
+    /** A6.4 — `neuronio` = subagente; default/null = mão da Luna. */
+    val papelUi: String? = null,
+    val neuronioEspecialidade: String? = null,
 )
 
 /** Um passo do plano do turno (SSE `tipo: "plano"` / coleira `planejar`). */
@@ -367,12 +370,18 @@ fun toolMeta(ferramenta: String): ToolMeta = when (ferramenta) {
         live = { arg ->
             when {
                 arg.contains("auditoria", ignoreCase = true) -> "Consultando Auditoria…"
+                arg.contains("canone", ignoreCase = true) ||
+                    arg.contains("cânone", ignoreCase = true) -> "Consultando Cânone…"
+                arg.contains("pesquisa", ignoreCase = true) -> "Consultando Pesquisa…"
                 else -> "Consultando Orientação…"
             }
         },
         done = { arg ->
             when {
                 arg.contains("auditoria", ignoreCase = true) -> "Consultou Auditoria"
+                arg.contains("canone", ignoreCase = true) ||
+                    arg.contains("cânone", ignoreCase = true) -> "Consultou Cânone"
+                arg.contains("pesquisa", ignoreCase = true) -> "Consultou Pesquisa"
                 else -> "Consultou Orientação"
             }
         },
