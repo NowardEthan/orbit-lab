@@ -362,6 +362,21 @@ fun toolMeta(ferramenta: String): ToolMeta = when (ferramenta) {
             }
         },
     )
+    "consultar_neuronio" -> ToolMeta(
+        kind = LunaActionStepKind.REASON,
+        live = { arg ->
+            when {
+                arg.contains("auditoria", ignoreCase = true) -> "Consultando Auditoria…"
+                else -> "Consultando Orientação…"
+            }
+        },
+        done = { arg ->
+            when {
+                arg.contains("auditoria", ignoreCase = true) -> "Consultou Auditoria"
+                else -> "Consultou Orientação"
+            }
+        },
+    )
     "listar_artefatos" -> ToolMeta(
         kind = LunaActionStepKind.MEMORY,
         live = { "Consultando a estante…" },
