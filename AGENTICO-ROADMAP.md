@@ -287,6 +287,81 @@ Plano · 1/3
 
 ---
 
+## A6 — Neurônios como subagentes (multi-agentico visível)
+
+**Meta:** híbrido atual **fica**; em turnos de ação, a Luna (principal) pode **delegar**
+a especialistas em tempo real — e o usuário **vê** isso no fio (stream), estilo escritório
+ao vivo, sem comitê em “oi”.
+
+### Norte de produto
+
+```
+você fala
+  → Luna entra em stream (pontes + tools + fala)
+  → se precisar, chama neurônio-especialista (subagente curto)
+  → timeline mostra «consultou Orientação» / «Auditoria…»
+  → Luna integra e responde / escreve
+```
+
+| Papel | Quem |
+|-------|------|
+| Orquestradora (voz + decisão) | **Luna** |
+| Especialistas sob demanda | **Neurônios v2** (tools `consultar_neuronio` / nomes claros) |
+| Coletores de briefing (hoje) | Neurônios v1 — **continuam**; não são agentes LLM |
+
+**Não fazer:** spawn de 5 LLMs em small talk; neurônio falando *no lugar* da Luna;
+forçar agentico global.
+
+### Estado de partida (2026-08-05)
+
+- Neurônios em `luna-core/src/neuronios/` = **coleta de contexto** (embedding → briefing)  
+- Agentico = 1 modelo + tools + pontes SSE (`A4.2`)  
+- Sem máquina de estados por capítulo → piripaque `ler_secao` 1↔2 (mitigado em A6.0)
+
+### Fases internas
+
+| Slice | Nome | Entrega |
+|-------|------|---------|
+| **A6.0** | Anti-loop + disciplina de orientação | Guarda dura `ler_secao` (sem ping-pong); prompt/nudge sem incentivar releitura; marcador `/health` `antiLoopSecaoArtefato` |
+| **A6.1** | Stream agentico fino | Tokens da fala/pontes no path tools (hoje: pontes mid-loop; falta stream token-a-token do `completarComFerramentas`) |
+| **A6.2** | 1º neurônio chamável | Tool + badge Lab — ex. **Orientação** ou **Auditoria** (LLM curto, escopo estreito, resultado volta pra Luna) |
+| **A6.3** | Mais especialistas | Cânone, Pesquisa… só depois do primeiro valer a pena |
+| **A6.4** | UX “escritório” | Timeline distingue Luna vs neurônio; opcional colapsar detalhe do subagente |
+
+### Sensação alvo (A6.2+)
+
+```
+Vou olhar o mapa do artefato.
+  · Lendo estrutura…
+Capítulo 2 está no tom certo — sigo dali.
+  · Consultou Orientação…     ← neurônio (subagente)
+Acrescentei a cena. Conferindo o índice.
+  · Lendo estrutura…
+Pronto — tá no fim do cap. 2.
+```
+
+### DoD A6.0 (este slice)
+
+- [x] `guardaLeituraSecao` no executor (releitura / ping-pong / teto 2 seções sem escrita)  
+- [x] Releitura liberada após escrita no mesmo artefato (auditoria)  
+- [x] Footer `ler_secao` + diretrizes sem “chame de novo” como default  
+- [x] Testes vitest + `antiLoopSecaoArtefato` no `/health`  
+- [ ] Smoke aparelho: “continua o livro” não fica 1↔2 até estourar  
+
+### DoD A6.1–A6.4
+
+- [ ] Stream token-a-token (ou deltas) no loop com tools  
+- [ ] Pelo menos 1 neurônio invocável + evento SSE/`acao` legível no Lab  
+- [ ] Soft router: “oi” → 0 neurônios LLM  
+- [ ] Doc no `AGENTICO-ROADMAP` atualizado com aprendizados  
+
+### Relação com A4
+
+A4 = premium do **agente único** (plano, pontes, checklist).  
+A6 = **orquestra + especialistas** em cima desse premium — não substitui A4.
+
+---
+
 ## Relação com M1 (modos adaptativos)
 
 A seção M1 em `BOLHA-ROADMAP.md` era o pedido “tirar o seletor”.  
@@ -296,7 +371,7 @@ A seção M1 em `BOLHA-ROADMAP.md` era o pedido “tirar o seletor”.
 |-------------|------|
 | Tirar seletor | **A1** |
 | Router automático | **A2** + **A3** |
-| Guardrails | **A2** / **A4** |
+| Guardrails | **A2** / **A4** / **A6.0** |
 
 Ao especificar, preferir **A0/A1…** deste arquivo.
 
@@ -312,15 +387,16 @@ Ao especificar, preferir **A0/A1…** deste arquivo.
 | A3 | 🟡 | 2026-08-04 | Profundidade por turno no pipeline; smoke pendente |
 | A4 | 🟡 | 2026-08-04 | A4.1 checklist no Lab (código); smoke pendente |
 | A5 | ⬜ | | |
+| A6 | 🟡 | 2026-08-05 | A6.0 anti-loop no core; multi-agent (A6.2+) em seguida |
 
 ---
 
 ## Como puxar
 
-**Sprint atual (agentico):** `A0 ✅ → A1 🟡 → A4.1 smoke → A2/A3`.
+**Sprint atual:** `A6.0 (anti-loop) → smoke aparelho → A6.1 stream → A6.2 1º neurônio`.
 
-1. Smoke A1 no aparelho (“oi” leve + ação com tools).  
-2. Smoke A4.1 (lista de passos à vista em pedido multi-passo).  
-3. Core **A2/A3** com harness de casos.  
-4. Resto do **A4** (latência / stream parcial) quando a sensação de agente ainda travar.  
-5. Bolha B* publish em paralelo / quando Ethan pedir (não bloqueia A1).
+1. Smoke A6.0: livro longo / “continua” sem ping-pong de capítulos.  
+2. Smoke A1 (“oi” leve + ação com tools).  
+3. A6.1 stream fino no agentico.  
+4. A6.2 primeiro neurônio chamável + badge.  
+5. Bolha B* publish em paralelo / quando Ethan pedir.
