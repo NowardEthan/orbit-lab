@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -29,18 +30,23 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckBox
 import androidx.compose.material.icons.rounded.CheckBoxOutlineBlank
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.DragHandle
 import androidx.compose.material.icons.rounded.FormatListBulleted
 import androidx.compose.material.icons.rounded.FormatListNumbered
 import androidx.compose.material.icons.rounded.FormatQuote
+import androidx.compose.material.icons.rounded.HelpOutline
 import androidx.compose.material.icons.rounded.HorizontalRule
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
+import androidx.compose.material.icons.rounded.Lightbulb
 import androidx.compose.material.icons.rounded.Notes
 import androidx.compose.material.icons.rounded.PriorityHigh
+import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.Title
+import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -70,13 +76,16 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ethan.orbitlab.data.artefato.BlocoArtefato
 import com.ethan.orbitlab.data.artefato.PropsBlocoArtefato
+import com.ethan.orbitlab.data.artefato.SaborCallout
 import com.ethan.orbitlab.data.artefato.TipoBlocoArtefato
 import com.ethan.orbitlab.data.artefato.novoIdBloco
+import com.ethan.orbitlab.ui.chat.corDoSabor
 import com.ethan.orbitlab.ui.theme.OrbitTokens
 import com.ethan.orbitlab.ui.theme.OrbitType
 
@@ -221,6 +230,8 @@ private fun BlocoLinha(
     var valor by remember(bloco.id, bloco.text) {
         mutableStateOf(TextFieldValue(bloco.text, TextRange(bloco.text.length)))
     }
+    // Rótulo do divisor (só usado no ramo divider) — estado local pra não pular o cursor.
+    var rotuloDivisor by remember(bloco.id) { mutableStateOf(bloco.props?.label ?: "") }
 
     LaunchedEffect(bloco.text) {
         if (valor.text != bloco.text && !focused) {
@@ -237,7 +248,8 @@ private fun BlocoLinha(
 
     val shape = RoundedCornerShape(8.dp)
     val fundoTipo = when (bloco.type) {
-        TipoBlocoArtefato.callout -> OrbitTokens.bluePastel.copy(alpha = 0.08f)
+        TipoBlocoArtefato.callout ->
+            corDoSabor(SaborCallout.from(bloco.props?.callout)).copy(alpha = 0.09f)
         TipoBlocoArtefato.quote -> OrbitTokens.graphiteSurf.copy(alpha = 0.4f)
         TipoBlocoArtefato.code -> OrbitTokens.graphiteRaised.copy(alpha = 0.55f)
         else -> Color.Transparent
@@ -275,10 +287,36 @@ private fun BlocoLinha(
                         .height(1.dp)
                         .background(OrbitTokens.graphiteHair),
                 ) {}
-                Text(
-                    "  divisória  ",
-                    color = OrbitTokens.textLowN,
-                    fontSize = 11.sp,
+                BasicTextField(
+                    value = rotuloDivisor,
+                    onValueChange = { novo ->
+                        val limpo = novo.replace("\n", "")
+                        rotuloDivisor = limpo
+                        onChange(
+                            bloco.copy(
+                                props = (bloco.props ?: PropsBlocoArtefato())
+                                    .copy(label = limpo.ifBlank { null }),
+                            ),
+                        )
+                    },
+                    textStyle = TextStyle(
+                        color = OrbitTokens.textLowN,
+                        fontSize = 11.sp,
+                        textAlign = TextAlign.Center,
+                    ),
+                    singleLine = true,
+                    cursorBrush = SolidColor(OrbitTokens.bluePastel),
+                    modifier = Modifier
+                        .widthIn(min = 56.dp)
+                        .padding(horizontal = 10.dp),
+                    decorationBox = { inner ->
+                        Box(contentAlignment = Alignment.Center) {
+                            if (rotuloDivisor.isEmpty()) {
+                                Text("rótulo", color = OrbitTokens.textLowN.copy(alpha = 0.6f), fontSize = 11.sp)
+                            }
+                            inner()
+                        }
+                    },
                 )
                 Box(
                     Modifier
@@ -876,13 +914,64 @@ private fun slashOpcoes(): List<SlashOpcao> {
                 aliases = listOf("quote", "citacao"),
             ),
             SlashOpcao(
-                titulo = "Destaque",
-                subtitulo = "Callout com ênfase",
+                titulo = "Dica",
+                subtitulo = "Callout 💡 com sabor de dica",
                 tipo = TipoBlocoArtefato.callout,
+                props = PropsBlocoArtefato(callout = SaborCallout.dica.chave),
+                icone = Icons.Rounded.Lightbulb,
+                corIcone = corDoSabor(SaborCallout.dica),
+                corFundo = corDoSabor(SaborCallout.dica).copy(alpha = 0.12f),
+                aliases = listOf("dica", "tip", "sacada", "callout"),
+            ),
+            SlashOpcao(
+                titulo = "Atenção",
+                subtitulo = "Callout ⚠️ de aviso",
+                tipo = TipoBlocoArtefato.callout,
+                props = PropsBlocoArtefato(callout = SaborCallout.atencao.chave),
+                icone = Icons.Rounded.WarningAmber,
+                corIcone = corDoSabor(SaborCallout.atencao),
+                corFundo = corDoSabor(SaborCallout.atencao).copy(alpha = 0.12f),
+                aliases = listOf("atencao", "aviso", "cuidado", "warning", "callout"),
+            ),
+            SlashOpcao(
+                titulo = "Feito",
+                subtitulo = "Callout ✅ de sucesso",
+                tipo = TipoBlocoArtefato.callout,
+                props = PropsBlocoArtefato(callout = SaborCallout.feito.chave),
+                icone = Icons.Rounded.CheckCircle,
+                corIcone = corDoSabor(SaborCallout.feito),
+                corFundo = corDoSabor(SaborCallout.feito).copy(alpha = 0.12f),
+                aliases = listOf("feito", "ok", "sucesso", "done", "callout"),
+            ),
+            SlashOpcao(
+                titulo = "Dúvida",
+                subtitulo = "Callout ❓ de pergunta",
+                tipo = TipoBlocoArtefato.callout,
+                props = PropsBlocoArtefato(callout = SaborCallout.duvida.chave),
+                icone = Icons.Rounded.HelpOutline,
+                corIcone = corDoSabor(SaborCallout.duvida),
+                corFundo = corDoSabor(SaborCallout.duvida).copy(alpha = 0.12f),
+                aliases = listOf("duvida", "pergunta", "question", "callout"),
+            ),
+            SlashOpcao(
+                titulo = "Fixado",
+                subtitulo = "Callout 📌 de destaque",
+                tipo = TipoBlocoArtefato.callout,
+                props = PropsBlocoArtefato(callout = SaborCallout.fixado.chave),
+                icone = Icons.Rounded.PushPin,
+                corIcone = corDoSabor(SaborCallout.fixado),
+                corFundo = corDoSabor(SaborCallout.fixado).copy(alpha = 0.12f),
+                aliases = listOf("fixado", "pin", "importante", "callout"),
+            ),
+            SlashOpcao(
+                titulo = "Nota",
+                subtitulo = "Callout ℹ️ neutro",
+                tipo = TipoBlocoArtefato.callout,
+                props = PropsBlocoArtefato(callout = SaborCallout.info.chave),
                 icone = Icons.Rounded.PriorityHigh,
-                corIcone = azul,
-                corFundo = azul.copy(alpha = 0.12f),
-                aliases = listOf("callout", "destaque", "aviso"),
+                corIcone = corDoSabor(SaborCallout.info),
+                corFundo = corDoSabor(SaborCallout.info).copy(alpha = 0.12f),
+                aliases = listOf("nota", "note", "info", "destaque", "callout"),
             ),
             SlashOpcao(
                 titulo = "Código",
@@ -901,6 +990,16 @@ private fun slashOpcoes(): List<SlashOpcao> {
                 corIcone = OrbitTokens.textLowN,
                 corFundo = surf,
                 aliases = listOf("divider", "linha", "hr"),
+            ),
+            SlashOpcao(
+                titulo = "Divisor com rótulo",
+                subtitulo = "Linha com texto no meio",
+                tipo = TipoBlocoArtefato.divider,
+                props = PropsBlocoArtefato(label = ""),
+                icone = Icons.Rounded.HorizontalRule,
+                corIcone = OrbitTokens.textMidN,
+                corFundo = surf,
+                aliases = listOf("divider", "rotulo", "secao", "parte", "linha"),
             ),
         )
 }
@@ -953,6 +1052,6 @@ private fun prefixoVisual(bloco: BlocoArtefato): String? = when (bloco.type) {
     TipoBlocoArtefato.bullet -> "•"
     TipoBlocoArtefato.numbered -> "›"
     TipoBlocoArtefato.quote -> "❝"
-    TipoBlocoArtefato.callout -> "✦"
+    TipoBlocoArtefato.callout -> SaborCallout.from(bloco.props?.callout).emoji
     else -> null
 }

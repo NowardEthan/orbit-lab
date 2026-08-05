@@ -31,6 +31,9 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
@@ -47,6 +50,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.widget.Toast
+import com.ethan.orbitlab.data.artefato.SaborCallout
 import com.ethan.orbitlab.ui.theme.OrbitFills
 import com.ethan.orbitlab.ui.theme.OrbitTokens
 import com.ethan.orbitlab.ui.theme.orbitPressable
@@ -96,6 +100,7 @@ private fun serializarBloco(bloco: BlocoMd): String = when (bloco) {
     is BlocoMd.Titulo -> "${"#".repeat(bloco.nivel)} ${bloco.texto}"
     is BlocoMd.Paragrafo -> bloco.texto
     is BlocoMd.Quote -> "> ${bloco.texto}"
+    is BlocoMd.Callout -> "> [!${bloco.sabor}] ${bloco.texto}"
     is BlocoMd.Lista -> bloco.itens.mapIndexed { i, item ->
         if (bloco.ordenada) "${i + 1}. $item" else "- $item"
     }.joinToString("\n")
@@ -113,7 +118,7 @@ private fun serializarBloco(bloco: BlocoMd): String = when (bloco) {
             append("\n| ").append(linha.joinToString(" | ")).append(" |")
         }
     }
-    is BlocoMd.Divisor -> "---"
+    is BlocoMd.Divisor -> bloco.rotulo?.let { "--- $it ---" } ?: "---"
 }
 
 /**
@@ -155,6 +160,11 @@ fun LunaMarkdown(
      * (o caso do chat).
      */
     onToggleCheck: ((Int) -> Unit)? = null,
+    /**
+     * Ligado só no leitor de artefato: reporta as coordenadas de cada TÍTULO conforme ele é medido,
+     * pra o índice conseguir rolar até a seção certa. Nulo = ninguém observa (o caso do chat).
+     */
+    onTituloPosicionado: ((texto: String, coords: LayoutCoordinates) -> Unit)? = null,
 ) {
     val cache = remember { MdIncrementalCache() }
     val blocos = remember(content) { cache.update(content) }
@@ -181,14 +191,22 @@ fun LunaMarkdown(
                         Spacer(Modifier.height(gapTitulo - gap))
                     }
                     when (bloco) {
-                        is BlocoMd.Titulo -> MdTitulo(bloco)
+                        is BlocoMd.Titulo -> MdTitulo(
+                            bloco,
+                            modifier = if (onTituloPosicionado != null) {
+                                Modifier.onGloballyPositioned { onTituloPosicionado(bloco.texto, it) }
+                            } else {
+                                Modifier
+                            },
+                        )
                         is BlocoMd.Paragrafo -> MdTexto(bloco.texto)
                         is BlocoMd.Quote -> MdQuote(bloco.texto)
+                        is BlocoMd.Callout -> MdCallout(bloco.sabor, bloco.texto)
                         is BlocoMd.Lista -> MdLista(bloco)
                         is BlocoMd.Checklist -> MdChecklist(bloco, baseCheck[index], onToggleCheck)
                         is BlocoMd.Codigo -> MdCodigo(bloco)
                         is BlocoMd.Tabela -> MdTabela(bloco)
-                        is BlocoMd.Divisor -> MdDivisor()
+                        is BlocoMd.Divisor -> MdDivisor(bloco.rotulo)
                     }
                 }
             }
@@ -197,11 +215,11 @@ fun LunaMarkdown(
 }
 
 @Composable
-private fun MdTitulo(bloco: BlocoMd.Titulo) {
+private fun MdTitulo(bloco: BlocoMd.Titulo, modifier: Modifier = Modifier) {
     val doc = LocalMdVariante.current == LunaMarkdownVariante.Documento
     val styled = remember(bloco.texto) { estiloInline(bloco.texto) }
     if (doc) {
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(
                 text = styled,
                 color = OrbitTokens.textHigh,
@@ -234,6 +252,7 @@ private fun MdTitulo(bloco: BlocoMd.Titulo) {
     }
     Text(
         text = styled,
+        modifier = modifier,
         color = OrbitTokens.textHigh,
         fontSize = when (bloco.nivel) {
             1 -> 17.sp
@@ -317,6 +336,67 @@ private fun MdQuote(texto: String) {
             fontStyle = FontStyle.Italic,
             modifier = Modifier.padding(start = 8.dp),
         )
+    }
+}
+
+/** A cor semântica de cada sabor de callout — toda dos tokens (nada de palheta solta). */
+internal fun corDoSabor(s: SaborCallout): Color = when (s) {
+    SaborCallout.dica -> OrbitTokens.gold
+    SaborCallout.atencao -> OrbitTokens.warning
+    SaborCallout.feito -> OrbitTokens.online
+    SaborCallout.duvida -> OrbitTokens.violet
+    SaborCallout.fixado -> OrbitTokens.bluePastel
+    SaborCallout.info -> OrbitTokens.accentText
+}
+
+/**
+ * Callout com sabor — card sólido (contraste, não opacidade), trilho e rótulo na cor do sabor,
+ * emoji como âncora visual. 💡 dica · ⚠️ atenção · ✅ feito · ❓ dúvida · 📌 fixado · ℹ️ nota.
+ */
+@Composable
+private fun MdCallout(sabor: String, texto: String) {
+    val s = SaborCallout.from(sabor)
+    val cor = corDoSabor(s)
+    val doc = LocalMdVariante.current == LunaMarkdownVariante.Documento
+    val styled = remember(texto) { estiloInline(texto) }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(IntrinsicSize.Min)
+            .clip(RoundedCornerShape(12.dp))
+            .background(OrbitTokens.surface)
+            .border(1.dp, cor.copy(alpha = 0.35f), RoundedCornerShape(12.dp)),
+    ) {
+        Box(
+            Modifier
+                .width(4.dp)
+                .fillMaxHeight()
+                .background(cor),
+        )
+        Column(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(text = s.emoji, fontSize = if (doc) 15.sp else 13.sp)
+                Text(
+                    text = s.rotulo.uppercase(),
+                    color = cor,
+                    fontSize = if (doc) 12.sp else 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 0.5.sp,
+                )
+            }
+            Text(
+                text = styled,
+                color = OrbitTokens.textHigh,
+                fontSize = if (doc) MdDoc.body else Md.body,
+                lineHeight = if (doc) MdDoc.bodyLine else Md.bodyLine,
+            )
+        }
     }
 }
 
@@ -527,15 +607,46 @@ fun alternarChecklistNoTexto(fonte: String, indiceGlobal: Int): String {
 }
 
 @Composable
-private fun MdDivisor() {
+private fun MdDivisor(rotulo: String? = null) {
     val doc = LocalMdVariante.current == LunaMarkdownVariante.Documento
-    Box(
-        Modifier
+    val corLinha = OrbitTokens.borderSoft.copy(alpha = if (doc) 0.5f else 0.35f)
+    if (rotulo.isNullOrBlank()) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = if (doc) 6.dp else 2.dp)
+                .height(1.dp)
+                .background(corLinha),
+        )
+        return
+    }
+    Row(
+        modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = if (doc) 6.dp else 2.dp)
-            .height(1.dp)
-            .background(OrbitTokens.borderSoft.copy(alpha = if (doc) 0.5f else 0.35f)),
-    )
+            .padding(vertical = if (doc) 8.dp else 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Box(
+            Modifier
+                .weight(1f)
+                .height(1.dp)
+                .background(corLinha),
+        )
+        Text(
+            text = rotulo,
+            color = OrbitTokens.textLow,
+            fontSize = if (doc) 12.sp else 11.sp,
+            fontWeight = FontWeight.Medium,
+            letterSpacing = 0.4.sp,
+        )
+        Box(
+            Modifier
+                .weight(1f)
+                .height(1.dp)
+                .background(corLinha),
+        )
+    }
 }
 
 /**
@@ -627,17 +738,24 @@ private sealed class BlocoMd {
     data class Titulo(val nivel: Int, val texto: String) : BlocoMd()
     data class Paragrafo(val texto: String) : BlocoMd()
     data class Quote(val texto: String) : BlocoMd()
+    data class Callout(val sabor: String, val texto: String) : BlocoMd()
     data class Lista(val ordenada: Boolean, val itens: List<String>) : BlocoMd()
     data class Checklist(val itens: List<ItemCheck>) : BlocoMd()
     data class Codigo(val texto: String, val linguagem: String?) : BlocoMd()
     data class Tabela(val cabecalho: List<String>, val linhas: List<List<String>>) : BlocoMd()
-    data object Divisor : BlocoMd()
+    data class Divisor(val rotulo: String? = null) : BlocoMd()
 }
 
 data class ItemCheck(val texto: String, val marcado: Boolean)
 
 /** Uma linha vira item de checklist quando é `- [ ] …` ou `- [x] …` (também `*`). */
 private val RE_CHECK = Regex("""^[-*]\s+\[([ xX])]\s+(.*)$""")
+
+/** Divisor com rótulo no meio: `--- Parte 2 ---` (traços, asteriscos ou sublinhados). */
+private val RE_DIVISOR_ROTULADO = Regex("""^(?:-{3,}|\*{3,}|_{3,})\s+(.+?)\s+(?:-{3,}|\*{3,}|_{3,})$""")
+
+/** Marcador de sabor no começo de um callout: `[!dica]`, `[!atencao]`, etc. */
+private val RE_CALLOUT_MARCADOR = Regex("""^\[!\s*([\p{L}]+)\s*]\s?""")
 
 /** A linha-separador de uma tabela GFM: `| --- | :--: | ---: |` (pipes e alinhamento opcionais). */
 private val RE_TABELA_SEP = Regex("""^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?$""")
@@ -666,7 +784,12 @@ private fun parseBlocosMarkdown(fonte: String): List<BlocoMd> {
             trim.isEmpty() -> i++
 
             trim == "---" || trim == "***" || trim == "___" -> {
-                out += BlocoMd.Divisor
+                out += BlocoMd.Divisor()
+                i++
+            }
+
+            RE_DIVISOR_ROTULADO.matches(trim) -> {
+                out += BlocoMd.Divisor(RE_DIVISOR_ROTULADO.find(trim)!!.groupValues[1].trim())
                 i++
             }
 
@@ -712,7 +835,20 @@ private fun parseBlocosMarkdown(fonte: String): List<BlocoMd> {
                     buf.append(corpo)
                     i++
                 }
-                out += BlocoMd.Quote(buf.toString())
+                val corpo = buf.toString()
+                val marcador = RE_CALLOUT_MARCADOR.find(corpo.trimStart())
+                val saborEmoji = SaborCallout.porEmoji(corpo)
+                out += when {
+                    marcador != null -> BlocoMd.Callout(
+                        SaborCallout.from(marcador.groupValues[1]).chave,
+                        corpo.trimStart().removeRange(marcador.range).trimStart(),
+                    )
+                    saborEmoji != null -> BlocoMd.Callout(
+                        saborEmoji.chave,
+                        corpo.trimStart().removePrefix(saborEmoji.emoji).trimStart(),
+                    )
+                    else -> BlocoMd.Quote(corpo)
+                }
             }
 
             // Tabela GFM: linha com `|` seguida de uma linha-separador (`| --- | --- |`).

@@ -77,6 +77,10 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
@@ -109,6 +113,7 @@ import com.ethan.orbitlab.ui.theme.orbitEnter
 import com.ethan.orbitlab.ui.theme.orbitPressable
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 /** Assinatura do artefato — antes um degradê violeta; agora o acento único (azul pastel sólido). */
 private val gradienteArtefato: Brush get() = SolidColor(OrbitTokens.bluePastel)
@@ -376,6 +381,28 @@ fun DocumentoReaderSheet(
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     val haptics = LocalHapticFeedback.current
+    val density = LocalDensity.current
+
+    // Índice → salto: o corpo rola por pixel (verticalScroll, não lazy → todos os títulos ficam
+    // medidos mesmo fora da tela). Guardamos as coordenadas do container e de cada título; ao tocar
+    // no índice, convertemos a posição do título em offset de scroll. Mapas simples (lidos só no
+    // clique, nunca na composição) pra não disparar recomposição a cada medida.
+    val scrollCorpo = rememberScrollState()
+    val coordsCorpo = remember(doc.id) { arrayOfNulls<LayoutCoordinates>(1) }
+    val coordsTitulos = remember(doc.id) { mutableMapOf<String, LayoutCoordinates>() }
+    fun chaveTitulo(t: String): String = t.trim().lowercase().replace(Regex("\\s+"), " ")
+    fun irParaTitulo(texto: String) {
+        val alvo = coordsTitulos[chaveTitulo(texto)]
+        val cont = coordsCorpo[0]
+        val destino = if (alvo != null && alvo.isAttached && cont != null && cont.isAttached) {
+            val localY = cont.localPositionOf(alvo, Offset.Zero).y
+            val folga = with(density) { 12.dp.toPx() }
+            (scrollCorpo.value + localY - folga).roundToInt().coerceAtLeast(0)
+        } else {
+            0 // título não renderizado (ex.: é o próprio título da página) → topo.
+        }
+        scope.launch { scrollCorpo.animateScrollTo(destino) }
+    }
 
     // A edição vive em estado local, semeada do artefato. `remember(doc.id)` re-semeia quando
     // troca de artefato; enquanto edita, a fonte da verdade na tela é o que ele digitou.
@@ -641,7 +668,8 @@ fun DocumentoReaderSheet(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
-                        .verticalScroll(rememberScrollState())
+                        .verticalScroll(scrollCorpo)
+                        .onGloballyPositioned { coordsCorpo[0] = it }
                         .padding(horizontal = OrbitMetrics.pagePadding)
                         .padding(top = 8.dp, bottom = 36.dp),
                 ) {
@@ -772,6 +800,9 @@ fun DocumentoReaderSheet(
                         LunaMarkdown(
                             content = conteudoLimpo,
                             variante = LunaMarkdownVariante.Documento,
+                            onTituloPosicionado = { texto, coords ->
+                                coordsTitulos[chaveTitulo(texto)] = coords
+                            },
                             onToggleCheck = if (uid != null) {
                                 { idx ->
                                     val novo = alternarChecklistNoTexto(conteudoLocal, idx)
@@ -965,7 +996,7 @@ fun DocumentoReaderSheet(
         ArtefatoOutlineSheet(
             blocos = blocosLocal,
             onDismiss = { outlineAberto = false },
-            onIrPara = { /* scroll fino fica pro N3.1 — índice já orienta */ },
+            onIrPara = { h -> irParaTitulo(h.text) },
         )
     }
 }

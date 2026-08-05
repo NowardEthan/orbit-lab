@@ -32,7 +32,47 @@ data class PropsBlocoArtefato(
     val level: Int? = null,
     val checked: Boolean? = null,
     val language: String? = null,
+    /** Sabor do callout (chave de [SaborCallout]) — dica/atencao/feito/duvida/fixado/info. */
+    val callout: String? = null,
+    /** Rótulo opcional no meio de um divisor (ex.: "Parte 2"). */
+    val label: String? = null,
 )
+
+/**
+ * Sabores de callout — cada um com o marcador de markdown (`> [!chave]`), o rótulo pt-BR e o emoji
+ * que também serve de atalho ao escrever. Espelho de `luna-core/.../artefatoBlocos.ts`.
+ */
+enum class SaborCallout(val chave: String, val rotulo: String, val emoji: String) {
+    dica("dica", "Dica", "💡"),
+    atencao("atencao", "Atenção", "⚠️"),
+    feito("feito", "Feito", "✅"),
+    duvida("duvida", "Dúvida", "❓"),
+    fixado("fixado", "Fixado", "📌"),
+    info("info", "Nota", "ℹ️"),
+    ;
+
+    companion object {
+        fun from(raw: String?): SaborCallout {
+            val k = raw?.trim()?.lowercase()
+            return entries.firstOrNull { it.chave == k }
+                // apelidos amistosos
+                ?: when (k) {
+                    "aviso", "atencao", "warning", "cuidado" -> atencao
+                    "ok", "sucesso", "done" -> feito
+                    "duvida", "pergunta", "question" -> duvida
+                    "nota", "note", "importante", "pin" -> if (k == "importante" || k == "pin") fixado else info
+                    "tip", "sacada" -> dica
+                    else -> info
+                }
+        }
+
+        /** Se o texto começa com um dos emojis, devolve o sabor correspondente. */
+        fun porEmoji(texto: String): SaborCallout? {
+            val t = texto.trimStart()
+            return entries.firstOrNull { t.startsWith(it.emoji) }
+        }
+    }
+}
 
 data class BlocoArtefato(
     val id: String,
@@ -74,8 +114,20 @@ fun blocosToMd(blocos: List<BlocoArtefato>): String {
                 out += "- [$mark] ${b.text}"
                 numbered = 0
             }
-            TipoBlocoArtefato.quote, TipoBlocoArtefato.callout -> {
+            TipoBlocoArtefato.quote -> {
                 out += b.text.lines().joinToString("\n") { "> $it" }
+                numbered = 0
+            }
+            TipoBlocoArtefato.callout -> {
+                val kind = b.props?.callout?.trim()?.ifBlank { null }
+                val linhas = b.text.lines()
+                val primeira = linhas.firstOrNull().orEmpty()
+                val marcador = if (kind != null) "[!$kind] " else ""
+                val corpo = buildList {
+                    add("> $marcador$primeira".trimEnd())
+                    linhas.drop(1).forEach { add("> $it") }
+                }
+                out += corpo.joinToString("\n")
                 numbered = 0
             }
             TipoBlocoArtefato.code -> {
@@ -84,7 +136,8 @@ fun blocosToMd(blocos: List<BlocoArtefato>): String {
                 numbered = 0
             }
             TipoBlocoArtefato.divider -> {
-                out += "---"
+                val label = b.props?.label?.trim()?.ifBlank { null }
+                out += if (label != null) "--- $label ---" else "---"
                 numbered = 0
             }
             TipoBlocoArtefato.paragraph -> {
@@ -137,6 +190,19 @@ fun mdToBlocos(md: String): List<BlocoArtefato> {
                 text = codeLines.joinToString("\n"),
                 props = if (language.isNotEmpty()) PropsBlocoArtefato(language = language) else null,
             )
+            continue
+        }
+
+        val divRotulado = Regex("^(?:-{3,}|\\*{3,}|_{3,})\\s+(.+?)\\s+(?:-{3,}|\\*{3,}|_{3,})$").find(trim)
+        if (divRotulado != null) {
+            flushPara()
+            blocos += BlocoArtefato(
+                id = novoIdBloco(),
+                type = TipoBlocoArtefato.divider,
+                text = "",
+                props = PropsBlocoArtefato(label = divRotulado.groupValues[1].trim()),
+            )
+            i += 1
             continue
         }
 
@@ -206,15 +272,35 @@ fun mdToBlocos(md: String): List<BlocoArtefato> {
                 i += 1
             }
             val body = quoteLines.joinToString("\n")
-            val isCallout = body.trim().startsWith("[!") ||
-                body.trim().startsWith("💡") ||
-                body.trim().startsWith("⚠️") ||
-                body.trim().startsWith("ℹ️")
-            blocos += BlocoArtefato(
-                id = novoIdBloco(),
-                type = if (isCallout) TipoBlocoArtefato.callout else TipoBlocoArtefato.quote,
-                text = body,
-            )
+            val bodyTrim = body.trimStart()
+            val marcador = Regex("^\\[!\\s*([\\p{L}]+)\\s*]\\s?").find(bodyTrim)
+            val saborEmoji = SaborCallout.porEmoji(bodyTrim)
+            when {
+                marcador != null -> {
+                    val sabor = SaborCallout.from(marcador.groupValues[1])
+                    blocos += BlocoArtefato(
+                        id = novoIdBloco(),
+                        type = TipoBlocoArtefato.callout,
+                        text = bodyTrim.removeRange(marcador.range).trimStart(),
+                        props = PropsBlocoArtefato(callout = sabor.chave),
+                    )
+                }
+                saborEmoji != null -> {
+                    blocos += BlocoArtefato(
+                        id = novoIdBloco(),
+                        type = TipoBlocoArtefato.callout,
+                        text = bodyTrim.removePrefix(saborEmoji.emoji).trimStart(),
+                        props = PropsBlocoArtefato(callout = saborEmoji.chave),
+                    )
+                }
+                else -> {
+                    blocos += BlocoArtefato(
+                        id = novoIdBloco(),
+                        type = TipoBlocoArtefato.quote,
+                        text = body,
+                    )
+                }
+            }
             continue
         }
 
