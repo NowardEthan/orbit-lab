@@ -98,6 +98,11 @@ object LunaApiChat {
             "ler_secao", "buscar_no_artefato", "ler_estrutura", "inserir_blocos",
             "editar_bloco_artefato", "ler_bloco", "anotar_canone", "listar_artefatos",
             -> resumoUiArtefato(ferramenta, argumentos)
+            "consultar_neuronio" -> {
+                val esp = argumentos.optString("especialidade").ifBlank { "orientacao" }.trim()
+                val pergunta = argumentos.optString("pergunta").trim().take(36)
+                if (pergunta.isNotBlank()) "$esp · $pergunta" else esp
+            }
             else -> {
                 val chavesPreferenciais = listOf("titulo", "nome", "termo", "query", "url", "secao", "passo")
                 val chave = chavesPreferenciais.firstOrNull {

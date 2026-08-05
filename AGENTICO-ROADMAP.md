@@ -350,9 +350,10 @@ Pronto — tá no fim do cap. 2.
 
 ### DoD A6.1–A6.4
 
-- [ ] Stream token-a-token (ou deltas) no loop com tools  
-- [ ] Pelo menos 1 neurônio invocável + evento SSE/`acao` legível no Lab  
-- [ ] Soft router: “oi” → 0 neurônios LLM  
+- [x] A6.1 Stream token-a-token (ou deltas) no loop com tools (`onDelta` + SSE agentico)  
+- [x] A6.2 `consultar_neuronio` (orientação/auditoria) + badge Lab  
+- [ ] Soft router: “oi” → 0 neurônios LLM (smoke)  
+- [ ] A6.3+ mais especialistas / UX escritório  
 - [ ] Doc no `AGENTICO-ROADMAP` atualizado com aprendizados  
 
 ### Relação com A4
@@ -387,16 +388,16 @@ Ao especificar, preferir **A0/A1…** deste arquivo.
 | A3 | 🟡 | 2026-08-04 | Profundidade por turno no pipeline; smoke pendente |
 | A4 | 🟡 | 2026-08-04 | A4.1 checklist no Lab (código); smoke pendente |
 | A5 | ⬜ | | |
-| A6 | 🟡 | 2026-08-05 | A6.0 anti-loop no core; multi-agent (A6.2+) em seguida |
+| A6 | 🟡 | 2026-08-05 | A6.0–A6.2 no core (anti-loop, stream fino, neurônio); smoke + A6.3+ pendentes |
 
 ---
 
 ## Como puxar
 
-**Sprint atual:** `A6.0 (anti-loop) → smoke aparelho → A6.1 stream → A6.2 1º neurônio`.
+**Sprint atual:** `smoke A6.0–A6.2 → A6.3 especialistas → A6.4 UX escritório`.
 
-1. Smoke A6.0: livro longo / “continua” sem ping-pong de capítulos.  
-2. Smoke A1 (“oi” leve + ação com tools).  
-3. A6.1 stream fino no agentico.  
-4. A6.2 primeiro neurônio chamável + badge.  
+1. Smoke: livro sem ping-pong; plano 3☑ + fala; badge «Consultou Orientação».  
+2. Smoke stream: pontes aparecem token a token no agentico.  
+3. A6.3 segundo especialista se Orientação valer a pena.  
+4. A6.4 timeline Luna vs neurônio.  
 5. Bolha B* publish em paralelo / quando Ethan pedir.
