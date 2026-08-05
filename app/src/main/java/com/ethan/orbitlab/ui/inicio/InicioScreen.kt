@@ -30,7 +30,11 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
+import androidx.compose.material.icons.rounded.AccountBalanceWallet
 import androidx.compose.material.icons.rounded.ArrowUpward
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.ChatBubbleOutline
+import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material.icons.rounded.Umbrella
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -61,6 +65,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
@@ -73,8 +78,19 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ethan.orbitlab.data.AuthRepository
 import com.ethan.orbitlab.data.ChatRepository
+import com.ethan.orbitlab.data.Conversa
 import com.ethan.orbitlab.data.PrefsRepository
 import com.ethan.orbitlab.data.UserProfileRepository
+import com.ethan.orbitlab.data.financas.FinancasRepository
+import com.ethan.orbitlab.data.financas.PeriodoExtrato
+import com.ethan.orbitlab.data.financas.faixaDoPeriodo
+import com.ethan.orbitlab.data.financas.filtrarPorPeriodo
+import com.ethan.orbitlab.data.financas.filtrarPorPeriodoAteHoje
+import com.ethan.orbitlab.data.financas.formatarReais
+import com.ethan.orbitlab.data.financas.lancamentosFuturos
+import com.ethan.orbitlab.data.financas.resumoDoPeriodo
+import com.ethan.orbitlab.data.firebase.DocumentoUi
+import com.ethan.orbitlab.data.firebase.FirestoreDocumentos
 import com.ethan.orbitlab.data.local.DiaPrevisao
 import com.ethan.orbitlab.data.local.LocalLab
 import com.ethan.orbitlab.data.local.LocationRepository
@@ -84,6 +100,7 @@ import com.ethan.orbitlab.ui.theme.Bricolage
 import com.ethan.orbitlab.ui.theme.OrbitMetrics
 import com.ethan.orbitlab.ui.theme.OrbitTokens
 import com.ethan.orbitlab.ui.theme.orbitPressable
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Calendar
@@ -104,6 +121,7 @@ fun InicioScreen(
     val session by AuthRepository.session.collectAsState()
     val profile by UserProfileRepository.profile.collectAsState()
     val conversas by ChatRepository.conversas.collectAsState()
+    val lancamentos by FinancasRepository.lancamentos.collectAsState()
     val manifest by UpdatesRepository.manifest.collectAsState()
     val updateAvailable = remember(manifest) {
         val m = manifest ?: return@remember false
@@ -151,8 +169,37 @@ fun InicioScreen(
     val nome = nomeCompleto.substringBefore(' ').ifBlank { nomeCompleto }.ifBlank { "você" }
     val saudacao = remember { saudacaoDoDia() }
     val recentes = remember(conversas) { conversas.take(5) }
+    val conversaPrincipal = remember(recentes) {
+        recentes.firstOrNull { !ChatRepository.ehConversaFinancas(it.id) } ?: recentes.firstOrNull()
+    }
+    val agora = System.currentTimeMillis()
+    val faixaMes = faixaDoPeriodo(PeriodoExtrato.MES, agora)
+    val resumoMes = remember(lancamentos, faixaMes, agora) {
+        resumoDoPeriodo(filtrarPorPeriodoAteHoje(lancamentos, faixaMes, agora))
+    }
+    val planejadosMes = remember(lancamentos, faixaMes, agora) {
+        filtrarPorPeriodo(lancamentosFuturos(lancamentos, agora), faixaMes)
+    }
+    var artefatos by remember { mutableStateOf<List<DocumentoUi>>(emptyList()) }
+    val uid = session?.uid
     var showcaseDismissed by remember {
         mutableStateOf(PrefsRepository.showcaseLunaV1Dismissed)
+    }
+    LaunchedEffect(uid) {
+        if (uid == null) {
+            artefatos = emptyList()
+            return@LaunchedEffect
+        }
+        val reg = FirestoreDocumentos.subscribeTodos(
+            uid = uid,
+            onChange = { artefatos = it },
+            onError = { artefatos = emptyList() },
+        )
+        try {
+            awaitCancellation()
+        } finally {
+            reg.remove()
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Transparent)) {
@@ -218,6 +265,19 @@ fun InicioScreen(
                         if (ultima != null) onAbrirConversa(ultima.id) else onNovaConversa()
                     },
                 )
+                CockpitHojeSecao(
+                    conversa = conversaPrincipal,
+                    saiuCentavos = resumoMes.saiuCentavos,
+                    entrouCentavos = resumoMes.entrouCentavos,
+                    planejadosMes = planejadosMes.size,
+                    artefato = artefatos.firstOrNull(),
+                    updateDisponivel = updateAvailable,
+                    onAbrirConversa = { conversa ->
+                        if (conversa != null) onAbrirConversa(conversa.id) else onNovaConversa()
+                    },
+                    onAbrirFinancas = onAbrirFinancas,
+                    onAbrirEstante = onAbrirEstante,
+                )
                 if (!showcaseDismissed) {
                     ShowcaseNovidadesLuna(
                         onAbrirFinancas = onAbrirFinancas,
@@ -271,6 +331,239 @@ private fun saudacaoDoDia(): String {
         h in 5..11 -> "Bom dia"
         h in 12..18 -> "Boa tarde"
         else -> "Boa noite"
+    }
+}
+
+@Composable
+private fun CockpitHojeSecao(
+    conversa: Conversa?,
+    saiuCentavos: Long,
+    entrouCentavos: Long,
+    planejadosMes: Int,
+    artefato: DocumentoUi?,
+    updateDisponivel: Boolean,
+    onAbrirConversa: (Conversa?) -> Unit,
+    onAbrirFinancas: () -> Unit,
+    onAbrirEstante: () -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "Hoje no Orbit",
+                color = OrbitTokens.textHiN,
+                fontSize = 18.sp,
+                fontFamily = Bricolage,
+                fontWeight = FontWeight.Bold,
+                lineHeight = 22.sp,
+            )
+            Text(
+                "ao vivo",
+                color = OrbitTokens.bluePastel,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(OrbitMetrics.radiusPill))
+                    .background(OrbitTokens.bluePastel.copy(alpha = 0.12f))
+                    .padding(horizontal = 10.dp, vertical = 5.dp),
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            CockpitTile(
+                icone = Icons.Rounded.ChatBubbleOutline,
+                rotulo = "Conversa",
+                titulo = conversa?.titulo?.takeIf { it.isNotBlank() } ?: "Começar agora",
+                subtitulo = conversa?.preview?.takeIf { it.isNotBlank() } ?: "A Luna te espera em uma conversa nova.",
+                detalhe = conversa?.let { "Atualizada ${tempoRelativoInicio(it.ultimaAtualizacao)}" } ?: "Nova conversa",
+                acento = OrbitTokens.bluePastel,
+                modifier = Modifier.weight(1f).height(142.dp),
+                onClick = { onAbrirConversa(conversa) },
+            )
+            CockpitTile(
+                icone = Icons.Rounded.AccountBalanceWallet,
+                rotulo = "Finanças",
+                titulo = tituloFinanceiroInicio(saiuCentavos, entrouCentavos, planejadosMes),
+                subtitulo = subtituloFinanceiroInicio(saiuCentavos, entrouCentavos, planejadosMes),
+                detalhe = if (planejadosMes > 0) planejadosInicioLabel(planejadosMes) else "Realizado até hoje",
+                acento = if (saiuCentavos > 0) OrbitTokens.warning else OrbitTokens.online,
+                modifier = Modifier.weight(1f).height(142.dp),
+                onClick = onAbrirFinancas,
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            CockpitTile(
+                icone = Icons.Rounded.Description,
+                rotulo = "Artefatos",
+                titulo = artefato?.titulo?.takeIf { it.isNotBlank() } ?: "Nada recente",
+                subtitulo = artefato?.let { origemArtefatoInicio(it) } ?: "Quando a Luna criar ou editar algo, aparece aqui.",
+                detalhe = artefato?.let { "Editado ${tempoRelativoInicio(it.updatedAtMs)}" } ?: "Estante vazia",
+                acento = OrbitTokens.violet,
+                modifier = Modifier.weight(1f).height(132.dp),
+                onClick = onAbrirEstante,
+            )
+            CockpitTile(
+                icone = Icons.Rounded.CheckCircle,
+                rotulo = "Sistema",
+                titulo = if (updateDisponivel) "Update pronto" else "Tudo em dia",
+                subtitulo = if (updateDisponivel) {
+                    "Tem uma versão nova esperando no topo."
+                } else {
+                    "Lab ${BuildConfig.VERSION_NAME} rodando normal."
+                },
+                detalhe = if (updateDisponivel) "Atualização disponível" else "Canal lab",
+                acento = if (updateDisponivel) OrbitTokens.bluePastel else OrbitTokens.online,
+                modifier = Modifier.weight(1f).height(132.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun CockpitTile(
+    icone: ImageVector,
+    rotulo: String,
+    titulo: String,
+    subtitulo: String,
+    detalhe: String,
+    acento: Color,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+) {
+    val shape = RoundedCornerShape(OrbitMetrics.radiusCard)
+    val press = if (onClick != null) Modifier.orbitPressable(onClick = onClick) else Modifier
+    Column(
+        modifier
+            .clip(shape)
+            .background(OrbitTokens.graphiteSurf)
+            .border(1.dp, OrbitTokens.graphiteHair, shape)
+            .then(press)
+            .padding(14.dp),
+        verticalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier
+                    .size(30.dp)
+                    .clip(CircleShape)
+                    .background(acento.copy(alpha = 0.14f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    icone,
+                    contentDescription = null,
+                    tint = acento,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            Text(
+                rotulo,
+                color = OrbitTokens.textLowN,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+
+        Column {
+            Text(
+                titulo,
+                color = OrbitTokens.textHiN,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                lineHeight = 18.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                subtitulo,
+                color = OrbitTokens.textMidN,
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                detalhe,
+                color = acento,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+private fun tituloFinanceiroInicio(
+    saiuCentavos: Long,
+    entrouCentavos: Long,
+    planejadosMes: Int,
+): String {
+    if (saiuCentavos == 0L && entrouCentavos == 0L) {
+        return if (planejadosMes > 0) "Só planejado" else "Tudo zerado"
+    }
+    return when {
+        saiuCentavos > 0 -> "Saiu ${formatarReais(saiuCentavos)}"
+        entrouCentavos > 0 -> "Entrou ${formatarReais(entrouCentavos)}"
+        else -> "Sem movimento"
+    }
+}
+
+private fun subtituloFinanceiroInicio(
+    saiuCentavos: Long,
+    entrouCentavos: Long,
+    planejadosMes: Int,
+): String {
+    if (saiuCentavos == 0L && entrouCentavos == 0L) {
+        return if (planejadosMes > 0) {
+            "Nada realizado ainda; futuros ficam fora da conta."
+        } else {
+            "Seu mês ainda não tem movimentos."
+        }
+    }
+    val saldo = entrouCentavos - saiuCentavos
+    return "Saldo do mês: ${formatarReais(saldo)}"
+}
+
+private fun origemArtefatoInicio(artefato: DocumentoUi): String =
+    when (artefato.updatedBy.lowercase(Locale.getDefault())) {
+        "user" -> "Último toque seu na Estante."
+        else -> "Último toque da Luna na Estante."
+    }
+
+private fun planejadosInicioLabel(total: Int): String =
+    if (total == 1) "1 futuro neste mês" else "$total futuros neste mês"
+
+private fun tempoRelativoInicio(epochMs: Long): String {
+    if (epochMs <= 0L) return "agora"
+    val deltaMin = ((System.currentTimeMillis() - epochMs).coerceAtLeast(0L)) / 60000L
+    return when {
+        deltaMin < 1 -> "agora"
+        deltaMin < 60 -> "há $deltaMin min"
+        deltaMin < 1440 -> "há ${deltaMin / 60} h"
+        deltaMin < 43200 -> "há ${deltaMin / 1440} d"
+        else -> {
+            val meses = deltaMin / 43200
+            if (meses == 1L) "há 1 mês" else "há $meses meses"
+        }
     }
 }
 
