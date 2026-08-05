@@ -5,18 +5,15 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
 /**
- * Fio agentico estilo Cursor: checklist (se houver) + narração e tools **intercalados**
- * na ordem do SSE — não um bloco de badges em cima e o texto embaixo.
- *
- * Se [LunaActionRun.fluxo] estiver vazio, cai no legado ([LunaActionTimeline] + markdown).
+ * Fio agentico estilo Cursor: checklist (se houver) + narração e tools **intercalados**.
+ * Tools viram clusters colapsáveis (texto quieto + chevron), sem ícones estranhos.
  */
 @Composable
 fun LunaFluxoAgentico(
@@ -46,6 +43,9 @@ fun LunaFluxoAgentico(
     }
 
     val stepsById = run.steps.associateBy { it.id }
+    val blocos = remember(fluxo, run.steps) {
+        agruparFluxoUi(fluxo, stepsById)
+    }
 
     Column(
         modifier.fillMaxWidth(),
@@ -56,25 +56,14 @@ fun LunaFluxoAgentico(
             LunaPlanChecklist(plano = run.plano, aoVivo = aoVivo)
         }
 
-        fluxo.forEach { seg ->
-            when (seg) {
-                is LunaTurnoSegmento.Narracao -> {
-                    val t = seg.texto.trim()
-                    if (t.isNotEmpty()) {
-                        LunaMarkdown(content = t)
-                    }
+        blocos.forEach { bloco ->
+            when (bloco) {
+                is FluxoUiBloco.Narracao -> {
+                    val t = bloco.texto.trim()
+                    if (t.isNotEmpty()) LunaMarkdown(content = t)
                 }
-                is LunaTurnoSegmento.Acao -> {
-                    val step = stepsById[seg.stepId] ?: return@forEach
-                    // Meta-tools de plano não entram no fio (a checklist já é a UI).
-                    if (step.ferramenta != null && ehFerramentaDePlano(step.ferramenta)) return@forEach
-                    // Chip enxuto à esquerda — não estica como o parágrafo da Luna.
-                    LunaToolPassoInline(
-                        step = step,
-                        modifier = Modifier
-                            .widthIn(max = 320.dp)
-                            .padding(top = 2.dp, bottom = 2.dp),
-                    )
+                is FluxoUiBloco.Tools -> {
+                    LunaToolClusterCursor(steps = bloco.steps)
                 }
             }
         }
@@ -83,4 +72,40 @@ fun LunaFluxoAgentico(
             StreamCaret()
         }
     }
+}
+
+private sealed class FluxoUiBloco {
+    data class Narracao(val texto: String) : FluxoUiBloco()
+    data class Tools(val steps: List<LunaActionStep>) : FluxoUiBloco()
+}
+
+/** Junta Acaos consecutivas num cluster (como o lote «Edited N files…» do Cursor). */
+private fun agruparFluxoUi(
+    fluxo: List<LunaTurnoSegmento>,
+    stepsById: Map<String, LunaActionStep>,
+): List<FluxoUiBloco> {
+    val out = mutableListOf<FluxoUiBloco>()
+    var batch = mutableListOf<LunaActionStep>()
+
+    fun flushBatch() {
+        if (batch.isEmpty()) return
+        out += FluxoUiBloco.Tools(batch.toList())
+        batch = mutableListOf()
+    }
+
+    for (seg in fluxo) {
+        when (seg) {
+            is LunaTurnoSegmento.Narracao -> {
+                flushBatch()
+                if (seg.texto.isNotBlank()) out += FluxoUiBloco.Narracao(seg.texto)
+            }
+            is LunaTurnoSegmento.Acao -> {
+                val step = stepsById[seg.stepId] ?: continue
+                if (step.ferramenta != null && ehFerramentaDePlano(step.ferramenta)) continue
+                batch += step
+            }
+        }
+    }
+    flushBatch()
+    return out
 }
