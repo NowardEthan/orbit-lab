@@ -1,12 +1,18 @@
 package com.ethan.orbitlab.ui.chat
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowRight
@@ -21,13 +27,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.text.style.TextOverflow
 import com.ethan.orbitlab.ui.theme.OrbitMotion
 import com.ethan.orbitlab.ui.theme.OrbitTokens
 import com.ethan.orbitlab.ui.theme.orbitPressable
@@ -183,6 +191,67 @@ private fun LinhaDetalheTool(step: LunaActionStep) {
                 overflow = TextOverflow.Ellipsis,
             )
         }
+        if (step.queries.isNotEmpty()) {
+            Text(
+                text = step.queries.take(2).joinToString(" · ") { q ->
+                    val t = q.trim().trim('"')
+                    if (t.length > 42) "“${t.take(39)}…”" else "“$t”"
+                },
+                color = OrbitTokens.textLowN,
+                fontSize = 11.sp,
+                lineHeight = 14.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (step.sources.isNotEmpty()) {
+            FontesCompactas(fontes = step.sources)
+        }
+    }
+}
+
+/** Chips de domínio clicáveis — pesquisa no fio, sem painel à parte. */
+@Composable
+private fun FontesCompactas(fontes: List<LunaWebFonte>) {
+    val context = LocalContext.current
+    val unicas = remember(fontes) { fontes.distinctBy { it.url }.take(6) }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(top = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        unicas.forEach { fonte ->
+            val dominio = fonte.domain.removePrefix("www.").ifBlank { "fonte" }
+            Text(
+                text = dominio,
+                color = OrbitTokens.bluePastel,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(OrbitTokens.graphiteRaised)
+                    .orbitPressable {
+                        runCatching {
+                            context.startActivity(
+                                Intent(Intent.ACTION_VIEW, Uri.parse(fonte.url))
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                            )
+                        }
+                    }
+                    .padding(horizontal = 7.dp, vertical = 2.dp),
+            )
+        }
+        if (fontes.distinctBy { it.url }.size > unicas.size) {
+            Text(
+                text = "+${fontes.distinctBy { it.url }.size - unicas.size}",
+                color = OrbitTokens.textLowN,
+                fontSize = 10.sp,
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+            )
+        }
     }
 }
 
@@ -253,6 +322,8 @@ private fun partesLinhaDetalhe(step: LunaActionStep): PartesLinhaDetalhe {
             if (step.status == LunaActionStepStatus.RUNNING) "Lendo" else "Leu"
         "criar_artefato" -> if (step.status == LunaActionStepStatus.RUNNING) "Criando" else "Criou"
         "web_search" -> if (step.status == LunaActionStepStatus.RUNNING) "Pesquisando" else "Pesquisou"
+        "ler_url" -> if (step.status == LunaActionStepStatus.RUNNING) "Lendo link" else "Leu link"
+        "verificar_fontes" -> if (step.status == LunaActionStepStatus.RUNNING) "Cruzando fontes" else "Cruzou fontes"
         "listar_artefatos" -> if (step.status == LunaActionStepStatus.RUNNING) "Listando estante" else "Listou a estante"
         "consultar_neuronio" -> {
             val esp = step.neuronioEspecialidade?.lowercase().orEmpty()

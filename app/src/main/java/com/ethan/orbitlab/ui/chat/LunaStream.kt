@@ -9,7 +9,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -18,7 +17,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -291,71 +289,48 @@ fun LunaStreamDraft(
         }
         is LunaStreamEstado.Raciocinando -> {
             val mostrarRaciocinio by PrefsRepository.reasoningEnabled.collectAsState()
-            // Pesquisa profunda: a Luna trabalha DENTRO do dossiê — a timeline viva no corpo
-            // vai acendendo os passos. É o mesmo card que depois vira o relatório, então não
-            // há troca brusca de visual quando a resposta chega.
-            val dossie = estado.actionRun?.takeIf { it.isDeepResearch() }?.toLegacyResearchRun()
-            if (dossie != null) {
-                Column(modifier.fillMaxWidth(0.96f)) {
-                    estado.actionRun?.plano?.takeIf { it.isNotEmpty() }?.let { plano ->
-                        LunaPlanChecklist(
-                            plano = plano,
-                            aoVivo = estado.actionRun.status == LunaActionRunStatus.RUNNING,
+            // Timeline agentica first — web e tools no mesmo fio (sem dossiê).
+            val labelImagem = estado.actionRun?.imagemEmGeracao()
+            Column(modifier.fillMaxWidth(0.92f)) {
+                estado.actionRun?.let { run ->
+                    if (run.fluxo.isNotEmpty()) {
+                        LunaFluxoAgentico(
+                            run = run,
+                            textoFallback = "",
+                            aoVivo = run.status == LunaActionRunStatus.RUNNING,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                    } else {
+                        LunaActionTimeline(
+                            run = run,
+                            liveLabel = estado.fase.ifBlank { null },
+                            inicialmenteAberto = run.status == LunaActionRunStatus.RUNNING,
                         )
                         Spacer(Modifier.height(8.dp))
                     }
-                    LunaDossieCard(
-                        run = dossie,
-                        resposta = "",
-                        streaming = true,
-                        liveLabel = estado.fase.ifBlank { null },
-                        inicialmenteAberto = false,
-                    )
                 }
-            } else {
-                // Desenhando/editando uma imagem AGORA: o quadrado-fantasma toma o lugar do
-                // "Pensando…" — é ele o indicador de progresso enquanto a imagem não chega.
-                val labelImagem = estado.actionRun?.imagemEmGeracao()
-                Column(modifier.fillMaxWidth(0.92f)) {
-                    estado.actionRun?.let { run ->
-                        if (run.fluxo.isNotEmpty()) {
-                            LunaFluxoAgentico(
-                                run = run,
-                                textoFallback = "",
-                                aoVivo = run.status == LunaActionRunStatus.RUNNING,
+                when {
+                    labelImagem != null -> {
+                        LunaImagePlaceholderCard(
+                            label = labelImagem,
+                            modifier = Modifier.align(Alignment.Start),
+                        )
+                    }
+                    mostrarRaciocinio && estado.parcial.isNotBlank() -> {
+                        Column(modifier.fillMaxWidth(0.85f)) {
+                            LunaReasoning(
+                                texto = estado.parcial,
+                                inicialmenteAberto = true,
+                                expandidoControlado = true,
+                                clicavel = false,
+                                animarTamanho = false,
                             )
-                            Spacer(Modifier.height(8.dp))
-                        } else {
-                            LunaActionTimeline(
-                                run = run,
-                                inicialmenteAberto = run.status == LunaActionRunStatus.RUNNING,
-                            )
-                            Spacer(Modifier.height(8.dp))
                         }
                     }
-                    when {
-                        labelImagem != null -> {
-                            LunaImagePlaceholderCard(
-                                label = labelImagem,
-                                modifier = Modifier.align(Alignment.Start),
-                            )
-                        }
-                        mostrarRaciocinio && estado.parcial.isNotBlank() -> {
-                            Column(Modifier.fillMaxWidth(0.85f)) {
-                                LunaReasoning(
-                                    texto = estado.parcial,
-                                    inicialmenteAberto = true,
-                                    expandidoControlado = true,
-                                    clicavel = false,
-                                    animarTamanho = false,
-                                )
-                            }
-                        }
-                        // Sempre mostra o indicador enquanto espera o primeiro token — com o
-                        // rótulo da fase (Analisando…/Escrevendo…) quando o servidor manda, senão
-                        // “Pensando…”. A caixa de raciocínio só aparece com raciocínio de verdade.
-                        else -> LunaReasoningPensando(label = estado.fase.ifBlank { "Pensando…" })
-                    }
+                    // Sempre mostra o indicador enquanto espera o primeiro token — com o
+                    // rótulo da fase (Analisando…/Escrevendo…) quando o servidor manda, senão
+                    // “Pensando…”. A caixa de raciocínio só aparece com raciocínio de verdade.
+                    else -> LunaReasoningPensando(label = estado.fase.ifBlank { "Pensando…" })
                 }
             }
         }
@@ -380,30 +355,6 @@ private fun StreamRespostaDraft(
     modifier: Modifier = Modifier,
 ) {
     val mostrarRaciocinio by PrefsRepository.reasoningEnabled.collectAsState()
-
-    // Pesquisa profunda: a resposta se forma DENTRO do dossiê (mesma cara de quando
-    // assenta no histórico), não numa bolha que depois vira card.
-    val dossie = actionRun?.takeIf { it.isDeepResearch() }?.toLegacyResearchRun()
-    if (dossie != null && respostaParcial.isNotBlank()) {
-        BoxWithConstraints(modifier.fillMaxWidth()) {
-            Column(Modifier.widthIn(max = maxWidth * 0.96f)) {
-                actionRun.plano.takeIf { it.isNotEmpty() }?.let { plano ->
-                    LunaPlanChecklist(
-                        plano = plano,
-                        aoVivo = actionRun.status == LunaActionRunStatus.RUNNING,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                }
-                LunaDossieCard(
-                    run = dossie,
-                    resposta = respostaParcial,
-                    streaming = true,
-                    inicialmenteAberto = false,
-                )
-            }
-        }
-        return
-    }
 
     Box(modifier.fillMaxWidth()) {
         Column(
