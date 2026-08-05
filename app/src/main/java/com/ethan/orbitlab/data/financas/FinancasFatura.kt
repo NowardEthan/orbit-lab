@@ -65,12 +65,14 @@ fun faturaCredito(
 ): FaturaCredito? {
     if (carteira.tipo != TipoCarteira.CARTAO_CREDITO) return null
     val ciclo = cicloFaturaAtual(carteira.fechamentoDia, agoraMs)
+    val fimHoje = fimDoDiaExclusivo(agoraMs)
     val gasto = lancamentos
         .filter {
             it.carteiraId == carteira.id &&
                 it.tipo == TipoLancamento.SAIDA &&
                 it.dataMs >= ciclo.inicioMs &&
-                it.dataMs < ciclo.fimMsExclusivo
+                it.dataMs < ciclo.fimMsExclusivo &&
+                it.dataMs < fimHoje
         }
         .sumOf { it.valorCentavos }
     val pago = transferencias
@@ -78,7 +80,8 @@ fun faturaCredito(
             it.paraCarteiraId == carteira.id &&
                 it.motivo == MotivoTransferencia.PAGAR_FATURA &&
                 it.dataMs >= ciclo.inicioMs &&
-                it.dataMs < ciclo.fimMsExclusivo
+                it.dataMs < ciclo.fimMsExclusivo &&
+                it.dataMs < fimHoje
         }
         .sumOf { it.valorCentavos }
     val fatura = (gasto - pago).coerceAtLeast(0L)

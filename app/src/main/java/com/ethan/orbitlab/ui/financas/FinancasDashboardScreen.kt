@@ -2,6 +2,8 @@ package com.ethan.orbitlab.ui.financas
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -68,11 +70,15 @@ import com.ethan.orbitlab.data.financas.TipoLancamento
 import com.ethan.orbitlab.data.financas.TipoMeta
 import com.ethan.orbitlab.data.financas.faixaDoMesOffset
 import com.ethan.orbitlab.data.financas.faixaDoPeriodo
+import com.ethan.orbitlab.data.financas.filtrarPorPeriodoAteHoje
 import com.ethan.orbitlab.data.financas.filtrarPorPeriodo
 import com.ethan.orbitlab.data.financas.formatarReais
 import com.ethan.orbitlab.data.financas.gastoPorDiaDoMes
 import com.ethan.orbitlab.data.financas.gerarInsightFinancas
 import com.ethan.orbitlab.data.financas.inicioDoMes
+import com.ethan.orbitlab.data.financas.lancamentoJaConta
+import com.ethan.orbitlab.data.financas.lancamentosFuturos
+import com.ethan.orbitlab.data.financas.lancamentosQueJaContam
 import com.ethan.orbitlab.data.financas.metaGastoMes
 import com.ethan.orbitlab.data.financas.offsetPeriodoComMovimento
 import com.ethan.orbitlab.data.financas.progressosMetas
@@ -113,14 +119,16 @@ fun FinancasDashboardScreen() {
     var pickerMes by remember { mutableStateOf(false) }
 
     val agora = System.currentTimeMillis()
+    val lancamentosEfetivos = remember(lancamentos, agora) { lancamentosQueJaContam(lancamentos, agora) }
+    val lancamentosPlanejados = remember(lancamentos, agora) { lancamentosFuturos(lancamentos, agora) }
     // Síncrono (não LaunchedEffect): no 1º frame com dados o resumo já usa julho se agosto
     // estiver vazio — senão o painel pintava R$ 0 e parecia que «não registrou».
     // Chave por size+max data — evita remember “preso” se a lista mudar de identidade sem equals.
-    val chaveLanc = remember(lancamentos) {
-        "${lancamentos.size}:${lancamentos.maxOfOrNull { it.dataMs } ?: 0L}"
+    val chaveLanc = remember(lancamentosEfetivos) {
+        "${lancamentosEfetivos.size}:${lancamentosEfetivos.maxOfOrNull { it.dataMs } ?: 0L}"
     }
     val offsetMesAuto = remember(chaveLanc) {
-        offsetPeriodoComMovimento(PeriodoExtrato.MES, lancamentos, System.currentTimeMillis())
+        offsetPeriodoComMovimento(PeriodoExtrato.MES, lancamentosEfetivos, System.currentTimeMillis())
     }
     val offsetMes = offsetMesManual ?: offsetMesAuto
     val faixaMes = remember(offsetMes, chaveLanc) {
@@ -130,37 +138,31 @@ fun FinancasDashboardScreen() {
         faixaDoMesOffset(offsetMes - 1, System.currentTimeMillis())
     }
     val refMesMs = faixaMes.inicioMs
-    val doMes = remember(chaveLanc, faixaMes) { filtrarPorPeriodo(lancamentos, faixaMes) }
-    val doMesAnt = remember(chaveLanc, faixaMesAnt) { filtrarPorPeriodo(lancamentos, faixaMesAnt) }
-    // Fallback contínuo: se o mês (mesmo auto) vier vazio, resume os últimos 30 dias.
-    val resumo = remember(doMes, chaveLanc) {
-        val doMesR = resumoDoPeriodo(doMes)
-        if (doMes.isNotEmpty()) {
-            doMesR
-        } else {
-            val corte = System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000
-            resumoDoPeriodo(lancamentos.filter { it.dataMs >= corte })
-        }
+    val doMes = remember(chaveLanc, faixaMes, agora) { filtrarPorPeriodoAteHoje(lancamentos, faixaMes, agora) }
+    val doMesAnt = remember(chaveLanc, faixaMesAnt, agora) { filtrarPorPeriodoAteHoje(lancamentos, faixaMesAnt, agora) }
+    val planejadosDoMes = remember(lancamentosPlanejados, faixaMes) {
+        filtrarPorPeriodo(lancamentosPlanejados, faixaMes)
     }
+    val resumo = remember(doMes) { resumoDoPeriodo(doMes) }
     val meta = remember(recorrentes, metas) { metaGastoMes(recorrentes, metas) }
     val pctMeta = if (meta > 0) (resumo.saiuCentavos.toFloat() / meta.toFloat()).coerceIn(0f, 1.2f) else 0f
-    val dentroMeta = resumo.saiuCentavos <= meta
+    val dentroMeta = meta > 0L && resumo.saiuCentavos <= meta
     val ofensiva = luz.ofensiva
     val insight = remember(doMes, doMesAnt, recorrentes, meta) {
         gerarInsightFinancas(doMes, doMesAnt, recorrentes, meta)
     }
     val hojeIni = remember { faixaDoPeriodo(PeriodoExtrato.DIA, agora) }
-    val deHoje = remember(lancamentos) {
-        filtrarPorPeriodo(lancamentos, hojeIni).sortedByDescending { it.dataMs }
+    val deHoje = remember(lancamentosEfetivos) {
+        filtrarPorPeriodo(lancamentosEfetivos, hojeIni).sortedByDescending { it.dataMs }
     }
     // Lista contínua: se hoje está vazio, mostra os mais recentes (não some o histórico).
-    val listaPainel = remember(deHoje, lancamentos) {
+    val listaPainel = remember(deHoje, lancamentosEfetivos) {
         if (deHoje.isNotEmpty()) deHoje
-        else lancamentos.sortedByDescending { it.dataMs }
+        else lancamentosEfetivos.sortedByDescending { it.dataMs }
     }
     val tituloListaPainel = if (deHoje.isNotEmpty()) "Hoje" else "Recentes"
-    val pendentes = remember(doMes) {
-        doMes.filter { !it.pago && it.tipo == TipoLancamento.SAIDA }
+    val pendentes = remember(doMes, planejadosDoMes) {
+        (doMes + planejadosDoMes).filter { !it.pago && it.tipo == TipoLancamento.SAIDA }
     }
     val contasPagarCentavos = remember(pendentes) { pendentes.sumOf { it.valorCentavos } }
     val fixos = remember(recorrentes) { resumoRecorrentes(recorrentes.filter { it.ativo }) }
@@ -174,7 +176,7 @@ fun FinancasDashboardScreen() {
             else -> ((fixos.sobraLivreCentavos * 100) / fixos.entramCentavos).toInt().coerceIn(0, 100)
         }
     }
-    val serie = remember(lancamentos, refMesMs) { gastoPorDiaDoMes(lancamentos, refMesMs) }
+    val serie = remember(lancamentosEfetivos, refMesMs) { gastoPorDiaDoMes(lancamentosEfetivos, refMesMs) }
     val carteiraPorId = remember(carteiras) { carteiras.associateBy { it.id } }
     val mesLabel = remember(refMesMs) {
         SimpleDateFormat("MMMM", Locale.forLanguageTag("pt-BR"))
@@ -206,6 +208,7 @@ fun FinancasDashboardScreen() {
                     recorrenteId = lanc.recorrenteId,
                     origem = lanc.origem,
                     capturaRaw = lanc.capturaRaw,
+                    tags = lanc.tags,
                     pago = true,
                 ),
             )
@@ -557,6 +560,7 @@ private fun CardAnelMetaConcept(
     ofensiva: Int,
 ) {
     val pctMostrar = (pct * 100).toInt().coerceAtMost(999)
+    val temMeta = meta > 0L
     Row(
         Modifier
             .fillMaxWidth()
@@ -580,9 +584,13 @@ private fun CardAnelMetaConcept(
                     topLeft = topLeft,
                 )
                 drawArc(
-                    color = if (dentroMeta) OrbitTokens.bluePastel else OrbitTokens.danger,
+                    color = when {
+                        !temMeta -> OrbitTokens.graphiteHair
+                        dentroMeta -> OrbitTokens.bluePastel
+                        else -> OrbitTokens.danger
+                    },
                     startAngle = -90f,
-                    sweepAngle = 360f * pct.coerceIn(0f, 1f),
+                    sweepAngle = if (temMeta) 360f * pct.coerceIn(0f, 1f) else 360f,
                     useCenter = false,
                     style = Stroke(width = stroke, cap = StrokeCap.Round),
                     size = arcSize,
@@ -591,14 +599,14 @@ private fun CardAnelMetaConcept(
             }
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    "$pctMostrar%",
+                    if (temMeta) "$pctMostrar%" else "R$",
                     color = OrbitTokens.textHiN,
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = Bricolage,
                 )
                 Text(
-                    "da meta",
+                    if (temMeta) "da meta" else "do mês",
                     color = OrbitTokens.textLowN,
                     fontSize = 11.sp,
                 )
@@ -626,13 +634,15 @@ private fun CardAnelMetaConcept(
                             fontFamily = FontFamily.Monospace,
                         ),
                     ) {
-                        append(" / ")
-                        append(formatarReais(meta).replace("R$\u00A0", "").replace("R$ ", ""))
+                        if (temMeta) {
+                            append(" / ")
+                            append(formatarReais(meta).replace("R$\u00A0", "").replace("R$ ", ""))
+                        }
                     }
                 },
             )
             Text(
-                "gasto do mês",
+                if (temMeta) "gasto do mês" else "gasto realizado",
                 color = OrbitTokens.textLowN,
                 fontSize = 12.sp,
             )
@@ -641,12 +651,17 @@ private fun CardAnelMetaConcept(
                 Modifier
                     .clip(RoundedCornerShape(999.dp))
                     .background(
-                        if (dentroMeta) OrbitTokens.online else OrbitTokens.danger,
+                        when {
+                            !temMeta -> OrbitTokens.graphiteRaised
+                            dentroMeta -> OrbitTokens.online
+                            else -> OrbitTokens.danger
+                        },
                     )
+                    .orbitPressable { if (!temMeta) FinancasNav.abrir(FinancasDestino.METAS) }
                     .padding(horizontal = 10.dp, vertical = 5.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (dentroMeta) {
+                if (temMeta && dentroMeta) {
                     Icon(
                         Icons.Rounded.Check,
                         contentDescription = null,
@@ -656,13 +671,17 @@ private fun CardAnelMetaConcept(
                     Spacer(Modifier.width(4.dp))
                 }
                 Text(
-                    if (dentroMeta) "Dentro da meta" else "Acima da meta",
-                    color = Color.White,
+                    when {
+                        !temMeta -> "Definir orçamento"
+                        dentroMeta -> "Dentro da meta"
+                        else -> "Acima da meta"
+                    },
+                    color = if (temMeta) Color.White else OrbitTokens.textHiN,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
             }
-            if (ofensiva > 0) {
+            if (temMeta && ofensiva > 0) {
                 Spacer(Modifier.height(10.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("🔥", fontSize = 14.sp)
@@ -747,9 +766,15 @@ private fun LinhaHojeConcept(
 ) {
     val cat = CategoriasFinanca.porId(lancamento.categoria)
     val entrada = lancamento.tipo == TipoLancamento.ENTRADA
+    val futuro = !lancamentoJaConta(lancamento)
     val hora = remember(lancamento) {
         val ms = lancamento.createdAtMs.takeIf { it > 0 } ?: lancamento.dataMs
         SimpleDateFormat("HH:mm", Locale.forLanguageTag("pt-BR")).format(Date(ms))
+    }
+    val dataCurta = remember(lancamento.dataMs) {
+        SimpleDateFormat("d MMM", Locale.forLanguageTag("pt-BR"))
+            .format(Date(lancamento.dataMs))
+            .lowercase(Locale.forLanguageTag("pt-BR"))
     }
     val titulo = buildString {
         append(lancamento.descricao.ifBlank { cat.rotulo })
@@ -792,7 +817,8 @@ private fun LinhaHojeConcept(
                 buildString {
                     append(cat.rotulo)
                     append(" · ")
-                    append(hora)
+                    append(if (futuro) dataCurta else hora)
+                    if (futuro) append(" · planejado")
                     if (!lancamento.pago) append(" · a pagar")
                 },
                 color = if (!lancamento.pago) OrbitTokens.danger else OrbitTokens.textLowN,
@@ -820,6 +846,28 @@ private fun LinhaHojeConcept(
                     .padding(start = 20.dp)
                     .orbitPressable(onClick = onMarcarPago),
             )
+        }
+        if (lancamento.tags.isNotEmpty()) {
+            Spacer(Modifier.height(6.dp))
+            Row(
+                Modifier
+                    .padding(start = 20.dp)
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                lancamento.tags.take(4).forEach { tag ->
+                    Text(
+                        "#$tag",
+                        color = OrbitTokens.bluePastel,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(OrbitTokens.bluePastel.copy(alpha = 0.12f))
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                    )
+                }
+            }
         }
     }
 }

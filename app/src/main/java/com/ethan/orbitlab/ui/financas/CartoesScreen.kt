@@ -80,7 +80,9 @@ import com.ethan.orbitlab.data.financas.diasAte
 import com.ethan.orbitlab.data.financas.faixaDoPeriodo
 import com.ethan.orbitlab.data.financas.faturaCredito
 import com.ethan.orbitlab.data.financas.filtrarPorPeriodo
+import com.ethan.orbitlab.data.financas.filtrarPorPeriodoAteHoje
 import com.ethan.orbitlab.data.financas.formatarReais
+import com.ethan.orbitlab.data.financas.lancamentosQueJaContam
 import com.ethan.orbitlab.data.financas.parsearReaisParaCentavos
 import com.ethan.orbitlab.data.financas.proximoVencimentoMs
 import com.ethan.orbitlab.data.financas.saldoDerivado
@@ -113,28 +115,29 @@ fun CartoesScreen() {
     var filtroTipoAberto by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val agora = System.currentTimeMillis()
+    val lancamentosEfetivos = remember(lancamentos, agora) { lancamentosQueJaContam(lancamentos, agora) }
 
     val credito = remember(carteiras) {
         carteiras.filter { it.tipo == TipoCarteira.CARTAO_CREDITO }
     }
     val principal = credito.firstOrNull() ?: carteiras.firstOrNull()
-    val faturas = remember(carteiras, lancamentos, transferencias) {
-        credito.mapNotNull { faturaCredito(it, lancamentos, transferencias) }
+    val faturas = remember(carteiras, lancamentos, transferencias, agora) {
+        credito.mapNotNull { faturaCredito(it, lancamentos, transferencias, agora) }
     }
     val faturasAbertas = faturas.sumOf { it.faturaCentavos }
     val limiteLivreTotal = faturas.sumOf { it.limiteLivreCentavos ?: 0L }
-    val insight = remember(carteiras, lancamentos, credito, agora) {
-        insightCartoes(carteiras, lancamentos, credito, agora)
+    val insight = remember(carteiras, lancamentosEfetivos, credito, agora) {
+        insightCartoes(carteiras, lancamentosEfetivos, credito, agora)
     }
     val faixaMes = remember(agora) { faixaDoPeriodo(PeriodoExtrato.MES, agora) }
-    val gastoMesPorCarteira = remember(lancamentos, faixaMes) {
-        filtrarPorPeriodo(lancamentos, faixaMes)
+    val gastoMesPorCarteira = remember(lancamentos, faixaMes, agora) {
+        filtrarPorPeriodoAteHoje(lancamentos, faixaMes, agora)
             .filter { it.tipo == TipoLancamento.SAIDA }
             .groupBy { it.carteiraId }
             .mapValues { (_, xs) -> xs.sumOf { it.valorCentavos } }
     }
-    val faturaPrincipal = remember(principal, lancamentos, transferencias) {
-        principal?.let { faturaCredito(it, lancamentos, transferencias) }
+    val faturaPrincipal = remember(principal, lancamentos, transferencias, agora) {
+        principal?.let { faturaCredito(it, lancamentos, transferencias, agora) }
     }
     val demais = remember(carteiras, principal, filtroTipo) {
         carteiras
@@ -245,7 +248,7 @@ fun CartoesScreen() {
                         }
                     }
                     items(demaisFiltrados, key = { it.id }) { c ->
-                        val faturaLinha = faturaCredito(c, lancamentos, transferencias)
+                        val faturaLinha = faturaCredito(c, lancamentos, transferencias, agora)
                         LinhaCarteiraConcept(
                             carteira = c,
                             valorDireita = when (c.tipo) {
@@ -421,7 +424,7 @@ private fun insightCartoes(
     agoraMs: Long,
 ): InsightCartoes? {
     if (credito.isEmpty()) return null
-    val mes = filtrarPorPeriodo(lancamentos, faixaDoPeriodo(PeriodoExtrato.MES, agoraMs))
+    val mes = filtrarPorPeriodoAteHoje(lancamentos, faixaDoPeriodo(PeriodoExtrato.MES, agoraMs), agoraMs)
         .filter { it.tipo == TipoLancamento.SAIDA }
     val total = mes.sumOf { it.valorCentavos }
     if (total <= 0L) return null

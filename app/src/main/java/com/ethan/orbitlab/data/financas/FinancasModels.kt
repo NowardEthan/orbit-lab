@@ -188,6 +188,7 @@ data class Lancamento(
     val recorrenteId: String? = null,
     val origem: String = OrigemLancamento.MANUAL,
     val capturaRaw: String? = null,
+    val tags: List<String> = emptyList(),
     val pago: Boolean = true,
     val createdAtMs: Long = 0,
     val updatedAtMs: Long = 0,
@@ -406,6 +407,39 @@ fun dataDiaNoMesLocal(dia: Int, refMs: Long = System.currentTimeMillis()): Long 
 fun filtrarPorPeriodo(lancamentos: List<Lancamento>, faixa: FaixaPeriodo): List<Lancamento> =
     lancamentos.filter { it.dataMs >= faixa.inicioMs && it.dataMs < faixa.fimMsExclusivo }
 
+fun lancamentoJaConta(lancamento: Lancamento, agoraMs: Long = System.currentTimeMillis()): Boolean =
+    lancamento.dataMs < fimDoDiaExclusivo(agoraMs)
+
+fun lancamentosQueJaContam(
+    lancamentos: List<Lancamento>,
+    agoraMs: Long = System.currentTimeMillis(),
+): List<Lancamento> = lancamentos.filter { lancamentoJaConta(it, agoraMs) }
+
+fun filtrarPorPeriodoAteHoje(
+    lancamentos: List<Lancamento>,
+    faixa: FaixaPeriodo,
+    agoraMs: Long = System.currentTimeMillis(),
+): List<Lancamento> = filtrarPorPeriodo(lancamentosQueJaContam(lancamentos, agoraMs), faixa)
+
+fun lancamentosFuturos(
+    lancamentos: List<Lancamento>,
+    agoraMs: Long = System.currentTimeMillis(),
+): List<Lancamento> = lancamentos.filter { !lancamentoJaConta(it, agoraMs) }
+
+fun normalizarTagsFinancas(tags: List<String>): List<String> =
+    tags
+        .flatMap { it.split(",", ";", "\n", "\t") }
+        .map { tag ->
+            tag.trim()
+                .removePrefix("#")
+                .lowercase(Locale.forLanguageTag("pt-BR"))
+                .filter { ch -> ch.isLetterOrDigit() || ch == '-' || ch == '_' || ch == ' ' }
+                .replace(Regex("\\s+"), "-")
+        }
+        .filter { it.length in 2..24 }
+        .distinct()
+        .take(8)
+
 fun resumoDoPeriodo(lancamentos: List<Lancamento>): ResumoPeriodo {
     var entrou = 0L
     var saiu = 0L
@@ -515,9 +549,12 @@ fun saldoDerivado(
     carteira: Carteira,
     lancamentos: List<Lancamento>,
     transferencias: List<Transferencia> = emptyList(),
+    agoraMs: Long = System.currentTimeMillis(),
 ): Long {
     var saldo = carteira.saldoInicialCentavos
+    val fimHoje = fimDoDiaExclusivo(agoraMs)
     for (l in lancamentos) {
+        if (l.dataMs >= fimHoje) continue
         if (l.carteiraId != carteira.id) continue
         when (l.tipo) {
             TipoLancamento.ENTRADA -> saldo += l.valorCentavos
@@ -525,6 +562,7 @@ fun saldoDerivado(
         }
     }
     for (t in transferencias) {
+        if (t.dataMs >= fimHoje) continue
         when (carteira.id) {
             t.deCarteiraId -> saldo -= t.valorCentavos
             t.paraCarteiraId -> saldo += t.valorCentavos

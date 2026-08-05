@@ -67,6 +67,7 @@ import com.ethan.orbitlab.data.financas.ProgressoMeta
 import com.ethan.orbitlab.data.financas.TipoMeta
 import com.ethan.orbitlab.data.financas.faixaDoPeriodo
 import com.ethan.orbitlab.data.financas.filtrarPorPeriodo
+import com.ethan.orbitlab.data.financas.filtrarPorPeriodoAteHoje
 import com.ethan.orbitlab.data.financas.formatarReais
 import com.ethan.orbitlab.data.financas.gastoPorCategoria
 import com.ethan.orbitlab.data.financas.parsearReaisParaCentavos
@@ -92,7 +93,7 @@ fun MetasScreen() {
     val scope = rememberCoroutineScope()
     val agora = System.currentTimeMillis()
     val doMes = remember(lancamentos) {
-        filtrarPorPeriodo(lancamentos, faixaDoPeriodo(PeriodoExtrato.MES, agora))
+        filtrarPorPeriodoAteHoje(lancamentos, faixaDoPeriodo(PeriodoExtrato.MES, agora), agora)
     }
     val progressos = remember(metas, doMes) { progressosMetas(metas, doMes) }
     val fatias = remember(doMes) { gastoPorCategoria(doMes) }

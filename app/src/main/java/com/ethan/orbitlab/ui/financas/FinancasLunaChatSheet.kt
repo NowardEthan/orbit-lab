@@ -296,7 +296,7 @@ private fun FinancasLunaChatConteudo(
         "💰 Quanto gastei este mês?",
         "💳 Cria um cartão Nubank",
         "🎯 Meta de reserva R$ 1000",
-        "✍️ Gastei 50 no almoço",
+        "✍️ Gastei 50 no almoço #trabalho",
         "🔄 Lista as recorrentes",
     )
 

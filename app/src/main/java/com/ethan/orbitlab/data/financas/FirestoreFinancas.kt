@@ -423,6 +423,7 @@ object FirestoreFinancas {
         "recorrenteId" to r.recorrenteId,
         "origem" to r.origem,
         "capturaRaw" to r.capturaRaw,
+        "tags" to normalizarTagsFinancas(r.tags),
         "pago" to r.pago,
         "createdAt" to createdAtMs,
         "updatedAt" to agora,
@@ -450,6 +451,7 @@ object FirestoreFinancas {
             origem = (data["origem"] as? String)?.takeIf { it.isNotBlank() }
                 ?: OrigemLancamento.MANUAL,
             capturaRaw = (data["capturaRaw"] as? String)?.takeIf { it.isNotBlank() },
+            tags = normalizarTagsFinancas((data["tags"] as? List<*>)?.mapNotNull { it as? String }.orEmpty()),
             pago = data["pago"] as? Boolean ?: true,
             createdAtMs = timestampMs(data["createdAt"]) ?: 0L,
             updatedAtMs = timestampMs(data["updatedAt"]) ?: 0L,
@@ -559,6 +561,7 @@ data class LancamentoRascunho(
     val recorrenteId: String? = null,
     val origem: String = OrigemLancamento.MANUAL,
     val capturaRaw: String? = null,
+    val tags: List<String> = emptyList(),
     val pago: Boolean = true,
 ) {
     fun valido(): Boolean {

@@ -63,6 +63,8 @@ import com.ethan.orbitlab.data.financas.diaDoMesDe
 import com.ethan.orbitlab.data.financas.faixaDoPeriodoOffset
 import com.ethan.orbitlab.data.financas.filtrarPorPeriodo
 import com.ethan.orbitlab.data.financas.formatarReais
+import com.ethan.orbitlab.data.financas.lancamentoJaConta
+import com.ethan.orbitlab.data.financas.lancamentosQueJaContam
 import com.ethan.orbitlab.data.financas.offsetPeriodoComMovimento
 import com.ethan.orbitlab.data.financas.resumoDoPeriodo
 import com.ethan.orbitlab.data.financas.rotuloDiaExtrato
@@ -95,36 +97,42 @@ fun ExtratoScreen() {
     var filtrosAberto by remember { mutableStateOf(false) }
     var filtroCarteiraId by remember { mutableStateOf<String?>(null) }
     var filtroCategoriaId by remember { mutableStateOf<String?>(null) }
+    var filtroTag by remember { mutableStateOf<String?>(null) }
     var soPendentes by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
+    val lancamentosEfetivos = remember(lancamentos) { lancamentosQueJaContam(lancamentos) }
     val offsetPeriodoAuto = remember(periodo, lancamentos) {
-        offsetPeriodoComMovimento(periodo, lancamentos)
+        offsetPeriodoComMovimento(periodo, lancamentosEfetivos)
     }
     val offsetPeriodo = offsetPeriodoManual ?: offsetPeriodoAuto
 
     val faixa = remember(periodo, offsetPeriodo) { faixaDoPeriodoOffset(periodo, offsetPeriodo) }
     val rotuloFaixa = remember(periodo, faixa) { rotuloFaixaExtrato(periodo, faixa) }
     val doPeriodo = remember(lancamentos, faixa) { filtrarPorPeriodo(lancamentos, faixa) }
-    val filtrados = remember(doPeriodo, filtroCarteiraId, filtroCategoriaId, soPendentes) {
+    val filtrados = remember(doPeriodo, filtroCarteiraId, filtroCategoriaId, filtroTag, soPendentes) {
         doPeriodo.filter { l ->
             (filtroCarteiraId == null || l.carteiraId == filtroCarteiraId) &&
                 (filtroCategoriaId == null || l.categoria == filtroCategoriaId) &&
+                (filtroTag == null || l.tags.contains(filtroTag)) &&
                 (!soPendentes || !l.pago)
         }
     }
-    val resumo = remember(filtrados) { resumoDoPeriodo(filtrados) }
+    val resumo = remember(filtrados) { resumoDoPeriodo(filtrados.filter { lancamentoJaConta(it) }) }
     val grupos = remember(filtrados) { agruparPorDia(filtrados) }
     val carteiraPorId = remember(carteiras) { carteiras.associateBy { it.id } }
-    val filtrosAtivos = filtroCarteiraId != null || filtroCategoriaId != null || soPendentes
-    val saltoComMovimento = remember(lancamentos, periodo, filtrados, offsetPeriodo) {
-        if (filtrados.isNotEmpty() || lancamentos.isEmpty()) null
+    val tagsDisponiveis = remember(lancamentos) {
+        lancamentos.flatMap { it.tags }.distinct().sorted().take(24)
+    }
+    val filtrosAtivos = filtroCarteiraId != null || filtroCategoriaId != null || filtroTag != null || soPendentes
+    val saltoComMovimento = remember(lancamentosEfetivos, periodo, filtrados, offsetPeriodo) {
+        if (filtrados.isNotEmpty() || lancamentosEfetivos.isEmpty()) null
         else {
-            val off = offsetPeriodoComMovimento(periodo, lancamentos)
+            val off = offsetPeriodoComMovimento(periodo, lancamentosEfetivos)
             if (off == 0 || off == offsetPeriodo) null
             else {
                 val faixaAlvo = faixaDoPeriodoOffset(periodo, off)
-                val qtd = filtrarPorPeriodo(lancamentos, faixaAlvo).size
+                val qtd = filtrarPorPeriodo(lancamentosEfetivos, faixaAlvo).size
                 if (qtd == 0) null
                 else Triple(off, qtd, rotuloFaixaExtrato(periodo, faixaAlvo))
             }
@@ -147,6 +155,7 @@ fun ExtratoScreen() {
                     recorrenteId = lanc.recorrenteId,
                     origem = lanc.origem,
                     capturaRaw = lanc.capturaRaw,
+                    tags = lanc.tags,
                     pago = true,
                 ),
             )
@@ -304,13 +313,17 @@ fun ExtratoScreen() {
             carteiras = carteiras.filter { !it.arquivada },
             carteiraId = filtroCarteiraId,
             categoriaId = filtroCategoriaId,
+            tag = filtroTag,
+            tagsDisponiveis = tagsDisponiveis,
             soPendentes = soPendentes,
             onCarteira = { filtroCarteiraId = it },
             onCategoria = { filtroCategoriaId = it },
+            onTag = { filtroTag = it },
             onPendentes = { soPendentes = it },
             onLimpar = {
                 filtroCarteiraId = null
                 filtroCategoriaId = null
+                filtroTag = null
                 soPendentes = false
             },
             onDismiss = { filtrosAberto = false },
@@ -569,9 +582,15 @@ private fun LinhaLancamentoConcept(
 ) {
     val cat = CategoriasFinanca.porId(lancamento.categoria)
     val entrada = lancamento.tipo == TipoLancamento.ENTRADA
+    val futuro = !lancamentoJaConta(lancamento)
     val hora = remember(lancamento) {
         val ms = lancamento.createdAtMs.takeIf { it > 0 } ?: lancamento.dataMs
         SimpleDateFormat("HH:mm", Locale.forLanguageTag("pt-BR")).format(Date(ms))
+    }
+    val dataCurta = remember(lancamento.dataMs) {
+        SimpleDateFormat("d MMM", Locale.forLanguageTag("pt-BR"))
+            .format(Date(lancamento.dataMs))
+            .lowercase(Locale.forLanguageTag("pt-BR"))
     }
     Column(
         Modifier
@@ -606,7 +625,8 @@ private fun LinhaLancamentoConcept(
                     buildString {
                         append(cat.rotulo)
                         append(" · ")
-                        append(hora)
+                        append(if (futuro) dataCurta else hora)
+                        if (futuro) append(" · planejado")
                         if (!lancamento.pago) append(" · pendente")
                     },
                     color = if (!lancamento.pago) OrbitTokens.warning else OrbitTokens.textLowN,
@@ -633,6 +653,28 @@ private fun LinhaLancamentoConcept(
                     .padding(start = 22.dp)
                     .orbitPressable(onClick = onMarcarPago),
             )
+        }
+        if (lancamento.tags.isNotEmpty()) {
+            Spacer(Modifier.height(7.dp))
+            Row(
+                Modifier
+                    .padding(start = 22.dp)
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                lancamento.tags.take(5).forEach { tag ->
+                    Text(
+                        "#$tag",
+                        color = OrbitTokens.bluePastel,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(OrbitTokens.bluePastel.copy(alpha = 0.12f))
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                    )
+                }
+            }
         }
     }
 }
@@ -751,9 +793,12 @@ private fun ExtratoFiltrosSheet(
     carteiras: List<Carteira>,
     carteiraId: String?,
     categoriaId: String?,
+    tag: String?,
+    tagsDisponiveis: List<String>,
     soPendentes: Boolean,
     onCarteira: (String?) -> Unit,
     onCategoria: (String?) -> Unit,
+    onTag: (String?) -> Unit,
     onPendentes: (Boolean) -> Unit,
     onLimpar: () -> Unit,
     onDismiss: () -> Unit,
@@ -816,6 +861,20 @@ private fun ExtratoFiltrosSheet(
                 CategoriasFinanca.todas.forEach { cat ->
                     ChipFiltro("${cat.emoji} ${cat.rotulo}", categoriaId == cat.id) {
                         onCategoria(cat.id)
+                    }
+                }
+            }
+            if (tagsDisponiveis.isNotEmpty()) {
+                Spacer(Modifier.height(14.dp))
+                Text("Tags", color = OrbitTokens.textLowN, fontSize = 12.sp)
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    ChipFiltro("Todas", tag == null) { onTag(null) }
+                    tagsDisponiveis.forEach { item ->
+                        ChipFiltro("#$item", tag == item) { onTag(item) }
                     }
                 }
             }

@@ -23,6 +23,7 @@ import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.CreditCard
 import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.Label
 import androidx.compose.material.icons.rounded.Notes
 import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material3.DatePicker
@@ -65,6 +66,7 @@ import com.ethan.orbitlab.data.financas.OrigemLancamento
 import com.ethan.orbitlab.data.financas.TipoLancamento
 import com.ethan.orbitlab.data.financas.formatarReais
 import com.ethan.orbitlab.data.financas.inicioDoDia
+import com.ethan.orbitlab.data.financas.normalizarTagsFinancas
 import com.ethan.orbitlab.data.financas.ontemMs
 import com.ethan.orbitlab.data.financas.parsearReaisParaCentavos
 import com.ethan.orbitlab.ui.theme.Bricolage
@@ -123,6 +125,7 @@ fun RegistrarSheet(
         mutableStateOf(inicial?.carteiraId ?: carteiras.firstOrNull()?.id.orEmpty())
     }
     var descricao by remember { mutableStateOf(inicial?.descricao.orEmpty()) }
+    var tagsTexto by remember { mutableStateOf(inicial?.tags?.joinToString(", ").orEmpty()) }
     var dataMs by remember {
         mutableStateOf(inicial?.dataMs ?: inicioDoDia(System.currentTimeMillis()))
     }
@@ -153,6 +156,7 @@ fun RegistrarSheet(
             .lowercase(Locale.forLanguageTag("pt-BR"))
     }
     val labelSalvar = if (tipo == TipoLancamento.SAIDA) "Salvar saída" else "Salvar entrada"
+    val tagsPreview = remember(tagsTexto) { normalizarTagsFinancas(listOf(tagsTexto)) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -421,6 +425,61 @@ fun RegistrarSheet(
                         },
                     )
                 }
+                DivisorForm()
+                LinhaFormulario(
+                    icone = Icons.Rounded.Label,
+                    rotulo = "Tags",
+                    onClick = null,
+                ) {
+                    BasicTextField(
+                        value = tagsTexto,
+                        onValueChange = { tagsTexto = it },
+                        singleLine = true,
+                        textStyle = TextStyle(
+                            color = OrbitTokens.textHiN,
+                            fontSize = 14.sp,
+                            textAlign = TextAlign.End,
+                        ),
+                        cursorBrush = SolidColor(OrbitTokens.bluePastel),
+                        keyboardOptions = KeyboardOptions(
+                            capitalization = KeyboardCapitalization.None,
+                        ),
+                        modifier = Modifier.width(160.dp),
+                        decorationBox = { inner ->
+                            Box(contentAlignment = Alignment.CenterEnd) {
+                                if (tagsTexto.isEmpty()) {
+                                    Text(
+                                        "ex: ifood, casa",
+                                        color = OrbitTokens.textLowN,
+                                        fontSize = 14.sp,
+                                    )
+                                }
+                                inner()
+                            }
+                        },
+                    )
+                }
+            }
+
+            if (tagsPreview.isNotEmpty()) {
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
+                ) {
+                    tagsPreview.forEach { tag ->
+                        Text(
+                            "#$tag",
+                            color = OrbitTokens.bluePastel,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(999.dp))
+                                .background(OrbitTokens.bluePastel.copy(alpha = 0.12f))
+                                .padding(horizontal = 9.dp, vertical = 5.dp),
+                        )
+                    }
+                }
             }
 
             if (carteiras.isEmpty()) {
@@ -463,6 +522,7 @@ fun RegistrarSheet(
                             categoria = categoria,
                             carteiraId = carteiraId,
                             origem = inicial?.origem ?: OrigemLancamento.MANUAL,
+                            tags = tagsPreview,
                             pago = pago,
                             recorrenteId = inicial?.recorrenteId,
                             capturaRaw = inicial?.capturaRaw,

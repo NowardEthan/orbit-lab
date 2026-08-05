@@ -32,7 +32,7 @@ fun metaGastoMes(
     return when {
         r.entramCentavos > 0L -> (r.entramCentavos * 0.70).toLong()
         r.saemCentavos > 0L -> (r.saemCentavos * 1.20).toLong()
-        else -> 300_000L
+        else -> 0L
     }
 }
 

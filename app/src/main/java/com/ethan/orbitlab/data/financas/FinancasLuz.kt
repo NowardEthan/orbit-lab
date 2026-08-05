@@ -125,7 +125,7 @@ object FinancasLuzEngine {
 
         // ── Orçamento do dia ──
         val awardOrc = "orcamento:$hojeKey"
-        if (gastoHoje <= metaDia && awardOrc !in awards) {
+        if (meta > 0 && gastoHoje <= metaDia && awardOrc !in awards) {
             awards += awardOrc
             luzTotal += LuzPontos.ORCAMENTO_DIA
             somarSemana(semanaMap, hojeKey, LuzPontos.ORCAMENTO_DIA)
@@ -169,7 +169,7 @@ object FinancasLuzEngine {
         if (ofensiva >= 30) conquistas += ConquistaId.OFENSIVA_30
         if (pagosEmDia >= 10) conquistas += ConquistaId.CONTAS_10
         val resumoMes = resumoDoPeriodo(
-            filtrarPorPeriodo(lancamentos, faixaDoPeriodo(PeriodoExtrato.MES, agoraMs)),
+            filtrarPorPeriodoAteHoje(lancamentos, faixaDoPeriodo(PeriodoExtrato.MES, agoraMs), agoraMs),
         )
         if (meta > 0 && resumoMes.saiuCentavos <= meta && resumoMes.saiuCentavos > 0) {
             conquistas += ConquistaId.MES_NO_AZUL
