@@ -326,8 +326,9 @@ object LunaApiClient {
     }
 
     /**
-     * POST /v1/chat/stream — eventos nomeados: status, reasoning, content, acao, error, done.
-     * [onEvent] pode ser chamado na thread do OkHttp; o chamador deve marshalar pra UI.
+     * POST /v1/chat/stream — eventos: status, reasoning, content, acao, error, ready, done.
+     * `ready` = geração acabou (libera o turno sem esperar Firestore). `done` = persist ok
+     * (idempotente se `ready` já fechou). [onEvent] pode vir na thread do OkHttp.
      */
     suspend fun chatStream(
         idToken: String?,
@@ -410,7 +411,6 @@ object LunaApiClient {
                             "error" -> {
                                 val msg = json.optString("error").ifBlank { "Erro de streaming." }
                                 onEvent(StreamEvent.Error(msg))
-                                eventSource.cancel()
                                 complete(
                                     ChatResult(
                                         text = contentBuf.toString(),
@@ -421,14 +421,22 @@ object LunaApiClient {
                                         phasesMs = phaseMarks.toMap(),
                                     ),
                                 )
+                                // complete ANTES do cancel — senão onFailure/onClosed pode
+                                // fechar o turno com texto parcial e “erro” fantasma.
+                                eventSource.cancel()
                             }
-                            "done" -> {
+                            // Geração acabou. Persist/billing ainda podem rodar no servidor;
+                            // o Lab libera o composer daqui (depois do typewriter).
+                            "ready", "done" -> {
+                                if (finished.get()) {
+                                    if (eventName == "done") eventSource.cancel()
+                                    return
+                                }
                                 val text = json.optString("text").ifBlank { contentBuf.toString() }
                                 val reasoning = json.optString("reasoning").ifBlank {
                                     reasoningBuf.toString()
                                 }
                                 sessionId = json.optString("sessionId").ifBlank { sessionId }
-                                eventSource.cancel()
                                 complete(
                                     ChatResult(
                                         text = text.trim(),
@@ -439,6 +447,7 @@ object LunaApiClient {
                                         phasesMs = phaseMarks.toMap(),
                                     ),
                                 )
+                                eventSource.cancel()
                             }
                         }
                     }
