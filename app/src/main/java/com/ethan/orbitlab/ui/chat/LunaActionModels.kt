@@ -343,8 +343,24 @@ fun toolMeta(ferramenta: String): ToolMeta = when (ferramenta) {
     )
     "anotar_canone" -> ToolMeta(
         kind = LunaActionStepKind.MEMORY,
-        live = { "Guardando anotação…" },
-        done = { "Anotou no acervo" },
+        live = { arg ->
+            when {
+                arg.contains("apagar", ignoreCase = true) -> "Apagando do cânone…"
+                arg.contains("editar", ignoreCase = true) -> "Editando o cânone…"
+                arg.contains("ler", ignoreCase = true) -> "Lendo o cânone…"
+                arg.contains("limpar", ignoreCase = true) -> "Limpando o cânone…"
+                else -> "Anotando no cânone…"
+            }
+        },
+        done = { arg ->
+            when {
+                arg.contains("apagar", ignoreCase = true) -> "Apagou do cânone"
+                arg.contains("editar", ignoreCase = true) -> "Editou o cânone"
+                arg.contains("ler", ignoreCase = true) -> "Leu o cânone"
+                arg.contains("limpar", ignoreCase = true) -> "Limpou o cânone"
+                else -> "Anotou no cânone"
+            }
+        },
     )
     "listar_artefatos" -> ToolMeta(
         kind = LunaActionStepKind.MEMORY,

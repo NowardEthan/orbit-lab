@@ -1,11 +1,17 @@
 package com.ethan.orbitlab.ui.artefato
 
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,17 +19,28 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckBox
 import androidx.compose.material.icons.rounded.CheckBoxOutlineBlank
-import androidx.compose.material.icons.rounded.MoreVert
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material.icons.rounded.Code
+import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.DragHandle
+import androidx.compose.material.icons.rounded.FormatListBulleted
+import androidx.compose.material.icons.rounded.FormatListNumbered
+import androidx.compose.material.icons.rounded.FormatQuote
+import androidx.compose.material.icons.rounded.HorizontalRule
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
+import androidx.compose.material.icons.rounded.Notes
+import androidx.compose.material.icons.rounded.PriorityHigh
+import androidx.compose.material.icons.rounded.Title
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -35,11 +52,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -51,6 +70,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ethan.orbitlab.data.artefato.BlocoArtefato
@@ -62,7 +82,7 @@ import com.ethan.orbitlab.ui.theme.OrbitType
 
 /**
  * Editor Notion-like: uma linha por bloco, Enter continua lista/todo ou cria parágrafo,
- * Backspace no vazio funde/apaga, `/` abre o menu de tipos filtrável.
+ * Backspace no vazio funde/apaga, `/` abre o painel de tipos (ícones + preview).
  */
 @Composable
 fun ArtefatoEditor(
@@ -136,7 +156,6 @@ fun ArtefatoEditor(
                     onPedirFoco(focoId)
                 },
                 onSlashTipo = { tipo, props ->
-                    // Descarta o `/query` — o tipo já define o bloco.
                     onBlocosChange(
                         lista.toMutableList().also {
                             it[index] = bloco.copy(
@@ -198,6 +217,7 @@ private fun BlocoLinha(
     val focusRequester = remember(bloco.id) { FocusRequester() }
     var focused by remember(bloco.id) { mutableStateOf(false) }
     var slashAberto by remember(bloco.id) { mutableStateOf(false) }
+    var menuPainel by remember(bloco.id) { mutableStateOf(false) }
     var valor by remember(bloco.id, bloco.text) {
         mutableStateOf(TextFieldValue(bloco.text, TextRange(bloco.text.length)))
     }
@@ -229,180 +249,520 @@ private fun BlocoLinha(
         Modifier
     }
 
-    if (bloco.type == TipoBlocoArtefato.divider) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(shape)
-                .then(bordaFoco)
-                .background(fundoFoco)
-                .padding(horizontal = 8.dp, vertical = 10.dp)
-                .clickable { focused = true },
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                Modifier
-                    .weight(1f)
-                    .height(1.dp)
-                    .background(OrbitTokens.graphiteHair),
-            )
-            Text(
-                "  divisória  ",
-                color = OrbitTokens.textLowN,
-                fontSize = 11.sp,
-            )
-            Box(
-                Modifier
-                    .weight(1f)
-                    .height(1.dp)
-                    .background(OrbitTokens.graphiteHair),
-            )
-            MenuBlocoHandle(
-                podeSubir = index > 0,
-                podeDescer = index < total - 1,
-                onMover = onMover,
-                onTipo = { t, p -> onSlashTipo(t, p) },
-                onApagar = onApagar,
-            )
-        }
-        return
-    }
-
-    val style = estiloDoBloco(bloco)
-    val prefix = prefixoVisual(bloco)
     val querySlash = if (valor.text.startsWith("/")) valor.text.removePrefix("/") else ""
     val opcoesSlash = lembrarOpcoesFiltradas(querySlash)
+    val painelVisivel = (slashAberto && focused) || menuPainel
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .then(bordaFoco)
-            .background(fundoFoco)
-            .padding(horizontal = 8.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.Top,
-    ) {
-        if (bloco.type == TipoBlocoArtefato.todo) {
-            Icon(
-                imageVector = if (bloco.props?.checked == true) {
-                    Icons.Rounded.CheckBox
-                } else {
-                    Icons.Rounded.CheckBoxOutlineBlank
-                },
-                contentDescription = if (bloco.props?.checked == true) "Desmarcar" else "Marcar",
-                tint = OrbitTokens.bluePastel,
-                modifier = Modifier
-                    .padding(top = 4.dp, end = 8.dp)
-                    .size(22.dp)
-                    .clickable {
-                        onChange(
-                            bloco.copy(
-                                props = (bloco.props ?: PropsBlocoArtefato()).copy(
-                                    checked = !(bloco.props?.checked ?: false),
-                                ),
-                            ),
-                        )
-                    },
-            )
-        } else if (prefix != null) {
-            Text(
-                text = prefix,
-                color = OrbitTokens.textLowN,
-                fontSize = style.fontSize,
-                fontWeight = style.fontWeight,
-                fontFamily = style.fontFamily,
-                modifier = Modifier.padding(top = 2.dp, end = 8.dp),
-            )
-        }
-
-        Box(modifier = Modifier.weight(1f)) {
-            BasicTextField(
-                value = valor,
-                onValueChange = { next ->
-                    valor = next
-                    val t = next.text
-                    slashAberto = t.startsWith("/") && !t.contains('\n')
-                    onChange(bloco.copy(text = t))
-                },
-                textStyle = style,
-                cursorBrush = SolidColor(OrbitTokens.bluePastel),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
-                keyboardActions = KeyboardActions(),
+    Column(modifier = Modifier.fillMaxWidth()) {
+        if (bloco.type == TipoBlocoArtefato.divider) {
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 28.dp)
-                    .focusRequester(focusRequester)
-                    .onFocusChanged { focused = it.isFocused }
-                    .onPreviewKeyEvent { e ->
-                        if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                        when {
-                            e.key == Key.Enter && !e.nativeKeyEvent.isShiftPressed -> {
-                                onEnter()
-                                true
-                            }
-                            e.key == Key.Backspace && valor.text.isEmpty() -> {
-                                onBackspaceVazio()
-                                true
-                            }
-                            else -> false
-                        }
+                    .clip(shape)
+                    .then(bordaFoco)
+                    .background(fundoFoco)
+                    .padding(horizontal = 8.dp, vertical = 10.dp)
+                    .clickable {
+                        focused = true
+                        menuPainel = true
+                        slashAberto = false
                     },
-                decorationBox = { inner ->
-                    if (valor.text.isEmpty() && focused) {
-                        Text(
-                            text = when {
-                                emptyHintPrimeiro != null -> emptyHintPrimeiro
-                                bloco.type == TipoBlocoArtefato.heading -> "Título"
-                                bloco.type == TipoBlocoArtefato.bullet ||
-                                    bloco.type == TipoBlocoArtefato.numbered -> "Item"
-                                bloco.type == TipoBlocoArtefato.todo -> "Tarefa"
-                                bloco.type == TipoBlocoArtefato.quote -> "Citação"
-                                bloco.type == TipoBlocoArtefato.callout -> "Destaque"
-                                bloco.type == TipoBlocoArtefato.code -> "código…"
-                                else -> "Escreva, ou /"
-                            },
-                            color = OrbitTokens.textLowN,
-                            fontSize = style.fontSize,
-                            fontFamily = style.fontFamily,
-                            fontWeight = FontWeight.Normal,
-                        )
-                    }
-                    inner()
-                },
-            )
-
-            DropdownMenu(
-                expanded = slashAberto && opcoesSlash.isNotEmpty(),
-                onDismissRequest = { slashAberto = false },
-                shape = RoundedCornerShape(14.dp),
-                containerColor = OrbitTokens.graphiteRaised,
-                border = BorderStroke(1.dp, OrbitTokens.graphiteHair),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                opcoesSlash.forEach { op ->
-                    DropdownMenuItem(
-                        text = {
-                            Column {
-                                Text(op.titulo, color = OrbitTokens.textHiN, fontSize = 14.sp)
-                                Text(op.subtitulo, color = OrbitTokens.textLowN, fontSize = 11.sp)
-                            }
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .height(1.dp)
+                        .background(OrbitTokens.graphiteHair),
+                ) {}
+                Text(
+                    "  divisória  ",
+                    color = OrbitTokens.textLowN,
+                    fontSize = 11.sp,
+                )
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .height(1.dp)
+                        .background(OrbitTokens.graphiteHair),
+                ) {}
+                BotaoHandleBloco(
+                    ativo = menuPainel,
+                    onClick = {
+                        menuPainel = !menuPainel
+                        slashAberto = false
+                    },
+                )
+            }
+        } else {
+            val style = estiloDoBloco(bloco)
+            val prefix = prefixoVisual(bloco)
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(shape)
+                    .then(bordaFoco)
+                    .background(fundoFoco)
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                if (bloco.type == TipoBlocoArtefato.todo) {
+                    Icon(
+                        imageVector = if (bloco.props?.checked == true) {
+                            Icons.Rounded.CheckBox
+                        } else {
+                            Icons.Rounded.CheckBoxOutlineBlank
                         },
+                        contentDescription = if (bloco.props?.checked == true) "Desmarcar" else "Marcar",
+                        tint = OrbitTokens.bluePastel,
+                        modifier = Modifier
+                            .padding(top = 4.dp, end = 8.dp)
+                            .size(22.dp)
+                            .clickable {
+                                onChange(
+                                    bloco.copy(
+                                        props = (bloco.props ?: PropsBlocoArtefato()).copy(
+                                            checked = !(bloco.props?.checked ?: false),
+                                        ),
+                                    ),
+                                )
+                            },
+                    )
+                } else if (prefix != null) {
+                    Text(
+                        text = prefix,
+                        color = OrbitTokens.textLowN,
+                        fontSize = style.fontSize,
+                        fontWeight = style.fontWeight,
+                        fontFamily = style.fontFamily,
+                        modifier = Modifier.padding(top = 2.dp, end = 8.dp),
+                    )
+                }
+
+                Box(modifier = Modifier.weight(1f)) {
+                    BasicTextField(
+                        value = valor,
+                        onValueChange = { next ->
+                            valor = next
+                            val t = next.text
+                            val abreSlash = t.startsWith("/") && !t.contains('\n')
+                            slashAberto = abreSlash
+                            if (abreSlash) menuPainel = false
+                            onChange(bloco.copy(text = t))
+                        },
+                        textStyle = style,
+                        cursorBrush = SolidColor(OrbitTokens.bluePastel),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
+                        keyboardActions = KeyboardActions(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 28.dp)
+                            .focusRequester(focusRequester)
+                            .onFocusChanged { st ->
+                                focused = st.isFocused
+                                if (!st.isFocused) {
+                                    // Delay implícito: o clique no painel roda antes do dismiss
+                                    // se o painel estiver na mesma árvore — fechamos só o slash
+                                    // quando o texto deixa de ser comando.
+                                    if (!valor.text.startsWith("/")) slashAberto = false
+                                }
+                            }
+                            .onPreviewKeyEvent { e ->
+                                if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                                when {
+                                    e.key == Key.Enter && !e.nativeKeyEvent.isShiftPressed -> {
+                                        if (slashAberto && opcoesSlash.isNotEmpty()) {
+                                            val op = opcoesSlash.first()
+                                            slashAberto = false
+                                            onSlashTipo(op.tipo, op.props)
+                                            true
+                                        } else {
+                                            onEnter()
+                                            true
+                                        }
+                                    }
+                                    e.key == Key.Backspace && valor.text.isEmpty() -> {
+                                        onBackspaceVazio()
+                                        true
+                                    }
+                                    else -> false
+                                }
+                            },
+                        decorationBox = { inner ->
+                            if (valor.text.isEmpty() && focused) {
+                                Text(
+                                    text = when {
+                                        emptyHintPrimeiro != null -> emptyHintPrimeiro
+                                        bloco.type == TipoBlocoArtefato.heading -> "Título"
+                                        bloco.type == TipoBlocoArtefato.bullet ||
+                                            bloco.type == TipoBlocoArtefato.numbered -> "Item"
+                                        bloco.type == TipoBlocoArtefato.todo -> "Tarefa"
+                                        bloco.type == TipoBlocoArtefato.quote -> "Citação"
+                                        bloco.type == TipoBlocoArtefato.callout -> "Destaque"
+                                        bloco.type == TipoBlocoArtefato.code -> "código…"
+                                        else -> "Escreva, ou /"
+                                    },
+                                    color = OrbitTokens.textLowN,
+                                    fontSize = style.fontSize,
+                                    fontFamily = style.fontFamily,
+                                    fontWeight = FontWeight.Normal,
+                                )
+                            }
+                            inner()
+                        },
+                    )
+                }
+
+                if (focused || menuPainel) {
+                    BotaoHandleBloco(
+                        ativo = menuPainel,
                         onClick = {
+                            menuPainel = !menuPainel
                             slashAberto = false
-                            onSlashTipo(op.tipo, op.props)
                         },
                     )
                 }
             }
         }
 
-        if (focused) {
-            MenuBlocoHandle(
+        AnimatedVisibility(
+            visible = painelVisivel,
+            enter = fadeIn() + slideInVertically { -8 },
+            exit = fadeOut() + slideOutVertically { -8 },
+        ) {
+            PainelBlocosNotion(
+                opcoes = if (slashAberto) opcoesSlash else slashOpcoes(),
+                query = if (slashAberto) querySlash else "",
+                mostrarAcoes = menuPainel && !slashAberto,
                 podeSubir = index > 0,
                 podeDescer = index < total - 1,
-                onMover = onMover,
-                onTipo = { t, p -> onSlashTipo(t, p) },
-                onApagar = onApagar,
+                onMover = { dir ->
+                    menuPainel = false
+                    onMover(dir)
+                },
+                onApagar = {
+                    menuPainel = false
+                    onApagar()
+                },
+                onEscolher = { op ->
+                    slashAberto = false
+                    menuPainel = false
+                    onSlashTipo(op.tipo, op.props)
+                },
+                modifier = Modifier.padding(top = 6.dp, start = 4.dp, end = 4.dp),
             )
+        }
+    }
+}
+
+@Composable
+private fun BotaoHandleBloco(
+    ativo: Boolean,
+    onClick: () -> Unit,
+) {
+    val shape = RoundedCornerShape(8.dp)
+    Icon(
+        imageVector = Icons.Rounded.DragHandle,
+        contentDescription = "Opções do bloco",
+        tint = if (ativo) OrbitTokens.bluePastel else OrbitTokens.textLowN,
+        modifier = Modifier
+            .padding(start = 4.dp)
+            .size(36.dp)
+            .clip(shape)
+            .background(
+                if (ativo) OrbitTokens.bluePastel.copy(alpha = 0.12f)
+                else Color.Transparent,
+            )
+            .clickable(onClick = onClick)
+            .padding(6.dp),
+    )
+}
+
+/**
+ * Painel estilo Notion: ações rápidas em chips + grade de blocos com ícone e preview.
+ */
+@Composable
+private fun PainelBlocosNotion(
+    opcoes: List<SlashOpcao>,
+    query: String,
+    mostrarAcoes: Boolean,
+    podeSubir: Boolean,
+    podeDescer: Boolean,
+    onMover: (Int) -> Unit,
+    onApagar: () -> Unit,
+    onEscolher: (SlashOpcao) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(16.dp)
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .shadow(10.dp, shape, ambientColor = Color.Black.copy(alpha = 0.35f))
+            .clip(shape)
+            .background(OrbitTokens.graphiteRaised)
+            .border(1.dp, OrbitTokens.graphiteHair, shape)
+            .padding(vertical = 10.dp),
+    ) {
+        if (mostrarAcoes) {
+            Text(
+                "Ações rápidas",
+                color = OrbitTokens.textLowN,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                if (podeSubir) {
+                    ChipAcao(
+                        icone = Icons.Rounded.KeyboardArrowUp,
+                        label = "Subir",
+                        onClick = { onMover(-1) },
+                    )
+                }
+                if (podeDescer) {
+                    ChipAcao(
+                        icone = Icons.Rounded.KeyboardArrowDown,
+                        label = "Descer",
+                        onClick = { onMover(1) },
+                    )
+                }
+                ChipAcao(
+                    icone = Icons.Rounded.DeleteOutline,
+                    label = "Apagar",
+                    perigo = true,
+                    onClick = onApagar,
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .padding(top = 6.dp, bottom = 4.dp)
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp)
+                    .height(1.dp)
+                    .background(OrbitTokens.graphiteHair),
+            ) {}
+        }
+
+        Text(
+            if (query.isNotBlank()) "Resultados" else "Blocos",
+            color = OrbitTokens.textLowN,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+        )
+
+        if (opcoes.isEmpty()) {
+            Text(
+                "Nada com «${query.trim()}»",
+                color = OrbitTokens.textMidN,
+                fontSize = 13.sp,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            )
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 320.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                opcoes.forEach { op ->
+                    LinhaOpcaoBloco(
+                        opcao = op,
+                        onClick = { onEscolher(op) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChipAcao(
+    icone: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    perigo: Boolean = false,
+) {
+    val shape = RoundedCornerShape(10.dp)
+    val tint = if (perigo) OrbitTokens.danger else OrbitTokens.textHiN
+    Row(
+        modifier = Modifier
+            .clip(shape)
+            .background(OrbitTokens.graphiteSurf)
+            .border(1.dp, OrbitTokens.graphiteHair, shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(
+            imageVector = icone,
+            contentDescription = null,
+            tint = tint,
+            modifier = Modifier.size(18.dp),
+        )
+        Text(label, color = tint, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+    }
+}
+
+@Composable
+private fun LinhaOpcaoBloco(
+    opcao: SlashOpcao,
+    onClick: () -> Unit,
+) {
+    val shape = RoundedCornerShape(12.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp)
+            .clip(shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(opcao.corFundo)
+                .border(1.dp, OrbitTokens.graphiteHair, RoundedCornerShape(10.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = opcao.icone,
+                contentDescription = null,
+                tint = opcao.corIcone,
+                modifier = Modifier.size(22.dp),
+            )
+        }
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(horizontal = 12.dp),
+        ) {
+            Text(
+                opcao.titulo,
+                color = OrbitTokens.textHiN,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+            )
+            Text(
+                opcao.subtitulo,
+                color = OrbitTokens.textLowN,
+                fontSize = 12.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        MiniPreviewBloco(opcao)
+    }
+}
+
+/** Amostrinha visual do bloco — o “cheiro” Notion à direita. */
+@Composable
+private fun MiniPreviewBloco(opcao: SlashOpcao) {
+    val boxShape = RoundedCornerShape(8.dp)
+    Box(
+        modifier = Modifier
+            .width(72.dp)
+            .height(36.dp)
+            .clip(boxShape)
+            .background(OrbitTokens.graphiteSurf)
+            .border(1.dp, OrbitTokens.graphiteHair, boxShape)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        when (opcao.tipo) {
+            TipoBlocoArtefato.heading -> {
+                val nivel = opcao.props?.level ?: 1
+                Text(
+                    "Aa",
+                    color = OrbitTokens.textHiN,
+                    fontSize = when (nivel) {
+                        1 -> 18.sp
+                        2 -> 15.sp
+                        else -> 13.sp
+                    },
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = OrbitType.display,
+                )
+            }
+            TipoBlocoArtefato.bullet -> Text(
+                "•  •  •",
+                color = OrbitTokens.textMidN,
+                fontSize = 12.sp,
+            )
+            TipoBlocoArtefato.numbered -> Text(
+                "1. 2.",
+                color = OrbitTokens.textMidN,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+            )
+            TipoBlocoArtefato.todo -> Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.CheckBoxOutlineBlank,
+                    contentDescription = null,
+                    tint = OrbitTokens.bluePastel,
+                    modifier = Modifier.size(14.dp),
+                )
+                Box(
+                    Modifier
+                        .width(28.dp)
+                        .height(3.dp)
+                        .background(OrbitTokens.textLowN.copy(alpha = 0.5f), RoundedCornerShape(2.dp)),
+                )
+            }
+            TipoBlocoArtefato.quote -> Text(
+                "❝ …",
+                color = OrbitTokens.textMidN,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+            )
+            TipoBlocoArtefato.callout -> Text(
+                "✦ hey",
+                color = OrbitTokens.bluePastel,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+            )
+            TipoBlocoArtefato.code -> Text(
+                "{ }",
+                color = OrbitTokens.textHiN,
+                fontSize = 13.sp,
+                fontFamily = FontFamily.Monospace,
+            )
+            TipoBlocoArtefato.divider -> Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(OrbitTokens.textLowN.copy(alpha = 0.55f)),
+            )
+            TipoBlocoArtefato.paragraph -> Column(
+                verticalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(3.dp)
+                        .background(OrbitTokens.textLowN.copy(alpha = 0.45f), RoundedCornerShape(2.dp)),
+                )
+                Box(
+                    Modifier
+                        .fillMaxWidth(0.65f)
+                        .height(3.dp)
+                        .background(OrbitTokens.textLowN.copy(alpha = 0.3f), RoundedCornerShape(2.dp)),
+                )
+            }
         }
     }
 }
@@ -411,80 +771,15 @@ private fun BlocoLinha(
 private fun lembrarOpcoesFiltradas(query: String): List<SlashOpcao> {
     val q = query.trim().lowercase()
     return remember(q) {
+        val todas = slashOpcoes()
         if (q.isEmpty()) {
-            SlashOpcoes
+            todas
         } else {
-            SlashOpcoes.filter {
-                it.titulo.lowercase().contains(q) || it.subtitulo.lowercase().contains(q)
+            todas.filter {
+                it.titulo.lowercase().contains(q) ||
+                    it.subtitulo.lowercase().contains(q) ||
+                    it.aliases.any { a -> a.contains(q) }
             }
-        }
-    }
-}
-
-@Composable
-private fun MenuBlocoHandle(
-    podeSubir: Boolean,
-    podeDescer: Boolean,
-    onMover: (Int) -> Unit,
-    onTipo: (TipoBlocoArtefato, PropsBlocoArtefato?) -> Unit,
-    onApagar: () -> Unit,
-) {
-    var aberto by remember { mutableStateOf(false) }
-    Box {
-        Icon(
-            Icons.Rounded.MoreVert,
-            contentDescription = "Opções do bloco",
-            tint = OrbitTokens.textLowN,
-            modifier = Modifier
-                .size(40.dp)
-                .padding(8.dp)
-                .clickable { aberto = true },
-        )
-        DropdownMenu(
-            expanded = aberto,
-            onDismissRequest = { aberto = false },
-            containerColor = OrbitTokens.graphiteRaised,
-            shape = RoundedCornerShape(14.dp),
-            border = BorderStroke(1.dp, OrbitTokens.graphiteHair),
-        ) {
-            if (podeSubir) {
-                DropdownMenuItem(
-                    text = { Text("Mover pra cima", color = OrbitTokens.textHiN) },
-                    onClick = { aberto = false; onMover(-1) },
-                )
-            }
-            if (podeDescer) {
-                DropdownMenuItem(
-                    text = { Text("Mover pra baixo", color = OrbitTokens.textHiN) },
-                    onClick = { aberto = false; onMover(1) },
-                )
-            }
-            if (podeSubir || podeDescer) {
-                HorizontalDivider(color = OrbitTokens.graphiteHair)
-            }
-            Text(
-                "Transformar em",
-                color = OrbitTokens.textLowN,
-                fontSize = 11.sp,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-            )
-            SlashOpcoes.forEach { op ->
-                DropdownMenuItem(
-                    text = { Text(op.titulo, color = OrbitTokens.textHiN, fontSize = 13.sp) },
-                    onClick = {
-                        aberto = false
-                        onTipo(op.tipo, op.props)
-                    },
-                )
-            }
-            HorizontalDivider(color = OrbitTokens.graphiteHair)
-            DropdownMenuItem(
-                text = { Text("Apagar bloco", color = OrbitTokens.textHiN) },
-                onClick = {
-                    aberto = false
-                    onApagar()
-                },
-            )
         }
     }
 }
@@ -494,21 +789,121 @@ private data class SlashOpcao(
     val subtitulo: String,
     val tipo: TipoBlocoArtefato,
     val props: PropsBlocoArtefato? = null,
+    val icone: ImageVector,
+    val corIcone: Color,
+    val corFundo: Color,
+    val aliases: List<String> = emptyList(),
 )
 
-private val SlashOpcoes = listOf(
-    SlashOpcao("Texto", "Parágrafo comum", TipoBlocoArtefato.paragraph),
-    SlashOpcao("Título 1", "Heading grande", TipoBlocoArtefato.heading, PropsBlocoArtefato(level = 1)),
-    SlashOpcao("Título 2", "Heading médio", TipoBlocoArtefato.heading, PropsBlocoArtefato(level = 2)),
-    SlashOpcao("Título 3", "Heading pequeno", TipoBlocoArtefato.heading, PropsBlocoArtefato(level = 3)),
-    SlashOpcao("Lista", "Marcadores", TipoBlocoArtefato.bullet),
-    SlashOpcao("Numerada", "1. 2. 3.", TipoBlocoArtefato.numbered),
-    SlashOpcao("Tarefa", "Checkbox", TipoBlocoArtefato.todo, PropsBlocoArtefato(checked = false)),
-    SlashOpcao("Citação", "Quote", TipoBlocoArtefato.quote),
-    SlashOpcao("Destaque", "Callout", TipoBlocoArtefato.callout),
-    SlashOpcao("Código", "Bloco mono", TipoBlocoArtefato.code),
-    SlashOpcao("Divisória", "Linha horizontal", TipoBlocoArtefato.divider),
-)
+private fun slashOpcoes(): List<SlashOpcao> {
+        val azul = OrbitTokens.bluePastel
+        val surf = OrbitTokens.graphiteSurf
+        return listOf(
+            SlashOpcao(
+                titulo = "Texto",
+                subtitulo = "Parágrafo comum",
+                tipo = TipoBlocoArtefato.paragraph,
+                icone = Icons.Rounded.Notes,
+                corIcone = OrbitTokens.textHiN,
+                corFundo = surf,
+                aliases = listOf("paragrafo", "texto", "p"),
+            ),
+            SlashOpcao(
+                titulo = "Título 1",
+                subtitulo = "Heading grande",
+                tipo = TipoBlocoArtefato.heading,
+                props = PropsBlocoArtefato(level = 1),
+                icone = Icons.Rounded.Title,
+                corIcone = azul,
+                corFundo = azul.copy(alpha = 0.12f),
+                aliases = listOf("h1", "titulo", "heading"),
+            ),
+            SlashOpcao(
+                titulo = "Título 2",
+                subtitulo = "Heading médio",
+                tipo = TipoBlocoArtefato.heading,
+                props = PropsBlocoArtefato(level = 2),
+                icone = Icons.Rounded.Title,
+                corIcone = azul,
+                corFundo = azul.copy(alpha = 0.10f),
+                aliases = listOf("h2", "titulo"),
+            ),
+            SlashOpcao(
+                titulo = "Título 3",
+                subtitulo = "Heading pequeno",
+                tipo = TipoBlocoArtefato.heading,
+                props = PropsBlocoArtefato(level = 3),
+                icone = Icons.Rounded.Title,
+                corIcone = azul,
+                corFundo = azul.copy(alpha = 0.08f),
+                aliases = listOf("h3", "titulo"),
+            ),
+            SlashOpcao(
+                titulo = "Lista",
+                subtitulo = "Marcadores",
+                tipo = TipoBlocoArtefato.bullet,
+                icone = Icons.Rounded.FormatListBulleted,
+                corIcone = OrbitTokens.textHiN,
+                corFundo = surf,
+                aliases = listOf("bullet", "lista", "ul"),
+            ),
+            SlashOpcao(
+                titulo = "Numerada",
+                subtitulo = "1. 2. 3.",
+                tipo = TipoBlocoArtefato.numbered,
+                icone = Icons.Rounded.FormatListNumbered,
+                corIcone = OrbitTokens.textHiN,
+                corFundo = surf,
+                aliases = listOf("numbered", "ol", "numero"),
+            ),
+            SlashOpcao(
+                titulo = "Tarefa",
+                subtitulo = "Checkbox pra riscar",
+                tipo = TipoBlocoArtefato.todo,
+                props = PropsBlocoArtefato(checked = false),
+                icone = Icons.Rounded.CheckBoxOutlineBlank,
+                corIcone = azul,
+                corFundo = azul.copy(alpha = 0.10f),
+                aliases = listOf("todo", "tarefa", "check"),
+            ),
+            SlashOpcao(
+                titulo = "Citação",
+                subtitulo = "Destaque em quote",
+                tipo = TipoBlocoArtefato.quote,
+                icone = Icons.Rounded.FormatQuote,
+                corIcone = OrbitTokens.textMidN,
+                corFundo = surf,
+                aliases = listOf("quote", "citacao"),
+            ),
+            SlashOpcao(
+                titulo = "Destaque",
+                subtitulo = "Callout com ênfase",
+                tipo = TipoBlocoArtefato.callout,
+                icone = Icons.Rounded.PriorityHigh,
+                corIcone = azul,
+                corFundo = azul.copy(alpha = 0.12f),
+                aliases = listOf("callout", "destaque", "aviso"),
+            ),
+            SlashOpcao(
+                titulo = "Código",
+                subtitulo = "Bloco monoespaçado",
+                tipo = TipoBlocoArtefato.code,
+                icone = Icons.Rounded.Code,
+                corIcone = OrbitTokens.textHiN,
+                corFundo = OrbitTokens.graphiteBg,
+                aliases = listOf("code", "codigo"),
+            ),
+            SlashOpcao(
+                titulo = "Divisória",
+                subtitulo = "Linha horizontal",
+                tipo = TipoBlocoArtefato.divider,
+                icone = Icons.Rounded.HorizontalRule,
+                corIcone = OrbitTokens.textLowN,
+                corFundo = surf,
+                aliases = listOf("divider", "linha", "hr"),
+            ),
+        )
+}
 
 @Composable
 private fun estiloDoBloco(bloco: BlocoArtefato): TextStyle {
