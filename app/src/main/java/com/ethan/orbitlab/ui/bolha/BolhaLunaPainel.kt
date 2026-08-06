@@ -211,7 +211,7 @@ fun BolhaLunaPainel(
                     alpha = (0.35f + 0.65f * p).coerceIn(0f, 1f)
                 }
                 .clip(RoundedCornerShape(topStart = cantoTopo, topEnd = cantoTopo))
-                .background(OrbitTokens.graphiteSurf)
+                .background(OrbitTokens.graphiteBg)
                 // Absorve toques em áreas “vazias” do sheet (não deixa cair no scrim).
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
