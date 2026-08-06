@@ -82,6 +82,7 @@ import com.ethan.orbitlab.data.financas.faturaCredito
 import com.ethan.orbitlab.data.financas.filtrarPorPeriodo
 import com.ethan.orbitlab.data.financas.filtrarPorPeriodoAteHoje
 import com.ethan.orbitlab.data.financas.formatarReais
+import com.ethan.orbitlab.data.financas.formatarReaisSemPrefixo
 import com.ethan.orbitlab.data.financas.lancamentosQueJaContam
 import com.ethan.orbitlab.data.financas.parsearReaisParaCentavos
 import com.ethan.orbitlab.data.financas.proximoVencimentoMs
@@ -683,9 +684,7 @@ private fun CartaoPrincipalConcept(
                                 ) {
                                     append(" / ")
                                     append(
-                                        formatarReais(lim)
-                                            .replace("R$\u00A0", "")
-                                            .replace("R$ ", ""),
+                                        formatarReaisSemPrefixo(lim)
                                     )
                                 }
                             }
@@ -915,14 +914,14 @@ private fun CarteiraFormSheet(
         mutableStateOf(
             inicial?.saldoInicialCentavos
                 ?.takeIf { it != 0L }
-                ?.let { formatarReais(it).removePrefix("R$\u00A0").removePrefix("R$ ") }
+                ?.let { formatarReaisSemPrefixo(it) }
                 .orEmpty(),
         )
     }
     var limiteTexto by remember {
         mutableStateOf(
             inicial?.limiteCentavos
-                ?.let { formatarReais(it).removePrefix("R$\u00A0").removePrefix("R$ ") }
+                ?.let { formatarReaisSemPrefixo(it) }
                 .orEmpty(),
         )
     }

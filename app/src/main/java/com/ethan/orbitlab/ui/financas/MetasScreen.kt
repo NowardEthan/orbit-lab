@@ -345,7 +345,7 @@ private fun insightMetas(progressos: List<ProgressoMeta>): InsightMetas? {
     return InsightMetas(
         destaque = "${progressos.size}",
         resto = if (progressos.size == 1) {
-            " meta ativa — o Painel usa o teto do mês quando você criar um."
+            " meta ativa — o teto do mês entra na conta do gasto quando você criar um."
         } else {
             " metas ativas. Reserva, teto e cortes — cada uma puxa o mês pra um lado."
         },
@@ -493,7 +493,7 @@ private fun VazioMetas(onNova: () -> Unit) {
         )
         Spacer(Modifier.height(6.dp))
         Text(
-            "Cria uma reserva ou um teto de gasto — o anel do Painel passa a respeitar o teto do mês.",
+            "Cria uma reserva ou um teto de gasto — o anel do Resumo passa a respeitar o teto do mês.",
             color = OrbitTokens.textMidN,
             fontSize = 13.5.sp,
             lineHeight = 19.sp,

@@ -214,6 +214,17 @@ data class GrupoDiaExtrato(
 )
 
 /** Formata centavos pra R$ brasileiro (ex.: 3200 → "R$ 32,00"). */
+/**
+ * [formatarReais] sem o prefixo "R$" (com ou sem NBSP). Pra usar dentro de linhas de
+ * composicao que ja tem "R$" embutido no layout (ou em concat com outros valores).
+ */
+fun formatarReaisSemPrefixo(centavos: Long): String {
+    return formatarReais(centavos)
+        .replace("R$", "")
+        .replace(" ", "")
+        .trim()
+}
+
 fun formatarReais(centavos: Long): String {
     val nf = NumberFormat.getCurrencyInstance(Locale.forLanguageTag("pt-BR"))
     return nf.format(centavos / 100.0)

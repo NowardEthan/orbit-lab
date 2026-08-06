@@ -211,7 +211,7 @@ fun RecorrentesScreen() {
 
             item {
                 Text(
-                    "Recorrentes — o que entra e sai fixo",
+                    "Recorrentes — o que entra e sai todo mês",
                     color = OrbitTokens.textLowN,
                     fontSize = 12.sp,
                     modifier = Modifier
@@ -250,7 +250,7 @@ fun RecorrentesScreen() {
             )
             Spacer(Modifier.width(8.dp))
             Text(
-                "Novo fixo",
+                "Novo recorrente",
                 color = OrbitTokens.onBluePastel,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -621,7 +621,7 @@ private fun VazioRecorrentes(onAdicionar: () -> Unit) {
         )
         Spacer(Modifier.height(14.dp))
         Text(
-            "+ Novo fixo",
+            "+ Novo recorrente",
             color = OrbitTokens.bluePastel,
             fontSize = 14.sp,
             fontWeight = FontWeight.SemiBold,
@@ -683,7 +683,7 @@ private fun RecorrenteFormSheet(
                 .padding(top = 8.dp, bottom = 20.dp),
         ) {
             Text(
-                if (inicial == null) "Novo fixo" else "Editar fixo",
+                if (inicial == null) "Novo recorrente" else "Editar recorrente",
                 color = OrbitTokens.textHiN,
                 fontSize = 20.sp,
                 fontFamily = Bricolage,

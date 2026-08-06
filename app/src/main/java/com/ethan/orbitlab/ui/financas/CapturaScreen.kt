@@ -664,6 +664,15 @@ private fun LinhaBancoConcept(status: StatusBancoCaptura) {
                 fontWeight = FontWeight.SemiBold,
             )
             Text(sub, color = OrbitTokens.textLowN, fontSize = 12.sp)
+            if (status.saude == SaudeBanco.QUIETO) {
+                Text(
+                    "Como ligar →",
+                    color = OrbitTokens.warning,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.orbitPressable { /* P2.5: instrucoes */ },
+                )
+            }
         }
         Text(
             label,
@@ -678,7 +687,7 @@ private fun corMarcaBanco(id: String): Color = when (id) {
     "nubank" -> Color(0xFF820AD1)
     "inter" -> Color(0xFFFF7A00)
     "itau" -> Color(0xFFEC7000)
-    "c6" -> Color(0xFF1A1A1A)
+    "c6" -> Color(0xFF2A2C32)  // grafite um pouco mais claro — 0xFF1A1A1A invisível no fundo grafite
     "picpay" -> Color(0xFF21C25E)
     "bradesco" -> Color(0xFFCC092F)
     "santander" -> Color(0xFFEC0000)
