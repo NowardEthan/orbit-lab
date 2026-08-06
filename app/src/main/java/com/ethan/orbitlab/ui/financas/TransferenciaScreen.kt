@@ -132,8 +132,13 @@ fun TransferenciaScreen() {
     }
 
     val navTick by TransferenciaLauncher.navegarTick.collectAsState()
+    // P1.1: Página 1 do navTick já foi aplicada. Só roda de novo se vier prefill novo,
+    // E defaults só se a tela acabou de abrir sem prefill (deId==null). NUNCA
+    // sobrescreve escolha manual do usuário.
+    var navTickAplicado by remember { mutableStateOf(0L) }
     LaunchedEffect(navTick, ativas.size) {
         if (ativas.isEmpty()) return@LaunchedEffect
+        if (navTick > 0L && navTick == navTickAplicado) return@LaunchedEffect
         val prefill = TransferenciaLauncher.consumirPrefill()
         if (prefill != null) {
             deId = prefill.deCarteiraId
@@ -147,6 +152,7 @@ fun TransferenciaScreen() {
                 val cents = (v % 100).toInt()
                 valorTxt = if (cents == 0) reais.toString() else "%d,%02d".format(reais, cents)
             }
+            navTickAplicado = navTick
         } else if (deId == null) {
             deId = ativas.firstOrNull { it.tipo != TipoCarteira.CARTAO_CREDITO }?.id
                 ?: ativas.firstOrNull()?.id
