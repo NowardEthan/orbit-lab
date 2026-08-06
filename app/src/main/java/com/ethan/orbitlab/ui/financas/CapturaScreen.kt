@@ -34,6 +34,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -86,6 +90,17 @@ fun CapturaScreen() {
     val ultima by CapturaRepository.ultimaCapturaMs.collectAsState()
 
     var tick by remember { mutableStateOf(0) }
+    // P0.3: refaz o status quando a tela volta do background (ex: usuário concedeu
+    // permissão de notificação ou bateria em Settings). Sem isso o card fica
+    // stale até a próxima interação interna.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) tick++
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     val status = remember(consentimento, desejada, ultima, tick, pendentes.size) {
         CapturaRepository.statusGeral(context)
     }

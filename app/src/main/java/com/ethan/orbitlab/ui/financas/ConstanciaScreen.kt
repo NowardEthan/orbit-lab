@@ -62,7 +62,7 @@ private val CardRadius = 28.dp
 @Composable
 fun ConstanciaScreen() {
     val estado by FinancasLuzEngine.estado.collectAsState()
-    val diasSemana = remember { listOf("S", "T", "Q", "Q", "S", "S", "D") }
+    val diasSemana = remember { listOf("Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom") }
     val desbloqueadas = estado.conquistas.size
     val totalConquistas = CONQUISTAS_FINANCAS.size
     var vistaMes by remember { mutableStateOf(false) }
