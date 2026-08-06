@@ -336,6 +336,18 @@ object LunaApiChat {
             put("lunaMessageId", lunaMessageId)
             put("providerId", "auto")
             put("modelKey", "auto")
+            if (PrefsRepository.llmPessoalAtivo.value && PrefsRepository.llmPessoalConfigurado()) {
+                put(
+                    "personalProvider",
+                    JSONObject().apply {
+                        put("enabled", true)
+                        put("type", "openai_compatible")
+                        put("baseUrl", PrefsRepository.llmPessoalBaseUrl.value)
+                        put("apiKey", PrefsRepository.llmPessoalApiKey.value)
+                        put("model", PrefsRepository.llmPessoalModel.value)
+                    },
+                )
+            }
             put("timeZone", TimeZone.getDefault().id)
             put("reasoningEnabled", PrefsRepository.reasoningEnabled.value)
             // Profundidade por turno (A3) ainda não existe — default medium; core sobe se precisar.

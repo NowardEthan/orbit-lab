@@ -2,15 +2,25 @@ package com.ethan.orbitlab.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
+import android.util.Base64
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.security.KeyStore
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
 
 /**
  * Preferências locais do lab — espelho leve do AsyncStorage do orbit-mobile.
  */
 object PrefsRepository {
     private const val PREFS = "orbitlab_prefs"
+    private const val KEYSTORE_ALIAS = "orbitlab_llm_pessoal"
+    private const val SECURE_PREFIX = "secure:"
     private const val KEY_VIBRACAO = "orbit.lab.vibracao"
     private const val KEY_PESQUISA_PROFUNDA = "orbit.lab.pesquisa.profunda"
     private const val KEY_MODO_TECNICO = "orbit.lab.modo.tecnico"
@@ -24,6 +34,10 @@ object PrefsRepository {
     private const val KEY_CONVERSA_FINANCAS = "orbit.lab.financas.conversa"
     private const val KEY_LOCALIZACAO = "orbit.lab.localizacao.ativa"
     private const val KEY_LOCAL_SNAPSHOT = "orbit.lab.localizacao.snapshot"
+    private const val KEY_LLM_PESSOAL_ATIVO = "orbit.lab.llm.pessoal.ativo"
+    private const val KEY_LLM_PESSOAL_BASE_URL = "orbit.lab.llm.pessoal.base_url"
+    private const val KEY_LLM_PESSOAL_API_KEY = "orbit.lab.llm.pessoal.api_key"
+    private const val KEY_LLM_PESSOAL_MODEL = "orbit.lab.llm.pessoal.model"
     private const val KEY_TECNICO_IDS = "orbit.lab.tecnico.msgids"
     private const val KEY_CPF_CNPJ = "orbit.lab.billing.cpfcnpj"
     /** Showcase V1 da Início (Finanças / desenha / artefatos) — versionado pra reaparecer em capítulos novos. */
@@ -86,6 +100,18 @@ object PrefsRepository {
     private val _localizacaoAtiva = MutableStateFlow(false)
     val localizacaoAtiva: StateFlow<Boolean> = _localizacaoAtiva.asStateFlow()
 
+    private val _llmPessoalAtivo = MutableStateFlow(false)
+    val llmPessoalAtivo: StateFlow<Boolean> = _llmPessoalAtivo.asStateFlow()
+
+    private val _llmPessoalBaseUrl = MutableStateFlow("")
+    val llmPessoalBaseUrl: StateFlow<String> = _llmPessoalBaseUrl.asStateFlow()
+
+    private val _llmPessoalApiKey = MutableStateFlow("")
+    val llmPessoalApiKey: StateFlow<String> = _llmPessoalApiKey.asStateFlow()
+
+    private val _llmPessoalModel = MutableStateFlow("claude-fable-5")
+    val llmPessoalModel: StateFlow<String> = _llmPessoalModel.asStateFlow()
+
     private val _bolhaAtiva = MutableStateFlow(false)
     /** Preferência: usuário quer a bolha ligada (o serviço pode estar morto até religar). */
     val bolhaAtiva: StateFlow<Boolean> = _bolhaAtiva.asStateFlow()
@@ -118,6 +144,11 @@ object PrefsRepository {
         _modoTecnico.value = false
         _modoAgentico.value = false
         _localizacaoAtiva.value = prefs.getBoolean(KEY_LOCALIZACAO, false)
+        _llmPessoalAtivo.value = prefs.getBoolean(KEY_LLM_PESSOAL_ATIVO, false)
+        _llmPessoalBaseUrl.value = prefs.getString(KEY_LLM_PESSOAL_BASE_URL, "").orEmpty()
+        _llmPessoalApiKey.value = lerTextoSeguro(KEY_LLM_PESSOAL_API_KEY).orEmpty()
+        _llmPessoalModel.value = prefs.getString(KEY_LLM_PESSOAL_MODEL, "claude-fable-5").orEmpty()
+            .ifBlank { "claude-fable-5" }
         _bolhaAtiva.value = prefs.getBoolean(KEY_BOLHA_ATIVA, false)
         bolhaLadoEsquerdo = prefs.getBoolean(KEY_BOLHA_LADO_ESQ, true)
         bolhaY = prefs.getInt(KEY_BOLHA_Y, BOLHA_Y_DEFAULT)
@@ -274,6 +305,32 @@ object PrefsRepository {
         if (::prefs.isInitialized) prefs.edit().putBoolean(KEY_LOCALIZACAO, enabled).apply()
     }
 
+    fun setLlmPessoalAtivo(enabled: Boolean) {
+        _llmPessoalAtivo.value = enabled
+        if (::prefs.isInitialized) prefs.edit().putBoolean(KEY_LLM_PESSOAL_ATIVO, enabled).apply()
+    }
+
+    fun salvarLlmPessoal(baseUrl: String, apiKey: String, model: String) {
+        val url = baseUrl.trim().trimEnd('/')
+        val key = apiKey.trim()
+        val modelo = model.trim().ifBlank { "claude-fable-5" }
+        _llmPessoalBaseUrl.value = url
+        _llmPessoalApiKey.value = key
+        _llmPessoalModel.value = modelo
+        if (::prefs.isInitialized) {
+            prefs.edit()
+                .putString(KEY_LLM_PESSOAL_BASE_URL, url)
+                .putString(KEY_LLM_PESSOAL_API_KEY, protegerTexto(key))
+                .putString(KEY_LLM_PESSOAL_MODEL, modelo)
+                .apply()
+        }
+    }
+
+    fun llmPessoalConfigurado(): Boolean =
+        _llmPessoalBaseUrl.value.startsWith("http") &&
+            _llmPessoalApiKey.value.isNotBlank() &&
+            _llmPessoalModel.value.isNotBlank()
+
     fun setBolhaAtiva(enabled: Boolean) {
         _bolhaAtiva.value = enabled
         if (::prefs.isInitialized) prefs.edit().putBoolean(KEY_BOLHA_ATIVA, enabled).apply()
@@ -309,6 +366,56 @@ object PrefsRepository {
         get() = texto(KEY_LOCAL_SNAPSHOT)
         set(value) = setTexto(KEY_LOCAL_SNAPSHOT, value)
 
+    private fun chaveSecreta(): SecretKey {
+        val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        (ks.getEntry(KEYSTORE_ALIAS, null) as? KeyStore.SecretKeyEntry)?.secretKey?.let {
+            return it
+        }
+        val keyGenerator = KeyGenerator.getInstance(
+            KeyProperties.KEY_ALGORITHM_AES,
+            "AndroidKeyStore",
+        )
+        keyGenerator.init(
+            KeyGenParameterSpec.Builder(
+                KEYSTORE_ALIAS,
+                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
+            )
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setRandomizedEncryptionRequired(true)
+                .build(),
+        )
+        return keyGenerator.generateKey()
+    }
+
+    private fun protegerTexto(valor: String): String {
+        if (valor.isBlank()) return ""
+        return runCatching {
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.ENCRYPT_MODE, chaveSecreta())
+            val iv = cipher.iv
+            val cifrado = cipher.doFinal(valor.toByteArray(Charsets.UTF_8))
+            SECURE_PREFIX +
+                Base64.encodeToString(iv, Base64.NO_WRAP) +
+                ":" +
+                Base64.encodeToString(cifrado, Base64.NO_WRAP)
+        }.getOrDefault("")
+    }
+
+    private fun lerTextoSeguro(chave: String): String? {
+        val bruto = if (::prefs.isInitialized) prefs.getString(chave, null) else null
+        if (bruto.isNullOrBlank()) return null
+        if (!bruto.startsWith(SECURE_PREFIX)) return bruto
+        return runCatching {
+            val partes = bruto.removePrefix(SECURE_PREFIX).split(":", limit = 2)
+            val iv = Base64.decode(partes.getOrNull(0).orEmpty(), Base64.NO_WRAP)
+            val cifrado = Base64.decode(partes.getOrNull(1).orEmpty(), Base64.NO_WRAP)
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, chaveSecreta(), GCMParameterSpec(128, iv))
+            String(cipher.doFinal(cifrado), Charsets.UTF_8)
+        }.getOrNull()
+    }
+
     /** Limpa prefs locais (após «apagar dados»). */
     fun reset() {
         prefs.edit().clear().apply()
@@ -317,6 +424,10 @@ object PrefsRepository {
         _modoTecnico.value = false
         _modoAgentico.value = false
         _localizacaoAtiva.value = false
+        _llmPessoalAtivo.value = false
+        _llmPessoalBaseUrl.value = ""
+        _llmPessoalApiKey.value = ""
+        _llmPessoalModel.value = "claude-fable-5"
         _bolhaAtiva.value = false
         bolhaLadoEsquerdo = true
         bolhaY = BOLHA_Y_DEFAULT

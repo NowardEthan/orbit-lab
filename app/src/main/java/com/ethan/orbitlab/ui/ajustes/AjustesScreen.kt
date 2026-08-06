@@ -18,20 +18,32 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Key
+import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material.icons.rounded.Nightlight
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.material.icons.rounded.SmartToy
 import androidx.compose.material.icons.rounded.TravelExplore
 import androidx.compose.material.icons.rounded.Vibration
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -53,6 +65,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -98,6 +113,10 @@ fun AjustesScreen(
     when (tela) {
         AjustesTela.Privacidade -> {
             PrivacidadeScreen(onBack = { tela = AjustesTela.Lista })
+            return
+        }
+        AjustesTela.ClaudePessoal -> {
+            ClaudePessoalScreen(onBack = { tela = AjustesTela.Lista })
             return
         }
         AjustesTela.Lista -> Unit
@@ -409,6 +428,24 @@ fun AjustesScreen(
             )
         }
 
+        val llmPessoalAtivo by PrefsRepository.llmPessoalAtivo.collectAsState()
+        val llmPessoalModel by PrefsRepository.llmPessoalModel.collectAsState()
+
+        Grupo(titulo = "Modelo pessoal") {
+            Linha(
+                icone = Icons.Rounded.SmartToy,
+                titulo = "Claude pessoal",
+                subtitulo = if (PrefsRepository.llmPessoalConfigurado()) {
+                    llmPessoalModel
+                } else {
+                    "Base URL, chave e modelo"
+                },
+                trailing = if (llmPessoalAtivo && PrefsRepository.llmPessoalConfigurado()) "Ligado" else "Standby",
+                iconeTint = OrbitTokens.bluePastel,
+                onClick = { tela = AjustesTela.ClaudePessoal },
+            )
+        }
+
         Grupo(titulo = "Privacidade e dados") {
             Linha(
                 icone = Icons.Rounded.Shield,
@@ -462,7 +499,204 @@ fun AjustesScreen(
     }
 }
 
-private enum class AjustesTela { Lista, Privacidade }
+private enum class AjustesTela { Lista, Privacidade, ClaudePessoal }
+
+@Composable
+private fun ClaudePessoalScreen(
+    onBack: () -> Unit,
+) {
+    val ativo by PrefsRepository.llmPessoalAtivo.collectAsState()
+    val baseSalva by PrefsRepository.llmPessoalBaseUrl.collectAsState()
+    val keySalva by PrefsRepository.llmPessoalApiKey.collectAsState()
+    val modeloSalvo by PrefsRepository.llmPessoalModel.collectAsState()
+
+    var baseUrl by remember(baseSalva) { mutableStateOf(baseSalva) }
+    var apiKey by remember(keySalva) { mutableStateOf(keySalva) }
+    var modelo by remember(modeloSalvo) { mutableStateOf(modeloSalvo.ifBlank { "claude-fable-5" }) }
+    var mostrarChave by remember { mutableStateOf(false) }
+    var aviso by remember { mutableStateOf("") }
+
+    fun configurado(): Boolean =
+        baseUrl.trim().startsWith("http") &&
+            apiKey.trim().isNotBlank() &&
+            modelo.trim().isNotBlank()
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Transparent)
+            .verticalScroll(rememberScrollState())
+            .padding(
+                top = 6.dp,
+                start = OrbitMetrics.pagePadding,
+                end = OrbitMetrics.pagePadding,
+                bottom = 120.dp,
+            ),
+        verticalArrangement = Arrangement.spacedBy(24.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(
+                    Icons.AutoMirrored.Rounded.ArrowBack,
+                    contentDescription = "Voltar",
+                    tint = OrbitTokens.textHiN,
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            Column {
+                Text(
+                    "Claude pessoal",
+                    color = OrbitTokens.textHiN,
+                    fontSize = OrbitMetrics.titleSize,
+                    fontWeight = OrbitMetrics.titleWeight,
+                    letterSpacing = (-0.3).sp,
+                )
+                Text(
+                    "Chave local para a sua conta.",
+                    color = OrbitTokens.textMidN,
+                    fontSize = OrbitMetrics.captionSize,
+                    lineHeight = 16.sp,
+                )
+            }
+        }
+
+        Grupo(
+            titulo = "Ativação",
+            rodape = "Texto e ferramentas usam essa API. Voz, visão por vídeo/frame e imagens geradas ficam nos provedores do Orbit.",
+        ) {
+            LinhaSwitch(
+                icone = Icons.Rounded.SmartToy,
+                titulo = "Usar Claude",
+                subtitulo = if (ativo) "Conversas passam pelo modelo pessoal" else "Orbit usa o provedor padrão",
+                checado = ativo,
+                onCheck = { ligado ->
+                    if (ligado && !configurado()) {
+                        aviso = "Preencha Base URL, API key e modelo antes de ligar."
+                        PrefsRepository.setLlmPessoalAtivo(false)
+                    } else {
+                        if (ligado) PrefsRepository.salvarLlmPessoal(baseUrl, apiKey, modelo)
+                        PrefsRepository.setLlmPessoalAtivo(ligado)
+                        aviso = if (ligado) "Ativado." else "Desativado."
+                    }
+                },
+            )
+        }
+
+        Grupo(titulo = "Conexão") {
+            CampoClaude(
+                icone = Icons.Rounded.Link,
+                label = "Base URL",
+                value = baseUrl,
+                onValueChange = { baseUrl = it },
+                placeholder = "https://api.exemplo.com/v1",
+                keyboardType = KeyboardType.Uri,
+            )
+            Spacer(Modifier.height(12.dp))
+            CampoClaude(
+                icone = Icons.Rounded.Key,
+                label = "API key",
+                value = apiKey,
+                onValueChange = { apiKey = it },
+                placeholder = "sk-...",
+                keyboardType = KeyboardType.Password,
+                visualTransformation = if (mostrarChave) VisualTransformation.None else PasswordVisualTransformation(),
+                trailingIcon = {
+                    IconButton(onClick = { mostrarChave = !mostrarChave }) {
+                        Icon(
+                            if (mostrarChave) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                            contentDescription = if (mostrarChave) "Ocultar chave" else "Mostrar chave",
+                            tint = OrbitTokens.textLowN,
+                        )
+                    }
+                },
+            )
+            Spacer(Modifier.height(12.dp))
+            CampoClaude(
+                icone = Icons.Rounded.SmartToy,
+                label = "Modelo",
+                value = modelo,
+                onValueChange = { modelo = it },
+                placeholder = "claude-fable-5",
+            )
+            Spacer(Modifier.height(14.dp))
+            Button(
+                onClick = {
+                    if (!configurado()) {
+                        PrefsRepository.setLlmPessoalAtivo(false)
+                        aviso = "Preencha Base URL, API key e modelo."
+                    } else {
+                        PrefsRepository.salvarLlmPessoal(baseUrl, apiKey, modelo)
+                        aviso = "Salvo."
+                    }
+                },
+                enabled = baseUrl.isNotBlank() || apiKey.isNotBlank() || modelo.isNotBlank(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = OrbitTokens.bluePastel,
+                    contentColor = OrbitTokens.onBluePastel,
+                    disabledContainerColor = OrbitTokens.graphiteRaised,
+                    disabledContentColor = OrbitTokens.textLowN,
+                ),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Salvar")
+            }
+            if (aviso.isNotBlank()) {
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    aviso,
+                    color = OrbitTokens.textMidN,
+                    fontSize = OrbitMetrics.captionSize,
+                    lineHeight = 16.sp,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CampoClaude(
+    icone: ImageVector,
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    keyboardType: KeyboardType = KeyboardType.Text,
+    visualTransformation: VisualTransformation = VisualTransformation.None,
+    trailingIcon: @Composable (() -> Unit)? = null,
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = Modifier.fillMaxWidth(),
+        label = { Text(label) },
+        placeholder = { Text(placeholder) },
+        leadingIcon = {
+            Icon(
+                icone,
+                contentDescription = null,
+                tint = OrbitTokens.textLowN,
+            )
+        },
+        trailingIcon = trailingIcon,
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+        visualTransformation = visualTransformation,
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = OrbitTokens.bluePastel,
+            unfocusedBorderColor = OrbitTokens.graphiteHair,
+            focusedTextColor = OrbitTokens.textHiN,
+            unfocusedTextColor = OrbitTokens.textHiN,
+            focusedLabelColor = OrbitTokens.bluePastel,
+            unfocusedLabelColor = OrbitTokens.textLowN,
+            cursorColor = OrbitTokens.bluePastel,
+            focusedContainerColor = OrbitTokens.graphiteSurf,
+            unfocusedContainerColor = OrbitTokens.graphiteSurf,
+        ),
+    )
+}
 
 @Composable
 private fun HeaderAjustes() {
