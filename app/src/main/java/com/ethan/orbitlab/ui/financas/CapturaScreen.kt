@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.sp
 import com.ethan.orbitlab.data.captura.CapturaPermissoes
 import com.ethan.orbitlab.data.captura.CapturaRepository
 import com.ethan.orbitlab.data.captura.CapturaStatusGeral
+import com.ethan.orbitlab.BuildConfig
 import com.ethan.orbitlab.data.captura.SaudeBanco
 import com.ethan.orbitlab.data.captura.StatusBancoCaptura
 import com.ethan.orbitlab.data.captura.SugestaoCaptura
@@ -269,16 +270,18 @@ fun CapturaScreen() {
                 }
             }
 
-            item {
-                Text(
-                    "Simular aviso (lab)",
+            if (BuildConfig.DEBUG) {
+                item {
+                    Text(
+                        "Simular aviso (lab)",
                     color = OrbitTokens.bluePastel,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Medium,
                     modifier = Modifier
                         .orbitPressable { CapturaRepository.simularDemo() }
                         .padding(vertical = 4.dp),
-                )
+                    )
+                }
             }
         }
     }

@@ -103,7 +103,8 @@ fun RecorrentesScreen() {
         ativos.filter { it.tipo == TipoLancamento.SAIDA }
             .sortedBy { it.diaDoMes }
     }
-    val mesRotulo = remember {
+    // P3.5: muda a chave quando virar o dia (chaveDia usa dia/mes/ano local).
+    val mesRotulo = remember(System.currentTimeMillis() / 86_400_000L) {
         SimpleDateFormat("MMMM", Locale.forLanguageTag("pt-BR"))
             .format(Date())
             .replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.forLanguageTag("pt-BR")) else it.toString() }
