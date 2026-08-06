@@ -83,6 +83,14 @@ object LunaApiClient {
 
     data class BuscaResposta(val resultados: List<BuscaItem>, val error: String?)
 
+    data class ProviderPessoalTeste(
+        val ok: Boolean,
+        val message: String,
+        val model: String = "",
+        val baseUrl: String = "",
+        val latencyMs: Long? = null,
+    )
+
     /** Mesmos limites do servidor — cortar aqui evita subir um payload gigante por nada. */
     private const val BUSCA_MAX_MSGS = 120
     private const val BUSCA_MAX_CHARS = 500
@@ -97,6 +105,70 @@ object LunaApiClient {
             "unexpected end", "network", "falha de rede", "http 5",
             " 500", " 502", " 503", " 504",
         ).any { m.contains(it) }
+    }
+
+    suspend fun testarProviderPessoal(
+        idToken: String?,
+        baseUrl: String,
+        apiKey: String,
+        model: String,
+    ): ProviderPessoalTeste = withContext(Dispatchers.IO) {
+        if (!LunaApiConfig.isConfigured()) {
+            return@withContext ProviderPessoalTeste(false, "LUNA_API_URL ausente no build.")
+        }
+        val body = JSONObject().apply {
+            put("enabled", true)
+            put("type", "openai_compatible")
+            put("baseUrl", baseUrl.trim())
+            put("apiKey", apiKey.trim())
+            put("model", model.trim())
+        }
+        val request = Request.Builder()
+            .url(LunaApiConfig.personalProviderTestUrl)
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json")
+            .apply {
+                if (!idToken.isNullOrBlank()) header("Authorization", "Bearer $idToken")
+            }
+            .post(body.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+
+        try {
+            http.newCall(request).execute().use { response ->
+                val raw = response.body?.string().orEmpty()
+                val json = runCatching { JSONObject(raw) }.getOrNull()
+                if (json == null) {
+                    return@withContext ProviderPessoalTeste(
+                        false,
+                        if (raw.isNotBlank()) raw.take(280) else "HTTP ${response.code}",
+                    )
+                }
+                if (response.isSuccessful && json.optBoolean("ok", false)) {
+                    val latency = if (json.has("latencyMs") && !json.isNull("latencyMs")) {
+                        json.optLong("latencyMs")
+                    } else {
+                        null
+                    }
+                    return@withContext ProviderPessoalTeste(
+                        true,
+                        "Conexao OK.",
+                        model = json.optString("model"),
+                        baseUrl = json.optString("baseUrl"),
+                        latencyMs = latency,
+                    )
+                }
+                ProviderPessoalTeste(
+                    false,
+                    json.optString("error").ifBlank { "Erro HTTP ${response.code} no teste." },
+                    baseUrl = json.optString("baseUrl"),
+                )
+            }
+        } catch (e: IOException) {
+            ProviderPessoalTeste(
+                false,
+                e.message?.takeIf { it.isNotBlank() } ?: "Falha de rede com o servidor Luna.",
+            )
+        }
     }
 
     /**

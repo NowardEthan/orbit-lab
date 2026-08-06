@@ -81,6 +81,7 @@ import com.ethan.orbitlab.data.AuthRepository
 import com.ethan.orbitlab.data.PrefsRepository
 import com.ethan.orbitlab.data.UserProfileRepository
 import com.ethan.orbitlab.data.crash.CrashReporting
+import com.ethan.orbitlab.data.lunaapi.LunaApiClient
 import com.ethan.orbitlab.data.local.LocationRepository
 import com.ethan.orbitlab.data.updates.ApkInstaller
 import com.ethan.orbitlab.data.updates.UpdatesRepository
@@ -515,6 +516,8 @@ private fun ClaudePessoalScreen(
     var modelo by remember(modeloSalvo) { mutableStateOf(modeloSalvo.ifBlank { "claude-fable-5" }) }
     var mostrarChave by remember { mutableStateOf(false) }
     var aviso by remember { mutableStateOf("") }
+    var testando by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     fun configurado(): Boolean =
         baseUrl.trim().startsWith("http") &&
@@ -642,6 +645,46 @@ private fun ClaudePessoalScreen(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text("Salvar")
+            }
+            Spacer(Modifier.height(10.dp))
+            Button(
+                onClick = {
+                    if (!configurado()) {
+                        PrefsRepository.setLlmPessoalAtivo(false)
+                        aviso = "Preencha Base URL, API key e modelo antes de testar."
+                        return@Button
+                    }
+                    PrefsRepository.salvarLlmPessoal(baseUrl, apiKey, modelo)
+                    testando = true
+                    aviso = "Testando conexao..."
+                    scope.launch {
+                        val token = AuthRepository.getIdToken()
+                        val resultado = LunaApiClient.testarProviderPessoal(
+                            token,
+                            baseUrl,
+                            apiKey,
+                            modelo,
+                        )
+                        aviso = if (resultado.ok) {
+                            val ms = resultado.latencyMs?.let { " em ${it}ms" }.orEmpty()
+                            val model = resultado.model.ifBlank { modelo.trim() }
+                            "Conexao OK com $model$ms."
+                        } else {
+                            resultado.message
+                        }
+                        testando = false
+                    }
+                },
+                enabled = !testando && configurado(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = OrbitTokens.graphiteRaised,
+                    contentColor = OrbitTokens.textHiN,
+                    disabledContainerColor = OrbitTokens.graphiteRaised,
+                    disabledContentColor = OrbitTokens.textLowN,
+                ),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(if (testando) "Testando..." else "Testar conexao")
             }
             if (aviso.isNotBlank()) {
                 Spacer(Modifier.height(10.dp))
