@@ -47,6 +47,12 @@ object OrbitTokens {
     val danger = Color(0xFFEF5350)
     val dangerFlat = Color(0xFFC62828)
 
+    // P1.3: semanticos separados do accent (AGENTS.md sec 4: verde=entrada, vermelho=saida, ambar=atencao).
+    // Versoes "Flat" (contidas) pra alternadores Saida/Entrada no Registrar e similares.
+    val semaforoEntrada = Color(0xFF2F5A48)
+    val semaforoSaida = Color(0xFF6B3E3A)
+    val semaforoAtencao = Color(0xFFFFB74D) // idem ao warning
+
     // ── Orbit 1.0 — base grafite neutra + azul pastel ─────────────────────────
     // Direção do redesign (ver memória orbit-redesign-1-0): larga o violeta/Penumbra,
     // vai pra um grafite neutro com azul pastel só nos detalhes. Tokens NOVOS,

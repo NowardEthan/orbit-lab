@@ -79,10 +79,10 @@ import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 
-/** Saída ativa — vermelho-marrom contido do concept. */
-private val SaidaAtiva = Color(0xFF6B3E3A)
-/** Entrada ativa — verde contido. */
-private val EntradaAtiva = Color(0xFF2F5A48)
+// P1.3: usa tokens semânticos do OrbitTokens (AGENTS.md §4)
+// verde=entrada, vermelho=saída, âmbar=atenção. Removido hard-coded local.
+private val SaidaAtiva = OrbitTokens.semaforoSaida
+private val EntradaAtiva = OrbitTokens.semaforoEntrada
 
 /**
  * Resultado do Registrar — lançamento + opcional "virar recorrente".
