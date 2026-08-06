@@ -156,8 +156,8 @@ android {
         create("lab") {
             dimension = "canal"
             applicationId = "com.ethan.orbitlab"
-            versionCode = (findProperty("labVersionCode") as String?)?.toIntOrNull() ?: 128
-            versionName = (findProperty("labVersionName") as String?) ?: "0.35.21"
+            versionCode = (findProperty("labVersionCode") as String?)?.toIntOrNull() ?: 133
+            versionName = (findProperty("labVersionName") as String?) ?: "0.35.26"
         }
     }
 
