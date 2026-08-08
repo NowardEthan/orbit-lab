@@ -14,10 +14,17 @@ import java.util.concurrent.TimeUnit
 private const val CACHE_KEY = "orbitlab.updates.manifest.v1"
 private const val SEEN_KEY = "orbitlab.updates.seen.v1"
 
-private const val MANIFEST_API =
-    "https://api.github.com/repos/NowardEthan/orbit-releases/contents/updates-lab.json"
-private const val MANIFEST_RAW =
-    "https://raw.githubusercontent.com/NowardEthan/orbit-releases/main/updates-lab.json"
+private val manifestFile: String
+    get() = BuildConfig.UPDATE_MANIFEST_FILE.ifBlank { "updates-lab.json" }
+
+private val manifestRepo: String
+    get() = BuildConfig.UPDATE_MANIFEST_REPO.ifBlank { "NowardEthan/orbit-lab-releases" }
+
+private val manifestApiUrl: String
+    get() = "https://api.github.com/repos/$manifestRepo/contents/$manifestFile"
+
+private val manifestRawUrl: String
+    get() = "https://raw.githubusercontent.com/$manifestRepo/main/$manifestFile"
 
 private val http by lazy {
     OkHttpClient.Builder()
@@ -62,7 +69,7 @@ object ManifestFetcher {
 
     private fun fetchFromApi(): JSONObject {
         val request = Request.Builder()
-            .url(MANIFEST_API)
+            .url(manifestApiUrl)
             .header("Accept", "application/vnd.github.raw")
             .header("User-Agent", "OrbitLab")
             .build()
@@ -74,7 +81,7 @@ object ManifestFetcher {
 
     private fun fetchFromRaw(): JSONObject {
         val request = Request.Builder()
-            .url(MANIFEST_RAW)
+            .url(manifestRawUrl)
             .build()
         http.newCall(request).execute().use { response ->
             if (!response.isSuccessful) error("HTTP raw ${response.code}")
