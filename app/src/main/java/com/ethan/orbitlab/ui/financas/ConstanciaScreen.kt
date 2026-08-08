@@ -34,6 +34,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -62,7 +64,7 @@ private val CardRadius = 28.dp
 @Composable
 fun ConstanciaScreen() {
     val estado by FinancasLuzEngine.estado.collectAsState()
-    val diasSemana = remember { listOf("S", "T", "Q", "Q", "S", "S", "D") }
+    val diasSemana = remember { listOf("Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom") }
     val desbloqueadas = estado.conquistas.size
     val totalConquistas = CONQUISTAS_FINANCAS.size
     var vistaMes by remember { mutableStateOf(false) }
@@ -288,19 +290,31 @@ private fun LuaFaseVisual(fase: FaseLua, modifier: Modifier = Modifier) {
                 radius = r,
                 center = Offset(cx, cy),
             )
-            // Sombra da fase (crescente / quase / nova)
-            val sombraOffset = when (fase) {
-                FaseLua.NOVA -> 0f
-                FaseLua.CRESCENTE -> r * 0.55f
-                FaseLua.QUASE_CHEIA -> r * 0.28f
-                FaseLua.CHEIA -> r * 2f // fora — lua cheia
-            }
-            if (fase != FaseLua.CHEIA) {
-                drawCircle(
-                    color = OrbitTokens.graphiteSurf,
-                    radius = if (fase == FaseLua.NOVA) r * 0.98f else r * 0.92f,
-                    center = Offset(cx + sombraOffset, cy),
-                )
+            // Mascara da fase (P3.2): antes era so sombra empurrada — achatava o crescente.
+            // Agora cada fase usa Path com elipses sobrepostas pra criar a forma classica.
+            when (fase) {
+                FaseLua.NOVA -> {
+                    // Disco quase todo coberto pela sombra (sobra um fio iluminado).
+                    drawCircle(color = OrbitTokens.graphiteSurf, radius = r * 0.96f, center = Offset(cx, cy))
+                }
+                FaseLua.CRESCENTE -> {
+                    // Crescente: elipse sombra deslocada pra subtrair o lado esquerdo.
+                    val path = Path().apply {
+                        addOval(Rect(0f, 0f, r * 2f, r * 2f))
+                        addOval(Rect(r * 0.35f, 0f, r * 1.85f, r * 2f))
+                    }
+                    drawPath(path, color = OrbitTokens.graphiteSurf)
+                }
+                FaseLua.QUASE_CHEIA -> {
+                    // Quase cheia: elipse sombra deslocada pra esquerda, sobra um crescente fininho.
+                    val path = Path().apply {
+                        addOval(Rect(0f, 0f, r * 2f, r * 2f))
+                        addOval(Rect(-r * 0.15f, 0f, r * 1.65f, r * 2f))
+                    }
+                    drawPath(path, color = OrbitTokens.graphiteSurf)
+                }
+                FaseLua.CHEIA -> { /* disco todo iluminado, sem sombra */ }
+                else -> { /* idem */ }
             }
         }
     }

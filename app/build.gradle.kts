@@ -156,8 +156,12 @@ android {
         create("lab") {
             dimension = "canal"
             applicationId = "com.ethan.orbitlab"
-            versionCode = (findProperty("labVersionCode") as String?)?.toIntOrNull() ?: 128
-            versionName = (findProperty("labVersionName") as String?) ?: "0.35.21"
+            versionCode = (findProperty("labVersionCode") as String?)?.toIntOrNull() ?: 134
+            versionName = (findProperty("labVersionName") as String?) ?: "0.36.0"
+            val updateRepo = (findProperty("labUpdateRepo") as String?) ?: "NowardEthan/orbit-lab-releases"
+            val updateManifest = (findProperty("labUpdateManifest") as String?) ?: "updates-lab.json"
+            buildConfigField("String", "UPDATE_MANIFEST_REPO", "\"${updateRepo.replace("\"", "\\\"")}\"")
+            buildConfigField("String", "UPDATE_MANIFEST_FILE", "\"${updateManifest.replace("\"", "\\\"")}\"")
         }
     }
 

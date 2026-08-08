@@ -103,7 +103,8 @@ fun RecorrentesScreen() {
         ativos.filter { it.tipo == TipoLancamento.SAIDA }
             .sortedBy { it.diaDoMes }
     }
-    val mesRotulo = remember {
+    // P3.5: muda a chave quando virar o dia (chaveDia usa dia/mes/ano local).
+    val mesRotulo = remember(System.currentTimeMillis() / 86_400_000L) {
         SimpleDateFormat("MMMM", Locale.forLanguageTag("pt-BR"))
             .format(Date())
             .replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.forLanguageTag("pt-BR")) else it.toString() }
@@ -211,7 +212,7 @@ fun RecorrentesScreen() {
 
             item {
                 Text(
-                    "Recorrentes — o que entra e sai fixo",
+                    "Recorrentes — o que entra e sai todo mês",
                     color = OrbitTokens.textLowN,
                     fontSize = 12.sp,
                     modifier = Modifier
@@ -250,7 +251,7 @@ fun RecorrentesScreen() {
             )
             Spacer(Modifier.width(8.dp))
             Text(
-                "Novo fixo",
+                "Novo recorrente",
                 color = OrbitTokens.onBluePastel,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -621,7 +622,7 @@ private fun VazioRecorrentes(onAdicionar: () -> Unit) {
         )
         Spacer(Modifier.height(14.dp))
         Text(
-            "+ Novo fixo",
+            "+ Novo recorrente",
             color = OrbitTokens.bluePastel,
             fontSize = 14.sp,
             fontWeight = FontWeight.SemiBold,
@@ -683,7 +684,7 @@ private fun RecorrenteFormSheet(
                 .padding(top = 8.dp, bottom = 20.dp),
         ) {
             Text(
-                if (inicial == null) "Novo fixo" else "Editar fixo",
+                if (inicial == null) "Novo recorrente" else "Editar recorrente",
                 color = OrbitTokens.textHiN,
                 fontSize = 20.sp,
                 fontFamily = Bricolage,

@@ -82,6 +82,7 @@ import com.ethan.orbitlab.data.financas.faturaCredito
 import com.ethan.orbitlab.data.financas.filtrarPorPeriodo
 import com.ethan.orbitlab.data.financas.filtrarPorPeriodoAteHoje
 import com.ethan.orbitlab.data.financas.formatarReais
+import com.ethan.orbitlab.data.financas.formatarReaisSemPrefixo
 import com.ethan.orbitlab.data.financas.lancamentosQueJaContam
 import com.ethan.orbitlab.data.financas.parsearReaisParaCentavos
 import com.ethan.orbitlab.data.financas.proximoVencimentoMs
@@ -218,6 +219,7 @@ fun CartoesScreen() {
                                     )
                                 }
                             },
+                            pagarFaturaSemDebito = faturaPrincipal != null && faturaPrincipal.faturaCentavos > 0 && carteiras.none { !it.arquivada && it.tipo != TipoCarteira.CARTAO_CREDITO },
                             modifier = Modifier.orbitEnter(2),
                         )
                     }
@@ -565,6 +567,7 @@ private fun CartaoPrincipalConcept(
     onClick: () -> Unit,
     onArquivar: () -> Unit,
     onPagarFatura: (() -> Unit)?,
+    pagarFaturaSemDebito: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier.fillMaxWidth()) {
@@ -681,9 +684,7 @@ private fun CartaoPrincipalConcept(
                                 ) {
                                     append(" / ")
                                     append(
-                                        formatarReais(lim)
-                                            .replace("R$\u00A0", "")
-                                            .replace("R$ ", ""),
+                                        formatarReaisSemPrefixo(lim)
                                     )
                                 }
                             }
@@ -726,7 +727,15 @@ private fun CartaoPrincipalConcept(
                         fontSize = 13.sp,
                     )
                 }
-                if (onPagarFatura != null) {
+                if (pagarFaturaSemDebito) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "Adiciona uma conta débito ou dinheiro pra pagar a fatura.",
+                        color = OrbitTokens.textLowN,
+                        fontSize = 11.5.sp,
+                        lineHeight = 16.sp,
+                    )
+                } else if (onPagarFatura != null) {
                     Spacer(Modifier.height(12.dp))
                     Text(
                         "Pagar fatura",
@@ -905,14 +914,14 @@ private fun CarteiraFormSheet(
         mutableStateOf(
             inicial?.saldoInicialCentavos
                 ?.takeIf { it != 0L }
-                ?.let { formatarReais(it).removePrefix("R$\u00A0").removePrefix("R$ ") }
+                ?.let { formatarReaisSemPrefixo(it) }
                 .orEmpty(),
         )
     }
     var limiteTexto by remember {
         mutableStateOf(
             inicial?.limiteCentavos
-                ?.let { formatarReais(it).removePrefix("R$\u00A0").removePrefix("R$ ") }
+                ?.let { formatarReaisSemPrefixo(it) }
                 .orEmpty(),
         )
     }
