@@ -158,6 +158,10 @@ android {
             applicationId = "com.ethan.orbitlab"
             versionCode = (findProperty("labVersionCode") as String?)?.toIntOrNull() ?: 128
             versionName = (findProperty("labVersionName") as String?) ?: "0.35.21"
+            val updateRepo = (findProperty("labUpdateRepo") as String?) ?: "NowardEthan/orbit-lab-releases"
+            val updateManifest = (findProperty("labUpdateManifest") as String?) ?: "updates-lab.json"
+            buildConfigField("String", "UPDATE_MANIFEST_REPO", "\"${updateRepo.replace("\"", "\\\"")}\"")
+            buildConfigField("String", "UPDATE_MANIFEST_FILE", "\"${updateManifest.replace("\"", "\\\"")}\"")
         }
     }
 

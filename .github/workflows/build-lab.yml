@@ -3,7 +3,7 @@ name: Build & Release Lab
 # Builda o APK Compose (flavor lab) no GitHub — sem notebook.
 #
 # Secrets necessários:
-# - ORBIT_RELEASES_TOKEN — PAT com contents:write no NowardEthan/orbit-releases (só se publish)
+# - ORBIT_RELEASES_TOKEN — PAT com contents:write nos repos de distribuição (só se publish)
 # - LAB_KEYSTORE_BASE64, LAB_KEYSTORE_PASSWORD, LAB_KEY_ALIAS, LAB_KEY_PASSWORD
 #   → assinatura de release (Fase 1 / SIGNING.md). Obrigatórios em todo labRelease no CI.
 #
@@ -20,6 +20,14 @@ on:
         description: "versionCode (maior que o instalado)"
         required: true
         default: "3"
+      release_channel:
+        description: "Canal de update"
+        required: true
+        type: choice
+        options:
+          - production
+          - debug
+        default: "production"
       news_title:
         description: "Título no mural de novidades"
         required: false
@@ -29,7 +37,11 @@ on:
         required: false
         default: "Build gerada pelo GitHub Actions."
       publish:
-        description: "Publicar no orbit-releases (tag lab + updates-lab.json)"
+        description: "Publicar no repo de distribuição do canal"
+        type: boolean
+        default: true
+      update_legacy_bridge:
+        description: "Também atualizar orbit-releases como ponte para apps antigos"
         type: boolean
         default: true
 
@@ -84,11 +96,16 @@ jobs:
           echo "Keystore de release pronta ($(wc -c < orbit-lab-release.keystore) bytes)."
 
       - name: Build APK labRelease
+        env:
+          UPDATE_MANIFEST_REPO: ${{ inputs.release_channel == 'debug' && 'NowardEthan/orbit-lab-debug-releases' || 'NowardEthan/orbit-lab-releases' }}
+          UPDATE_MANIFEST_FILE: updates-lab.json
         run: |
           chmod +x gradlew
           ./gradlew :app:assembleLabRelease --no-daemon \
             -PlabVersionCode=${{ inputs.version_code }} \
-            -PlabVersionName=${{ inputs.version_name }}
+            -PlabVersionName=${{ inputs.version_name }} \
+            -PlabUpdateRepo="${UPDATE_MANIFEST_REPO}" \
+            -PlabUpdateManifest="${UPDATE_MANIFEST_FILE}"
 
       - name: Preparar artefatos
         run: |
@@ -124,24 +141,32 @@ jobs:
         env:
           VER: ${{ inputs.version_name }}
           CODE: ${{ inputs.version_code }}
+          CHANNEL: ${{ inputs.release_channel }}
+          RELEASE_REPO: ${{ inputs.release_channel == 'debug' && 'NowardEthan/orbit-lab-debug-releases' || 'NowardEthan/orbit-lab-releases' }}
+          UPDATE_MANIFEST_FILE: updates-lab.json
           TITLE: ${{ inputs.news_title }}
           BODY: ${{ inputs.news_body }}
         run: |
           python3 <<'PY'
           import json, os
           from datetime import date
+          from urllib.request import urlopen
           ver = os.environ["VER"]
           code = int(os.environ["CODE"])
+          channel = os.environ["CHANNEL"]
+          repo = os.environ["RELEASE_REPO"]
+          path = os.environ["UPDATE_MANIFEST_FILE"]
           title = os.environ["TITLE"]
           body = os.environ["BODY"]
           today = date.today().isoformat()
+          release_tag = f"v{ver}"
           data = {
               "app": "orbit-lab",
               "manifestVersion": 1,
               "latestVersion": ver,
               "latestVersionCode": code,
               "publishedAt": today,
-              "apkUrl": "https://github.com/NowardEthan/orbit-releases/releases/download/lab/orbit.apk",
+              "apkUrl": f"https://github.com/{repo}/releases/download/{release_tag}/orbit.apk",
               "minSupportedVersion": "0.1.0",
               "mandatory": False,
               "news": [
@@ -155,56 +180,97 @@ jobs:
                   }
               ],
           }
-          # Preserva news antigas se o ficheiro local existir
-          path = "updates-lab.json"
+          # Preserva news antigas a partir do manifesto publicado, não de um arquivo local velho.
+          old = None
           try:
-              with open(path, encoding="utf-8") as f:
-                  old = json.load(f)
+              url = f"https://raw.githubusercontent.com/{repo}/main/{path}"
+              with urlopen(url, timeout=10) as response:
+                  old = json.load(response)
+          except Exception as exc:
+              print(f"Não foi possível ler manifesto publicado ({exc}); tentando arquivo local.")
+              try:
+                  with open(path, encoding="utf-8") as f:
+                      old = json.load(f)
+              except FileNotFoundError:
+                  old = None
+          if old:
               old_news = [n for n in old.get("news", []) if n.get("version") != ver]
               data["news"] = data["news"] + old_news[:19]
-          except FileNotFoundError:
-              pass
           with open(path, "w", encoding="utf-8") as f:
               json.dump(data, f, ensure_ascii=False, indent=2)
               f.write("\n")
           print(json.dumps(data, ensure_ascii=False, indent=2))
           PY
 
-      - name: Publicar no orbit-releases (público)
+      - name: Publicar no repo de distribuição
         if: ${{ inputs.publish }}
         env:
           GH_TOKEN: ${{ secrets.ORBIT_RELEASES_TOKEN }}
         run: |
           if [ -z "$GH_TOKEN" ]; then
             echo "::error::Falta o secret ORBIT_RELEASES_TOKEN."
-            echo "Cria um PAT (contents:write no NowardEthan/orbit-releases) e adiciona em:"
+            echo "Cria um PAT com contents:write nos repos de distribuição e adiciona em:"
             echo "orbit-lab → Settings → Secrets → Actions → ORBIT_RELEASES_TOKEN"
             echo "O APK ficou nos Artefatos deste run — você pode baixar manualmente."
             exit 1
           fi
 
-          # APK na tag fixa `lab`
-          if gh release view lab --repo NowardEthan/orbit-releases >/dev/null 2>&1; then
-            gh release upload lab dist/orbit.apk --repo NowardEthan/orbit-releases --clobber
-            gh release edit lab --repo NowardEthan/orbit-releases \
-              --title "lab ${{ inputs.version_name }}" \
+          # Define o canal antes de publicar release e manifesto.
+          CHANNEL="${{ inputs.release_channel }}"
+          if [ "$CHANNEL" = "debug" ]; then
+            RELEASE_REPO="NowardEthan/orbit-lab-debug-releases"
+            VERSION_TAG="v${{ inputs.version_name }}"
+            MANIFEST_FILE="updates-lab.json"
+            PRERELEASE_FLAG="--prerelease"
+            RELEASE_TITLE="Orbit Lab ${{ inputs.version_name }} (debug)"
+          else
+            RELEASE_REPO="NowardEthan/orbit-lab-releases"
+            VERSION_TAG="v${{ inputs.version_name }}"
+            MANIFEST_FILE="updates-lab.json"
+            PRERELEASE_FLAG=""
+            RELEASE_TITLE="Orbit Lab ${{ inputs.version_name }}"
+          fi
+
+          # Release versionada: aparece corretamente na lista de Releases do GitHub.
+          if gh release view "$VERSION_TAG" --repo "$RELEASE_REPO" >/dev/null 2>&1; then
+            gh release upload "$VERSION_TAG" dist/orbit.apk "dist/orbit-${{ inputs.version_name }}.apk" \
+              --repo "$RELEASE_REPO" --clobber
+            gh release edit "$VERSION_TAG" --repo "$RELEASE_REPO" \
+              --title "$RELEASE_TITLE" \
               --notes "Orbit Compose ${{ inputs.version_name }} (code ${{ inputs.version_code }})."
           else
-            gh release create lab dist/orbit.apk --repo NowardEthan/orbit-releases --prerelease \
-              --title "lab ${{ inputs.version_name }}" \
+            gh release create "$VERSION_TAG" dist/orbit.apk "dist/orbit-${{ inputs.version_name }}.apk" \
+              --repo "$RELEASE_REPO" $PRERELEASE_FLAG \
+              --title "$RELEASE_TITLE" \
               --notes "Orbit Compose ${{ inputs.version_name }} (code ${{ inputs.version_code }})."
           fi
 
           # Manifesto no main (o app lê raw/.../main/updates-lab.json)
-          git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/NowardEthan/orbit-releases.git" /tmp/orbit-releases
-          cp -f updates-lab.json /tmp/orbit-releases/updates-lab.json
-          cd /tmp/orbit-releases
+          git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/${RELEASE_REPO}.git" /tmp/orbit-release-channel
+          cp -f "$MANIFEST_FILE" "/tmp/orbit-release-channel/$MANIFEST_FILE"
+          cd /tmp/orbit-release-channel
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add updates-lab.json
+          git add "$MANIFEST_FILE"
           if git diff --staged --quiet; then
             echo "Manifesto já estava atualizado."
           else
-            git commit -m "release: lab ${{ inputs.version_name }} (code ${{ inputs.version_code }})"
+            git commit -m "release: ${{ inputs.release_channel }} ${{ inputs.version_name }} (code ${{ inputs.version_code }})"
             git push origin main
+          fi
+
+          # Ponte para apps antigos: eles ainda leem NowardEthan/orbit-releases/updates-lab.json.
+          if [ "$CHANNEL" = "production" ] && [ "${{ inputs.update_legacy_bridge }}" = "true" ]; then
+            git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/NowardEthan/orbit-releases.git" /tmp/orbit-releases-legacy
+            cp -f "$MANIFEST_FILE" "/tmp/orbit-releases-legacy/updates-lab.json"
+            cd /tmp/orbit-releases-legacy
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add updates-lab.json
+            if git diff --staged --quiet; then
+              echo "Ponte legado já estava atualizada."
+            else
+              git commit -m "bridge: lab production ${{ inputs.version_name }} (code ${{ inputs.version_code }})"
+              git push origin main
+            fi
           fi

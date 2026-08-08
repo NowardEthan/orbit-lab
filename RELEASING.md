@@ -9,13 +9,21 @@
 | | |
 |---|---|
 | Flavor Gradle | **só `lab`** (não há `--beta` / `--stable` neste repo) |
-| Manifesto | https://raw.githubusercontent.com/NowardEthan/orbit-releases/main/updates-lab.json |
-| APK (tag) | https://github.com/NowardEthan/orbit-releases/releases/tag/lab |
+| Manifesto produção | https://raw.githubusercontent.com/NowardEthan/orbit-lab-releases/main/updates-lab.json |
+| Releases produção | https://github.com/NowardEthan/orbit-lab-releases/releases |
+| Manifesto debug | https://raw.githubusercontent.com/NowardEthan/orbit-lab-debug-releases/main/updates-lab.json |
+| Releases debug | https://github.com/NowardEthan/orbit-lab-debug-releases/releases |
+| Ponte legado | https://raw.githubusercontent.com/NowardEthan/orbit-releases/main/updates-lab.json |
 | Backend | luna-core (Railway), auth Firebase, billing/cota no servidor |
 | Play Store | **fora de escopo** nesta fase — só sideload + auto-update |
 
 `versionCode` / `versionName` do flavor `lab` vivem em `app/build.gradle.kts`
 (override no CI com `-PlabVersionCode` / `-PlabVersionName`). **Só sobem.**
+
+Produção e debug vivem em repos separados para o GitHub mostrar cada release no
+histórico certo. O repo antigo `orbit-releases` fica como ponte: apps já instalados
+que ainda leem esse manifesto recebem a próxima produção e, depois dessa build,
+passam a ler `orbit-lab-releases`.
 
 ## Quando publicar
 
@@ -27,8 +35,8 @@ Quando o capítulo estiver estável o bastante pro grupo de usuários do sideloa
 Ver o passo a passo completo em [`TESTE-UPDATE.md`](TESTE-UPDATE.md):
 
 1. Actions → **Build & Release Lab** → Run workflow  
-2. Preencher `version_name`, `version_code` (maior que o instalado), novidades, `publish=✅`  
-3. Secret `ORBIT_RELEASES_TOKEN` precisa existir (PAT com write em `orbit-releases`)  
+2. Preencher `version_name`, `version_code` (maior que o instalado), `release_channel=production`, novidades, `publish=✅`  
+3. Secret `ORBIT_RELEASES_TOKEN` precisa existir (PAT com write nos repos de distribuição)  
 4. No celular: banner na Início → atualizar
 
 Sem o secret: o workflow ainda gera o APK nos **Artefatos** do run; aí você sobe
