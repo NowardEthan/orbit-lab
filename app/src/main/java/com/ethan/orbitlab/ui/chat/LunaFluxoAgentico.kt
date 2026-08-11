@@ -51,6 +51,27 @@ fun LunaFluxoAgentico(
         return
     }
 
+    if (!aoVivo && textoFallback.isNotBlank()) {
+        val tools = run.toolSteps()
+        Column(
+            modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalAlignment = Alignment.Start,
+        ) {
+            if (run.plano.isNotEmpty()) {
+                LunaPlanChecklist(plano = run.plano, aoVivo = false)
+            }
+            if (tools.isNotEmpty()) {
+                LunaToolClusterCursor(steps = tools)
+            }
+            LunaMarkdown(content = textoFallback)
+            if (mostrarCaret) {
+                StreamCaret()
+            }
+        }
+        return
+    }
+
     val stepsById = run.steps.associateBy { it.id }
     val blocos = remember(fluxo, run.steps) {
         agruparFluxoUi(fluxo, stepsById)
