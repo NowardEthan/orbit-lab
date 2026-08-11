@@ -8,6 +8,8 @@ import java.util.UUID
  */
 fun newUserMessageId(): String = "m${UUID.randomUUID()}-0"
 
+fun newLunaMessageId(): String = lunaMessageIdForUser(newUserMessageId())
+
 fun lunaMessageIdForUser(userMessageId: String): String = when {
     userMessageId.endsWith("-0") -> userMessageId.removeSuffix("-0") + "-1"
     userMessageId.startsWith("u") && !userMessageId.startsWith("u-") ->

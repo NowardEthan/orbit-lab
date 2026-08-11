@@ -13,6 +13,7 @@ import com.ethan.orbitlab.data.ChatRepository
 import com.ethan.orbitlab.data.Mensagem
 import com.ethan.orbitlab.data.lunaMessageIdForUser
 import com.ethan.orbitlab.data.lunaapi.LunaApiChat
+import com.ethan.orbitlab.data.newLunaMessageId
 import com.ethan.orbitlab.data.newUserMessageId
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -50,6 +51,8 @@ class ChatTurno(
         }
         val iniciou = ChatRepository.launchTurno(conversaId, lunaMsgId) {
             try {
+                val efetivoUserMsgId = userMsgId ?: newUserMessageId()
+                val efetivoLunaMsgId = lunaMsgId ?: lunaMessageIdForUser(efetivoUserMsgId)
                 val resultado = LunaApiChat.responder(
                     context = appContext,
                     conversaId = conversaId,
@@ -57,8 +60,8 @@ class ChatTurno(
                     textoUsuario = textoEnvio,
                     anexos = anexos,
                     reference = reference,
-                    userMessageId = userMsgId ?: newUserMessageId(),
-                    lunaMessageId = lunaMsgId ?: newUserMessageId(),
+                    userMessageId = efetivoUserMsgId,
+                    lunaMessageId = efetivoLunaMsgId,
                     reenvio = reenvio,
                     textoParaModelo = textoParaModelo,
                     onEstado = onEstado,
@@ -158,7 +161,7 @@ class ChatTurno(
                     dispararResposta(
                         userMsg.texto,
                         historicoAntes,
-                        emptyList(),
+                        userMsg.attachments,
                         userMsg.reference,
                         userMsgId,
                         lunaMsgId,
@@ -212,11 +215,11 @@ class ChatTurno(
         val historicoAntes = msgs.take(msgs.indexOfFirst { it.id == ancora.id })
         ChatRepository.truncarApos(conversaId, ancora.id)
         val userMsgId = ancora.id
-        val lunaMsgId = newUserMessageId()
+        val lunaMsgId = newLunaMessageId()
         dispararResposta(
             ancora.texto,
             historicoAntes,
-            emptyList(),
+            ancora.attachments,
             ancora.reference,
             userMsgId,
             lunaMsgId,

@@ -259,7 +259,7 @@ private fun FinancasLunaChatConteudo(
                         val lunaMsgId = replyId ?: lunaMessageIdForUser(userMsg.id)
                         dispararResposta(
                             userMsg.texto,
-                            emptyList(),
+                            userMsg.attachments,
                             userMsg.reference,
                             historicoAntes,
                             userMsg.id,
