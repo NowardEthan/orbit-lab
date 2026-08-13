@@ -28,6 +28,8 @@ sealed class ThreadReference {
         val attachmentName: String,
         val uri: Uri?,
         override val excerpt: String = attachmentName,
+        /** Prompt original da arte da Luna (quando soubermos) — ancora o sujeito na edição. */
+        val sourcePrompt: String? = null,
     ) : ThreadReference()
 
     /**
@@ -125,15 +127,19 @@ fun referenciaAoPuxar(msg: Mensagem, mensagens: List<Mensagem>): ThreadReference
 
     // Imagem que a LUNA desenhou (vive numa URL do Storage — sintetizamos um anexo pra citar).
     msg.imagensGeradas.firstOrNull()?.let { img ->
+        val nome =
+            img.prompt.trim().takeIf { it.isNotBlank() }?.take(80) ?: "Imagem da Luna"
         val att = ComposerAttachment(
             id = "img-gerada-${msg.id}",
             kind = AttachmentKind.IMAGE,
-            name = "Imagem da Luna",
+            name = nome,
             sizeLabel = "—",
             mime = "image/png",
             uri = runCatching { Uri.parse(img.url) }.getOrNull(),
         )
-        return buildImageReference(msg, mensagens, att)
+        return buildImageReference(msg, mensagens, att)?.copy(
+            sourcePrompt = img.prompt.trim().takeIf { it.isNotBlank() },
+        )
     }
 
     // Só texto.
@@ -176,6 +182,7 @@ fun formatMessageWithReference(userText: String, ref: ThreadReference): String {
             val url = ref.uri?.toString()?.takeIf {
                 it.startsWith("http://") || it.startsWith("https://")
             }
+            val brief = ref.sourcePrompt?.trim()?.takeIf { it.isNotBlank() }
             buildString {
                 appendLine("[Referência contextual]")
                 appendLine("- Imagem: \"$name\" (mensagem #${ref.messageIndex})")
@@ -183,9 +190,16 @@ fun formatMessageWithReference(userText: String, ref: ThreadReference): String {
                     // Base explícita pra editar_imagem — sem isto ela caía na ÚLTIMA arte.
                     appendLine("- Esta é uma arte DA LUNA (não um anexo dele).")
                     appendLine("- URL da BASE para editar_imagem (base_url): $url")
+                    if (brief != null) {
+                        appendLine("- Assunto/prompt original desta arte: «${brief.take(280)}»")
+                    }
                     appendLine(
-                        "- Se fores CONTINUAR/EDITAR esta arte, chama editar_imagem com " +
-                            "base_url = esta URL (não uses outra imagem da conversa).",
+                        "- CONTINUIDADE / ESTILO («faz realista», retoque, mesma cena): " +
+                            "chama editar_imagem com base_url = esta URL. " +
+                            "NÃO uses gerar_imagem (do zero o motor realista inventa outro assunto).",
+                    )
+                    appendLine(
+                        "- Mantém o MESMO sujeito desta arte (objeto/cena/pessoa — o que estiver nela).",
                     )
                 } else if (!url.isNullOrBlank()) {
                     appendLine("- URL da imagem: $url")
