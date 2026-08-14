@@ -256,14 +256,27 @@ object LunaApiChat {
             )
         }
 
-        // A1 — sem seletor sticky: o core decide (soft router). Só o módulo Finanças força
-        // agentico no body — não via toggle global Conversa/Técnico/Ação (removido).
+        val displayMessage = textoUsuario.trim()
+        val textoModeloBase = (textoParaModelo?.trim()?.takeIf { it.isNotEmpty() } ?: displayMessage)
+        val alvoAtelie = PrefsRepository.alvoAtelie(conversaId)
+        val textoModelo = when {
+            alvoAtelie != null && !textoModeloBase.contains("[ATELIE_ARTEFATO]") -> buildString {
+                appendLine(textoModeloBase)
+                appendLine()
+                appendLine("[ATELIE_ARTEFATO_CONTINUACAO]")
+                appendLine("Esta conversa nasceu no Atelie da Luna e tem um artefato alvo.")
+                appendLine("Artefato alvo: `${alvoAtelie.titulo}`")
+                appendLine("ID do artefato: `${alvoAtelie.documentoId}`")
+                appendLine("Se o Ethan confirmar com algo curto como 'sim', 'pode fazer', 'isso', 'manda' ou 'pode', use `editar_artefato` nesse id para substituir o rascunho por uma proposta completa. É proibido dizer que editou sem ferramenta.")
+            }
+            else -> textoModeloBase
+        }
+        // A1 — sem seletor sticky: o core decide (soft router). Módulos com ferramentas próprias
+        // podem forçar agentico por turno sem reintroduzir o toggle global.
         val conversaFinancas = ChatRepository.ehConversaFinancas(conversaId) ||
             conversaId == PrefsRepository.conversaFinancas
-        val forcarAgenticoModulo = conversaFinancas
-
-        val displayMessage = textoUsuario.trim()
-        val textoModelo = (textoParaModelo?.trim()?.takeIf { it.isNotEmpty() } ?: displayMessage)
+        val pedidoAtelieArtefato = textoModelo.contains("[ATELIE_ARTEFATO")
+        val forcarAgenticoModulo = conversaFinancas || pedidoAtelieArtefato
         val message = when {
             reference != null -> formatMessageWithReference(textoModelo, reference)
             else -> textoModelo

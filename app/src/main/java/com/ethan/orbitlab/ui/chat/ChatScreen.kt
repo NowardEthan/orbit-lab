@@ -170,7 +170,10 @@ fun ChatScreen(
     conversaId: String,
     onBack: () -> Unit,
     mensagemInicial: String? = null,
+    mensagemInicialModelo: String? = null,
     onMensagemInicialConsumida: () -> Unit = {},
+    /** Contexto adicional (ex: canvas) prefixado à mensagem inicial. */
+    contextoInicial: String? = null,
 ) {
     val conversa by ChatRepository.observarConversa(conversaId).collectAsState(initial = null)
     val context = LocalContext.current
@@ -207,7 +210,17 @@ fun ChatScreen(
             val reg = FirestoreDocumentos.subscribeDaConversa(
                 uid = uid,
                 conversaId = conversaId,
-                onChange = { documentos = it },
+                onChange = { docs ->
+                    documentos = docs
+                    docs.firstOrNull { it.titulo.startsWith("Atelie -", ignoreCase = true) }
+                        ?.let { doc ->
+                            PrefsRepository.marcarConversaAtelie(
+                                conversaId = conversaId,
+                                documentoId = doc.id,
+                                titulo = doc.titulo,
+                            )
+                        }
+                },
             )
             onDispose { reg.remove() }
         }
@@ -232,12 +245,31 @@ fun ChatScreen(
 
     // Veio do composer do Início: esta conversa nasceu com um texto pra mandar. Dispara UMA vez,
     // só se a conversa ainda está vazia (não reenviar ao reabrir), e some da mão da tela em seguida.
-    LaunchedEffect(conversaId, mensagemInicial) {
+    // Contexto inicial (ex: canvas) é prefixado à mensagem.
+    LaunchedEffect(conversaId, mensagemInicial, mensagemInicialModelo, contextoInicial) {
+        val contexto = contextoInicial?.trim().orEmpty()
         val inicial = mensagemInicial?.trim().orEmpty()
-        if (inicial.isEmpty()) return@LaunchedEffect
+        val modelo = mensagemInicialModelo?.trim().orEmpty()
+        val textoFinal = when {
+            contexto.isNotEmpty() && inicial.isNotEmpty() -> "$contexto\n\n$inicial"
+            contexto.isNotEmpty() -> "$contexto\n\nOlha este canvas comigo."
+            else -> inicial
+        }
+        val modeloFinal = when {
+            contexto.isNotEmpty() && modelo.isNotEmpty() -> "$contexto\n\n$modelo"
+            modelo.isNotEmpty() -> modelo
+            else -> null
+        }
+        if (textoFinal.isEmpty()) return@LaunchedEffect
         val jaTemMensagens = !ChatRepository.getConversa(conversaId)?.mensagens.isNullOrEmpty()
         onMensagemInicialConsumida()
-        if (!jaTemMensagens) onSend(inicial, emptyList(), null)
+        if (!jaTemMensagens) {
+            if (modeloFinal != null) {
+                turno.onSendModelo(textoFinal, modeloFinal, emptyList(), null)
+            } else {
+                onSend(textoFinal, emptyList(), null)
+            }
+        }
     }
 
     // Só volta se a conversa sumir de verdade (evita pop no meio do sync Firestore)

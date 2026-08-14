@@ -14,6 +14,9 @@ object OrbitMetrics {
     val itemGap = 12.dp
 
     val radiusCard = 20.dp
+    val radiusSm = 8.dp
+    val radiusMd = 12.dp
+    val radiusXs = 4.dp
     val radiusChip = 8.dp
     val radiusPill = 12.dp
     val radiusIcon = 12.dp

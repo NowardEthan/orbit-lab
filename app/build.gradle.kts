@@ -28,7 +28,10 @@ fun loadSecret(name: String, envKey: String? = null): String {
     return ""
 }
 
-val openRouterKey = loadSecret("openrouter.api.key", "OPENROUTER_API_KEY")
+val debugOpenRouterKeyOverride = findProperty("debugOpenRouterKey") as String?
+val openRouterKey = debugOpenRouterKeyOverride
+    ?.let { if (it == "__empty__") "" else it.trim() }
+    ?: loadSecret("openrouter.api.key", "OPENROUTER_API_KEY")
 val openRouterChatModel = loadSecret("openrouter.model.chat", "P0_MODEL_MENOR")
     .ifBlank { "deepseek/deepseek-v4-flash" }
 val openRouterVisionModel = loadSecret("openrouter.model.vision", "OPENROUTER_VISION_MODEL")

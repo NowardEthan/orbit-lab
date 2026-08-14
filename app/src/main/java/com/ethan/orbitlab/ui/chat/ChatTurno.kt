@@ -136,6 +136,33 @@ class ChatTurno(
         }
 
     /** Retry órfã / erro Luna — sem reenviar a fala do usuário. */
+    val onSendModelo: (String, String?, List<ComposerAttachment>, ThreadReference?) -> Unit =
+        enviar@{ texto, textoParaModelo, anexos, reference ->
+            val textoEnvio = texto.trim()
+            if (textoEnvio.isEmpty() && anexos.isEmpty() && reference == null) return@enviar
+            val historicoAntes = ChatRepository.getConversa(conversaId)?.mensagens.orEmpty()
+            val userMsgId = newUserMessageId()
+            val lunaMsgId = lunaMessageIdForUser(userMsgId)
+            ChatRepository.enviarMensagem(
+                conversaId = conversaId,
+                texto = textoEnvio,
+                isLuna = false,
+                attachments = anexos,
+                reference = reference,
+                messageId = userMsgId,
+            )
+            dispararResposta(
+                textoEnvio,
+                historicoAntes,
+                anexos,
+                reference,
+                userMsgId,
+                lunaMsgId,
+                false,
+                textoParaModelo,
+            )
+        }
+
     val onRetry: () -> Unit = {
         if (!ChatRepository.turnoEmAndamento(conversaId)) {
             val msgs = ChatRepository.getConversa(conversaId)?.mensagens.orEmpty()

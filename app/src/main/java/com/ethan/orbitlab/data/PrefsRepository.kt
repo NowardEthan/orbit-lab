@@ -39,6 +39,7 @@ object PrefsRepository {
     private const val KEY_LLM_PESSOAL_API_KEY = "orbit.lab.llm.pessoal.api_key"
     private const val KEY_LLM_PESSOAL_MODEL = "orbit.lab.llm.pessoal.model"
     private const val KEY_TECNICO_IDS = "orbit.lab.tecnico.msgids"
+    private const val KEY_ATELIE_ALVOS = "orbit.lab.atelie.alvos"
     private const val KEY_CPF_CNPJ = "orbit.lab.billing.cpfcnpj"
     /** Showcase V1 da Início (Finanças / desenha / artefatos) — versionado pra reaparecer em capítulos novos. */
     private const val KEY_SHOWCASE_LUNA_V1 = "orbit.lab.inicio.showcase.luna.v1.dismissed"
@@ -61,6 +62,7 @@ object PrefsRepository {
      * EXIBIÇÃO — à prova de sync e não-destrutiva. LinkedHashSet pra podar o mais antigo primeiro.
      */
     private val idsTecnico = LinkedHashSet<String>()
+    private val alvosAtelie = LinkedHashMap<String, AtelieArtefatoAlvo>()
 
     /** Raciocínio SEMPRE visível — não é mais opção do usuário. */
     val reasoningEnabled: StateFlow<Boolean> = MutableStateFlow(true).asStateFlow()
@@ -156,6 +158,10 @@ object PrefsRepository {
         bolhaLastLunaMsgId = prefs.getString(KEY_BOLHA_LAST_LUNA_MSG, null)
         idsTecnico.clear()
         idsTecnico.addAll(prefs.getStringSet(KEY_TECNICO_IDS, emptySet()).orEmpty())
+        alvosAtelie.clear()
+        prefs.getStringSet(KEY_ATELIE_ALVOS, emptySet()).orEmpty()
+            .mapNotNull(::parseAtelieAlvo)
+            .forEach { alvo -> alvosAtelie[alvo.conversaId] = alvo }
     }
 
     /** Marca que [id] é uma resposta do Modo técnico (pra corrigir o registro na exibição). */
@@ -172,6 +178,20 @@ object PrefsRepository {
 
     /** [id] nasceu no Modo técnico? (então a exibição passa o corretor de registro nela). */
     fun mensagemEhTecnica(id: String): Boolean = id in idsTecnico
+
+    fun marcarConversaAtelie(conversaId: String, documentoId: String, titulo: String) {
+        if (conversaId.isBlank() || documentoId.isBlank()) return
+        alvosAtelie[conversaId] = AtelieArtefatoAlvo(
+            conversaId = conversaId,
+            documentoId = documentoId,
+            titulo = titulo.ifBlank { "Artefato do Atelie" },
+        )
+        salvarAlvosAtelie()
+    }
+
+    fun alvoAtelie(conversaId: String): AtelieArtefatoAlvo? = alvosAtelie[conversaId]
+
+    fun conversaEhAtelie(conversaId: String): Boolean = conversaId in alvosAtelie
 
     /**
      * Uid da última conta que entrou — marcador de «já tem sessão neste aparelho».
@@ -416,6 +436,26 @@ object PrefsRepository {
         }.getOrNull()
     }
 
+    private fun salvarAlvosAtelie() {
+        if (!::prefs.isInitialized) return
+        prefs.edit()
+            .putStringSet(KEY_ATELIE_ALVOS, alvosAtelie.values.map { it.serialize() }.toSet())
+            .apply()
+    }
+
+    private fun parseAtelieAlvo(raw: String): AtelieArtefatoAlvo? {
+        val partes = raw.split("|", limit = 3)
+        val conversaId = partes.getOrNull(0)?.trim().orEmpty()
+        val documentoId = partes.getOrNull(1)?.trim().orEmpty()
+        val titulo = partes.getOrNull(2)?.trim().orEmpty()
+        if (conversaId.isBlank() || documentoId.isBlank()) return null
+        return AtelieArtefatoAlvo(
+            conversaId = conversaId,
+            documentoId = documentoId,
+            titulo = titulo.ifBlank { "Artefato do Atelie" },
+        )
+    }
+
     /** Limpa prefs locais (após «apagar dados»). */
     fun reset() {
         prefs.edit().clear().apply()
@@ -434,5 +474,15 @@ object PrefsRepository {
         bolhaOnboardingVisto = false
         bolhaLastLunaMsgId = null
         idsTecnico.clear()
+        alvosAtelie.clear()
     }
+}
+
+data class AtelieArtefatoAlvo(
+    val conversaId: String,
+    val documentoId: String,
+    val titulo: String,
+) {
+    fun serialize(): String =
+        listOf(conversaId, documentoId, titulo.replace("|", " ")).joinToString("|")
 }

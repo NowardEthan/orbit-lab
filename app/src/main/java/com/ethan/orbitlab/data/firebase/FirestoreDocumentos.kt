@@ -282,11 +282,13 @@ object FirestoreDocumentos {
         val rawBlocos = parseBlocos(data["blocos"])
         val schema = (data["schemaVersion"] as? Number)?.toInt()
         val (schemaNorm, blocos, md) = normalizarDocumentoBlocos(conteudo, rawBlocos, schema)
+        val mdCurado = curarMarkdownEscapado(md.ifBlank { conteudo })
+        val blocosCurados = if (mdCurado != md && mdCurado.isNotBlank()) mdToBlocos(mdCurado) else blocos
         return DocumentoUi(
             id = doc.id,
             titulo = tituloFinal,
-            conteudo = md.ifBlank { conteudo },
-            blocos = blocos,
+            conteudo = mdCurado,
+            blocos = blocosCurados,
             schemaVersion = schemaNorm,
             canone = (data["canone"] as? String).orEmpty(),
             createdAtMs = timestampMs(data["createdAt"]) ?: 0L,
@@ -294,6 +296,24 @@ object FirestoreDocumentos {
             origem = origem,
             updatedBy = (data["updatedBy"] as? String)?.takeIf { it.isNotBlank() } ?: origem,
         )
+    }
+
+    private fun curarMarkdownEscapado(raw: String): String {
+        var texto = raw.trim()
+        if (texto.length > 1 && texto.startsWith("\"") && texto.endsWith("\"")) {
+            texto = texto.drop(1).dropLast(1)
+        }
+        val escapes = Regex("""\\[rn]""").findAll(texto).count()
+        if (escapes == 0) return texto
+        return texto
+            .replace("\\r\\n", "\n")
+            .replace("\\n", "\n")
+            .replace("\\r", "\n")
+            .replace("\\t", "\t")
+            .replace("\\\"", "\"")
+            .replace("\\'", "'")
+            .replace(Regex("\n{3,}"), "\n\n")
+            .trim()
     }
 
     @Suppress("UNCHECKED_CAST")

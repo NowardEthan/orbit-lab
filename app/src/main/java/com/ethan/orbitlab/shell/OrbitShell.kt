@@ -1,6 +1,7 @@
 package com.ethan.orbitlab.shell
 
 import android.app.Activity
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
@@ -39,8 +40,10 @@ import androidx.compose.material.icons.rounded.CreditCard
 import androidx.compose.material.icons.rounded.Email
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Flag
+import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Hearing
 import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.PhotoLibrary
@@ -59,6 +62,7 @@ import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -90,8 +94,11 @@ import com.ethan.orbitlab.data.UserProfileRepository
 import com.ethan.orbitlab.data.financas.FinancasNav
 import com.ethan.orbitlab.data.financas.FinancasRepository
 import com.ethan.orbitlab.data.financas.TransferenciaLauncher
+import com.ethan.orbitlab.data.firebase.FirestoreDocumentos
 import com.ethan.orbitlab.data.updates.UpdatesRepository
 import com.ethan.orbitlab.ui.ajustes.AjustesScreen
+import com.ethan.orbitlab.ui.atelie.AtelieScreen
+import com.ethan.orbitlab.ui.atelie.PedidoAtelie
 import com.ethan.orbitlab.ui.auth.LoginScreen
 import com.ethan.orbitlab.ui.bolha.BolhaLunaService
 import com.ethan.orbitlab.ui.bolha.BolhaNav
@@ -116,6 +123,9 @@ import com.ethan.orbitlab.ui.planos.PlanosScreen
 import com.ethan.orbitlab.ui.planos.UsageMeter
 import com.ethan.orbitlab.data.billing.PlanosNav
 import com.ethan.orbitlab.data.billing.UsageRepository
+import com.ethan.orbitlab.data.canvas.WorkspaceRepository
+import com.ethan.orbitlab.ui.canvas.CanvasGalleryScreen
+import com.ethan.orbitlab.ui.canvas.CanvasWorkspaceScreen
 import com.ethan.orbitlab.data.crash.CrashReporting
 import com.ethan.orbitlab.ui.theme.Bricolage
 import com.ethan.orbitlab.ui.theme.OrbitIconButton
@@ -138,6 +148,7 @@ private enum class OrbitTab(
     val icone: ImageVector,
 ) {
     INICIO("Início", Icons.Rounded.Home),
+    CANVAS("Atelie", Icons.Rounded.AutoAwesome),
     FINANCAS("Finanças", Icons.Rounded.AccountBalanceWallet),
     CONSTANCIA("Constância", Icons.Rounded.AutoAwesome),
     EXTRATO("Movimentações", Icons.Rounded.SwapVert),
@@ -260,7 +271,11 @@ fun OrbitShell() {
     var financasConversaId by remember { mutableStateOf<String?>(null) }
     // Texto digitado no composer do Início: abre uma conversa nova JÁ mandando esta 1ª mensagem.
     var mensagemInicial by remember { mutableStateOf<String?>(null) }
+    var mensagemInicialModelo by remember { mutableStateOf<String?>(null) }
+    var contextoCanvasInicial by remember { mutableStateOf<String?>(null) }
     var novidadesAberto by remember { mutableStateOf(false) }
+    // Canvas: workspace selecionado para editar
+    var workspaceSelecionadoId by remember { mutableStateOf<String?>(null) }
 
     // Bolha flutuante → "abrir no app": mesma conversa principal, overlay de chat.
     LaunchedEffect(Unit) {
@@ -330,6 +345,9 @@ fun OrbitShell() {
     val onOpenChat = remember {
         { id: String ->
             conversaAtivaId = id
+            mensagemInicial = null
+            mensagemInicialModelo = null
+            contextoCanvasInicial = null
             chatAberto = true
         }
     }
@@ -338,6 +356,9 @@ fun OrbitShell() {
         {
             conversaAtivaId = ChatRepository.conversas.value.firstOrNull()?.id
                 ?: ChatRepository.criarConversa()
+            mensagemInicial = null
+            mensagemInicialModelo = null
+            contextoCanvasInicial = null
             chatAberto = true
         }
     }
@@ -346,10 +367,16 @@ fun OrbitShell() {
     val onFecharNovidades = remember { { novidadesAberto = false } }
     val onAbrirEstante = remember { { abaAtual = OrbitTab.ESTANTE } }
     val onAbrirFinancas = remember { { abaAtual = OrbitTab.FINANCAS } }
+    val onVoltarCanvas = remember { { abaAtual = OrbitTab.INICIO } }
+    val onVoltarGallery = remember { { workspaceSelecionadoId = null } }
+    val onAbrirWorkspace = remember { { id: String -> workspaceSelecionadoId = id } }
     val onNovaConversa = remember {
         {
             val newId = ChatRepository.criarConversa()
             conversaAtivaId = newId
+            mensagemInicial = null
+            mensagemInicialModelo = null
+            contextoCanvasInicial = null
             chatAberto = true
         }
     }
@@ -358,7 +385,49 @@ fun OrbitShell() {
             val newId = ChatRepository.criarConversa()
             conversaAtivaId = newId
             mensagemInicial = texto
+            mensagemInicialModelo = null
+            contextoCanvasInicial = null
             chatAberto = true
+        }
+    }
+    val onCriarAtelie = remember(session?.uid, scope, context) {
+        { pedido: PedidoAtelie ->
+            val uid = session?.uid
+            scope.launch {
+                val newId = ChatRepository.criarConversa()
+                val documentoId = if (uid.isNullOrBlank()) {
+                    null
+                } else {
+                    try {
+                        FirestoreDocumentos.criar(
+                            uid = uid,
+                            titulo = pedido.tituloArtefato,
+                            conteudo = pedido.rascunhoMarkdown,
+                            conversaId = newId,
+                        )
+                    } catch (e: Exception) {
+                        Toast.makeText(
+                            context,
+                            "Não consegui criar o rascunho, vou pedir para a Luna criar.",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                        null
+                    }
+                }
+                conversaAtivaId = newId
+                if (!documentoId.isNullOrBlank()) {
+                    PrefsRepository.marcarConversaAtelie(
+                        conversaId = newId,
+                        documentoId = documentoId,
+                        titulo = pedido.tituloArtefato,
+                    )
+                }
+                mensagemInicial = pedido.promptVisivel
+                mensagemInicialModelo = promptModeloAtelie(pedido, documentoId)
+                contextoCanvasInicial = null
+                chatAberto = true
+            }
+            Unit
         }
     }
     val onAbrirConversaFinancas = remember {
@@ -367,16 +436,35 @@ fun OrbitShell() {
             financasChatAberto = true
         }
     }
+    // Chat com contexto de canvas
+    val onAbrirChatComCanvas = remember {
+        { contexto: String ->
+            val newId = ChatRepository.criarConversa()
+            conversaAtivaId = newId
+            mensagemInicial = "Olha este canvas comigo."
+            mensagemInicialModelo = null
+            contextoCanvasInicial = contexto
+            chatAberto = true
+        }
+    }
+    val onMensagemInicialConsumidaComCanvas = remember {
+        {
+            mensagemInicial = null
+            mensagemInicialModelo = null
+            contextoCanvasInicial = null
+        }
+    }
 
     val temOverlay = chatAberto || novidadesAberto
     val temModalFinancas = financasChatAberto
 
     // Botão 'Voltar' nativo: gaveta → widget Finanças → sheet Finanças → overlays.
-    BackHandler(enabled = drawerState.isOpen || temOverlay || financasWidgetAberto || temModalFinancas) {
+    BackHandler(enabled = drawerState.isOpen || temOverlay || financasWidgetAberto || temModalFinancas || workspaceSelecionadoId != null) {
         when {
             drawerState.isOpen -> scope.launch { drawerState.close() }
             financasWidgetAberto -> financasWidgetAberto = false
             financasChatAberto -> financasChatAberto = false
+            workspaceSelecionadoId != null -> workspaceSelecionadoId = null
             chatAberto -> chatAberto = false
             novidadesAberto -> novidadesAberto = false
         }
@@ -405,7 +493,12 @@ fun OrbitShell() {
         },
     ) {
         ShellConteudo(
-            abaAtual = abaAtual,
+            abaAtualParam = abaAtual,
+            sessionUid = session?.uid,
+            onVoltarCanvas = onVoltarCanvas,
+            workspaceSelecionadoId = workspaceSelecionadoId,
+            onVoltarGallery = onVoltarGallery,
+            onAbrirWorkspace = onAbrirWorkspace,
             temOverlay = temOverlay,
             abaStateHolder = abaStateHolder,
             notificacoesCount = notificacoesCount,
@@ -417,8 +510,13 @@ fun OrbitShell() {
             onOpenChat = onOpenChat,
             onNovaConversa = onNovaConversa,
             onNovaConversaComTexto = onNovaConversaComTexto,
+            onCriarAtelie = onCriarAtelie,
             mensagemInicial = mensagemInicial,
-            onMensagemInicialConsumida = { mensagemInicial = null },
+            mensagemInicialModelo = mensagemInicialModelo,
+            onMensagemInicialConsumida = {
+                mensagemInicial = null
+                mensagemInicialModelo = null
+            },
             onAbrirEstante = onAbrirEstante,
             onAbrirFinancas = onAbrirFinancas,
             onConversarComLuna = onConversarComLuna,
@@ -426,6 +524,9 @@ fun OrbitShell() {
             onFecharChat = onFecharChat,
             onFecharNovidades = onFecharNovidades,
             onAbrirConversaFinancas = onAbrirConversaFinancas,
+            contextoCanvasInicial = contextoCanvasInicial,
+            onAbrirChatComCanvas = onAbrirChatComCanvas,
+            onMensagemInicialConsumidaComCanvas = onMensagemInicialConsumidaComCanvas,
             financasWidgetAberto = financasWidgetAberto,
             onToggleFinancasWidget = {
                 if (!financasWidgetAberto) {
@@ -450,7 +551,12 @@ fun OrbitShell() {
 
 @Composable
 private fun ShellConteudo(
-    abaAtual: OrbitTab,
+    abaAtualParam: OrbitTab,
+    sessionUid: String?,
+    onVoltarCanvas: () -> Unit,
+    workspaceSelecionadoId: String?,
+    onVoltarGallery: () -> Unit,
+    onAbrirWorkspace: (String) -> Unit,
     temOverlay: Boolean,
     abaStateHolder: androidx.compose.runtime.saveable.SaveableStateHolder,
     notificacoesCount: Int,
@@ -462,7 +568,9 @@ private fun ShellConteudo(
     onOpenChat: (String) -> Unit,
     onNovaConversa: () -> Unit,
     onNovaConversaComTexto: (String) -> Unit,
+    onCriarAtelie: (PedidoAtelie) -> Unit,
     mensagemInicial: String?,
+    mensagemInicialModelo: String?,
     onMensagemInicialConsumida: () -> Unit,
     onAbrirEstante: () -> Unit,
     onAbrirFinancas: () -> Unit,
@@ -471,6 +579,9 @@ private fun ShellConteudo(
     onFecharChat: () -> Unit,
     onFecharNovidades: () -> Unit,
     onAbrirConversaFinancas: () -> Unit,
+    contextoCanvasInicial: String?,
+    onAbrirChatComCanvas: (String) -> Unit,
+    onMensagemInicialConsumidaComCanvas: () -> Unit,
     financasWidgetAberto: Boolean,
     onToggleFinancasWidget: () -> Unit,
     onFecharFinancasWidget: () -> Unit,
@@ -479,6 +590,7 @@ private fun ShellConteudo(
     onFecharFinancasChat: () -> Unit,
     onExpandirFinancasChat: () -> Unit,
 ) {
+    val abaAtual = abaAtualParam
     Box(Modifier.fillMaxSize().background(OrbitTokens.graphiteBg)) {
         Column(Modifier.fillMaxSize()) {
             OrbitTopBar(
@@ -504,6 +616,57 @@ private fun ShellConteudo(
                                 onAbrirEstante = onAbrirEstante,
                                 idleAtivo = true,
                             )
+                            OrbitTab.CANVAS -> {
+                                AtelieScreen(
+                                    onCriarDesign = onCriarAtelie,
+                                    onAbrirGaleria = onAbrirEstante,
+                                )
+                                /*
+                                if (sessionUid != null) {
+                                    val repository = remember(sessionUid) { WorkspaceRepository() }
+                                    DisposableEffect(repository) {
+                                        onDispose { repository.dispose() }
+                                    }
+                                    if (workspaceSelecionadoId != null) {
+                                        // Workspace aberto — mostra editor
+                                        val workspace by repository.workspaceAtual.collectAsState()
+                                        val elementos by repository.elementos.collectAsState()
+                                        CanvasWorkspaceScreen(
+                                            workspaceId = workspaceSelecionadoId,
+                                            repository = repository,
+                                            uid = sessionUid,
+                                            onVoltar = onVoltarGallery,
+                                            onAbrirChat = { wsId ->
+                                                // Gerar contexto do canvas e abrir chat
+                                                val resumoElementos = elementos.values
+                                                    .take(16)
+                                                    .joinToString(separator = "\n") { el ->
+                                                        val b = el.bounds
+                                                        "- ${el.id}: ${el.tipo.name} em x=${b.x.toInt()}, y=${b.y.toInt()}, w=${b.width.toInt()}, h=${b.height.toInt()}"
+                                                    }
+                                                val ctx = com.ethan.orbitlab.data.canvas.CanvasChatContext(
+                                                    workspaceId = workspace?.id ?: wsId,
+                                                    workspaceNome = workspace?.titulo ?: "Canvas",
+                                                    elementoCount = elementos.size,
+                                                    workspaceJson = resumoElementos.ifBlank { null },
+                                                ).toContextPrompt()
+                                                onAbrirChatComCanvas(ctx)
+                                            },
+                                        )
+                                    } else {
+                                        // Gallery — lista de workspaces
+                                        CanvasGalleryScreen(
+                                            repository = repository,
+                                            uid = sessionUid,
+                                            onVoltar = onVoltarCanvas,
+                                            onAbrirWorkspace = onAbrirWorkspace,
+                                        )
+                                    }
+                                } else {
+                                    Box(Modifier.fillMaxSize()) {}
+                                }
+                                */
+                            }
                             OrbitTab.FINANCAS -> FinancasDashboardScreen()
                             OrbitTab.CONSTANCIA -> ConstanciaScreen()
                             OrbitTab.EXTRATO -> ExtratoScreen()
@@ -570,11 +733,14 @@ private fun ShellConteudo(
             modifier = Modifier.fillMaxSize(),
         ) {
             conversaAtivaId?.let { id ->
+                val contexto = contextoCanvasInicial
                 ChatScreen(
                     conversaId = id,
                     onBack = onFecharChat,
                     mensagemInicial = mensagemInicial,
-                    onMensagemInicialConsumida = onMensagemInicialConsumida,
+                    mensagemInicialModelo = mensagemInicialModelo,
+                    onMensagemInicialConsumida = onMensagemInicialConsumidaComCanvas,
+                    contextoInicial = contexto,
                 )
             }
         }
@@ -687,6 +853,9 @@ private fun OrbitDrawer(
         ) {
             DrawerNavItem(Icons.Rounded.Home, "Início", atual == OrbitTab.INICIO) {
                 onAba(OrbitTab.INICIO)
+            }
+            DrawerNavItem(Icons.Rounded.AutoAwesome, "Atelie", atual == OrbitTab.CANVAS) {
+                onAba(OrbitTab.CANVAS)
             }
             DrawerNavItem(Icons.Rounded.Email, "Conversas", atual == OrbitTab.CONVERSAS) {
                 onAba(OrbitTab.CONVERSAS)
@@ -1016,6 +1185,23 @@ private fun DrawerSubNavItem(
             fontWeight = if (ativo) FontWeight.SemiBold else FontWeight.Normal,
         )
     }
+}
+
+private fun promptModeloAtelie(pedido: PedidoAtelie, documentoId: String?): String = buildString {
+    appendLine("[ATELIE_ARTEFATO]")
+    appendLine("Pedido visível do Ethan:")
+    appendLine(pedido.promptModelo)
+    appendLine()
+    if (documentoId.isNullOrBlank()) {
+        appendLine("Use obrigatoriamente `criar_artefato` para transformar este pedido em um artefato renderizável. Não entregue o corpo principal apenas no chat.")
+    } else {
+        appendLine("Já existe um artefato rascunho criado pelo Atelie nesta conversa.")
+        appendLine("Artefato alvo: `${pedido.tituloArtefato}`")
+        appendLine("ID do artefato: `$documentoId`")
+        appendLine("Use obrigatoriamente `editar_artefato` com esse id para substituir o rascunho por uma proposta completa em Markdown. Não entregue o corpo principal apenas no chat.")
+    }
+    appendLine()
+    appendLine("A saída do artefato deve ser design-first: conceito visual, objetivo, público, layout, hierarquia, copy pronta, paleta, tipografia, estilo de imagem e variações. Pergunte no máximo 3 coisas só se faltar informação essencial; se der para iniciar, escreva uma primeira versão.")
 }
 
 @Preview(showBackground = true, backgroundColor = 0xFF17181B, widthDp = 380, heightDp = 800)
